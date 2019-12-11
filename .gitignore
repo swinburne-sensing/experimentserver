@@ -1,3 +1,7 @@
+### experimentserver
+*.log
+*.lock
+
 # Created by .ignore support plugin (hsz.mobi)
 ### Windows template
 # Windows thumbnail cache files
