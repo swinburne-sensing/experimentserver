@@ -38,8 +38,9 @@ class PushoverNotificationHandler(logging.Handler):
         logging.CRITICAL: PUSHOVER_PRIORITY_HIGH
     }
 
-    def __init__(self, title, api_token: str, user_key: str, user_device: typing.Optional[str] = None,
-                 priority_map: typing.Dict[int, int] = None, cache_enabled: bool = True, cache_timeout: int = 4):
+    def __init__(self, title, api_token: typing.Optional[str], user_key: typing.Optional[str],
+                 user_device: typing.Optional[str] = None, priority_map: typing.Dict[int, int] = None,
+                 cache_enabled: bool = True, cache_timeout: int = 60):
         """ Create a Pushover client using the specified API authentication elements.
 
         :param title: notification title
@@ -59,7 +60,10 @@ class PushoverNotificationHandler(logging.Handler):
         self._title = title
 
         # Create Pushover client
-        self._pushover = pushover.Client(api_token=api_token, user_key=user_key, device=user_device)
+        if api_token is not None and user_key is not None:
+            self._pushover = pushover.Client(api_token=api_token, user_key=user_key, device=user_device)
+        else:
+            self._pushover = None
 
         # Message cache (prevent repeat messages)
         self._message_cache: typing.Optional[typing.Dict[str, typing.List[float]]] = {} if cache_enabled else None
@@ -83,7 +87,7 @@ class PushoverNotificationHandler(logging.Handler):
         self._client_thread.append((msg, priority))
 
     def _pushover_thread(self, obj):
-        if obj is None:
+        if self._pushover is None:
             return
 
         (msg, priority) = obj

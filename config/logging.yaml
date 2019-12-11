@@ -16,7 +16,8 @@ handlers:
     stream: ext://sys.stdout
   debug_file_handler:
     class: logging.handlers.TimedRotatingFileHandler
-    filename: !format "{path_root}/log/debug.log"
+    # filename: !format "{path_root}/log/debug.log"
+    filename: !format "C:\\Experiment\\Log\\debug.log"
     when: "D"
     formatter: file_format
     level: DEBUG
@@ -33,8 +34,9 @@ handlers:
   pushover_notify_handler:
     class: experimentserver.util.logging.notify.PushoverNotificationHandler
     title: !format '{module_root}'
-    api_token: !env PUSHOVER_API_KEY
-    user_key: !env PUSHOVER_USER_KEY
+    api_token: !envopt PUSHOVER_API_KEY
+    user_key: !envopt PUSHOVER_USER_KEY
+    user_device: !envopt PUSHOVER_USER_DEVICE
 root:
   level: DEBUG
   # pushover_notify_handler

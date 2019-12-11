@@ -160,6 +160,13 @@ class _YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
         return os.environ[node.value]
 
     @staticmethod
+    def loader_env_optional(_, node):
+        if node.value not in os.environ:
+            raise None
+
+        return os.environ[node.value]
+
+    @staticmethod
     def loader_format(_, node):
         module_root = experimentserver.__name__
         path_root = os.path.abspath(os.path.join(os.path.dirname(experimentserver.__file__), '..'))
@@ -171,4 +178,6 @@ class _YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
 _YAMLShortcutLoader.add_constructor('!include', _YAMLShortcutLoader.loader_include)
 _YAMLShortcutLoader.add_constructor('!inc', _YAMLShortcutLoader.loader_include)
 _YAMLShortcutLoader.add_constructor('!env', _YAMLShortcutLoader.loader_env)
+_YAMLShortcutLoader.add_constructor('!envopt', _YAMLShortcutLoader.loader_env_optional)
+_YAMLShortcutLoader.add_constructor('!env_optional', _YAMLShortcutLoader.loader_env_optional)
 _YAMLShortcutLoader.add_constructor('!format', _YAMLShortcutLoader.loader_format)

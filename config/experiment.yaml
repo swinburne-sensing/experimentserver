@@ -2,27 +2,36 @@
 ---
 logging: !include logging.yaml
 
+url:
+  grafana: "https://research.etoast.net/grafana"
+
 database:
   default:
-    host: research.etoast.net
-    port: 443
-    ssl: True
-    path: /influxdb
+    # host: research.etoast.net
+    # port: 443
+    # ssl: True
+    # path: /influxdb
+    host: localhost
     username: !env INFLUXDB_SHARED_USERNAME
     password: !env INFLUXDB_SHARED_PASSWORD
     database: !env INFLUXDB_SHARED_DATABASE
   private:
-    host: research.etoast.net
-    port: 443
-    ssl: True
-    path: /influxdb
+    # host: research.etoast.net
+    # port: 443
+    # ssl: True
+    # path: /influxdb
+    host: localhost
     username: !env INFLUXDB_USER_USERNAME
     password: !env INFLUXDB_USER_PASSWORD
     database: !env INFLUXDB_USER_DATABASE
 
 hardware:
-  - !include hardware_mfc.yaml
+  - !include hardware_multimeter.yaml
   - !include hardware_psu.yaml
+
+exporter:
+  multimeter: private
+  multichannel: private
 
 server: !include server.yaml
 
