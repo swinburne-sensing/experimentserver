@@ -1,0 +1,27 @@
+html {
+	height: 100%;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+footer {
+	flex-shrink: 0;
+}
+
+#top-head {
+	z-index: 9;
+	top: 0;
+	left: 0;
+	right: 0;
+}
+
+#content {
+	flex: 1 0 auto;
+	margin-left: 0;
+	margin-top: 52px;
+	padding: 30px 10px 0 10px;
+}

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %}
+        <meta charset="UTF-8">
+        <title>{{ metadata.server_name }}</title>
+        {% block styles %}
+            <link rel="stylesheet" href="{{ url_for('static', filename='uikit/css/uikit.css') }}" />
+            <link rel="stylesheet" href="{{ url_for('static', filename='experimentserver.css') }}" />
+            <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+        {% endblock %}
+        {% block scripts %}
+            <script src="{{ url_for('static', filename='jquery-3.4.1.min.js') }}"></script>
+            <script src="{{ url_for('static', filename='timeago.min.js') }}"></script>
+            <script src="{{ url_for('static', filename='uikit/js/uikit.js') }}"></script>
+            <script src="{{ url_for('static', filename='uikit/js/uikit-icons.js') }}"></script>
+            <script src="{{ url_for('static', filename='experimentserver.js') }}"></script>
+        {% endblock %}
+    {% endblock %}
+</head>
+
+<body>
+    <header id="top-head" class="uk-position-fixed">
+        <div class="uk-container uk-container-expand uk-background-secondary">
+            <nav class="uk-navbar" data-uk-navbar="mode:click; duration: 250">
+                <div class="uk-navbar-left uk-light">
+                    <ul class="uk-navbar-nav">
+                        <li class="uk-active"><a href="/"><span class="uk-text-large"><span uk-icon="icon: rss" style="padding-right: 5px"></span> {{ metadata.server_name }}</span></a></li>
+                        {% if metadata.mode == "debug" %}<li><a href="/debug/state">State</a></li>{% endif %}
+                        <li><a href="#acknowledgements-dialog" uk-toggle>About</a></li>
+                    </ul>
+                </div>
+                <div class="uk-navbar-right uk-light">
+                    <ul class="uk-navbar-nav uk-visible@m">
+                        <li class="uk-active"><a href="#hardware-dialog" id="hardware-dialog-open" uk-toggle><span uk-icon="icon: settings" style="padding-right: 5px"></span> Hardware State</a></li>
+                        <li class="uk-active"><a href="#event-dialog" id="event-dialog-open" uk-toggle><span uk-icon="icon: comments" style="padding-right: 5px"></span> Event Log</a></li>
+                        <li class="uk-active"><a href="#shutdown-dialog" uk-toggle><span uk-icon="icon: bolt" style="padding-right: 5px"></span> Shutdown</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <div id="acknowledgements-dialog" uk-modal>
+        <div class="uk-modal-dialog uk-modal-body uk-margin-auto-vertical">
+            <h2 class="uk-modal-title">About</h2>
+            <p><img data-src="{{ url_for('static', filename='arena.svg') }}" width="300" height="" alt="" uk-img><br />This project received funding from <a href="https://arena.gov.au/">ARENA</a> as part of ARENA's Research and Development Program – Renewable Hydrogen for Export (Contract No. 2018/RND012).</p>
+            <p><img data-src="{{ url_for('static', filename='NECTAR_LOGO_HOR_OnWhite_CMYK.png') }}" width="300" height="" alt="" uk-img><br />Powered by <a href="https://nectar.org.au/">Nectar</a>. Nectar is supported by the Australian Government through the National Collaborative Research Infrastructure Strategy (NCRIS).</p>
+            <p>This software is built using open source software including <a href="https://python.org/">Python</a>. The <a href="http://www.famfamfam.com/lab/icons/silk/">silk</a> icon set is used as part of this software.</p>
+            <p>For support contact <a href="mailto:mshafiei@swin.edu.au">Mahnaz Shafiei</a> or <a href="mailto:cjharrison@swin.edu.au">Chris Harrison</a>.</p>
+            <p class="uk-text-right" id="shutdown-control">
+                <button class="uk-button uk-button-default uk-modal-close" type="button">Close</button>
+            </p>
+        </div>
+    </div>
+
+    <div id="hardware-dialog" class="uk-modal-container" uk-modal>
+        <div class="uk-modal-dialog" style="width: auto">
+            <div class="uk-modal-header">
+                <h2 class="uk-modal-title">Hardware State</h2>
+            </div>
+
+            <div class="uk-modal-body" uk-overflow-auto>
+                <table class="uk-table uk-table-divider uk-table-middle uk-table-small">
+                    <thead>
+                        <tr>
+                            <th class="uk-table-shrink">Identifier</th>
+                            <th class="uk-table-shrink">State</th>
+                            <th class="uk-table-expand">Error Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hardware-dialog-container-state">
+                        <tr>
+                            <td>id</td>
+                            <td>idle</td>
+                            <td>None</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="uk-modal-header">
+                <h2 class="uk-modal-title">Hardware Classes</h2>
+            </div>
+
+            <div class="uk-modal-body" uk-overflow-auto>
+                <table class="uk-table uk-table-divider uk-table-small">
+                    <thead>
+                        <tr>
+                            <th class="uk-table-shrink">Class</th>
+                            <th>Description</th>
+                            <th class="uk-table-expand">Parameters</th>
+                            <th class="uk-table-expand">Measurements</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hardware-dialog-container-class">
+                        <tr>
+                            <td>Hardware</td>
+                            <td>Description</td>
+                            <td>None</td>
+                            <td>None</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="uk-modal-footer uk-text-right">
+                <button class="uk-button uk-button-default uk-modal-close" type="button"><span><span uk-icon="icon: close" style="padding-right: 5px"></span> Close</span></button>
+            </div>
+        </div>
+    </div>
+
+    <div id="event-dialog" class="uk-modal-container" uk-modal>
+        <div class="uk-modal-dialog">
+            <div class="uk-modal-header">
+                <h2 class="uk-modal-title">Event Log</h2>
+            </div>
+
+            <div class="uk-modal-body" uk-overflow-auto>
+                <table class="uk-table uk-table-divider uk-table-middle uk-table-small">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th class="uk-table-shrink">Severity</th>
+                            <th class="uk-table-shrink">Thread</th>
+                            <th class="uk-table-expand">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody id="event-dialog-container">
+                        <tr>
+                            <td>Now</td>
+                            <td>LOTS</td>
+                            <td>Main</td>
+                            <td>TODO</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="uk-modal-footer uk-text-right">
+                <button class="uk-button uk-button-default uk-modal-close" type="button" id="event-dialog-clear"><span uk-icon="icon: trash" style="padding-right: 5px"></span> Clear</button>
+                <button class="uk-button uk-button-default uk-modal-close" type="button"><span uk-icon="icon: close" style="padding-right: 5px"></span> Close</button>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="shutdown-dialog" uk-modal>
+        <div class="uk-modal-dialog uk-modal-body uk-margin-auto-vertical">
+            <h2 class="uk-modal-title">Do you want to shut down experimentserver?</h2>
+            <p>This will stop all experiments and disconnect from all hardware.</p>
+            <p>Some hardware devices may be returned to a default or safe state. Make sure you have completed work before shutting down this application.</p>
+            <p class="uk-text-danger">Remember to close cylinder valves when experiments have been completed.</p>
+            <div class="uk-card uk-card-secondary uk-card-body" id="shutdown-result" style="display: none;">
+                <h3 class="uk-card-title">Command Result</h3>
+                <p></p>
+            </div>
+            <p class="uk-text-right" id="shutdown-control">
+                <button class="uk-button uk-button-default uk-modal-close" type="button">Cancel</button>
+                <button class="uk-button uk-button-danger uk-text-middle" type="button" id="shutdown-button"><span uk-icon="icon: bolt" style="padding-right: 5px"></span> Shutdown</button>
+            </p>
+        </div>
+    </div>
+
+    <div id="content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <nav class="uk-navbar-container" uk-navbar>
+            <div class="uk-navbar-left">
+                <p class="uk-text-small uk-text-muted">{{ metadata.server_name }} {{ metadata.server_version }}</p>
+            </div>
+        </nav>
+    </footer>
+</body>
+</html>
