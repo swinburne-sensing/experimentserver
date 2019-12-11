@@ -1,13 +1,15 @@
 import logging
 import sys
+import typing
 
 from wrapt import ObjectProxy
 
 
 class _ModifiedLogger(logging.Logger):
-    # Fixes bug where logger considered the wrapper class as the base of the call (so everything came from this file)
+    # Fixes bug where base logger considers the wrapper class as the base for all function calls
     def findCaller(self, stack_info=False):
         # Fetch frame and code
+        # noinspection PyProtectedMember
         f = sys._getframe(4)
         co = f.f_code
 
@@ -67,19 +69,19 @@ class __LoggerProxy(ObjectProxy):
         self.__wrapped__.log(level, msg, *args, **kwargs)
 
 
-def get_logger(name: str) -> __LoggerProxy:
+def get_logger(name: typing.Optional[str] = None) -> __LoggerProxy:
     """ Get a wrapped Logging object.
 
     :param name: name of the Logger to get from the logging library
     :return: LoggerWrapper
     """
+    # Use derived class
+    logging.setLoggerClass(_ModifiedLogger)
+
     logger = logging.getLogger(name)
 
     # Ensure logger is enabled
     logger.disabled = False
-
-    # Change to derived class
-    logger.__class__ = _ModifiedLogger
 
     return __LoggerProxy(logger)
 
@@ -88,23 +90,20 @@ class LoggerObject(object):
     """ Base class for objects that needs to access to a logger. """
     __class_logger = None
 
-    def __init__(self, logger_name: str = None, logger_append: str = None):
+    def __init__(self, logger_name_prefix: typing.Optional[str] = None, logger_name: typing.Optional[str] = None,
+                 logger_name_postfix: typing.Optional[str] = None, **kwargs):
         """
         Creates a new object that has a logging capability. An optional custom name and/or a custom name may be
         appended to the fetched logger.
 
         :param logger_name: string to use as the logger name, defaults to the class name
-        :param logger_append: string to append to the logger name
+        :param logger_name_postfix: string to append to the logger name
         """
-        super().__init__()
+        super().__init__(**kwargs)
 
         # If no name is provided then used the class name as the logger name
-        if logger_name is None:
-            logger_name = self.__class__.__name__
-            # logger_name = self.__class__.__module__ + '.' + self.__class__.__qualname__
-
-        if logger_append is not None:
-            logger_name += logger_append
+        logger_name = (logger_name_prefix or '') + (logger_name or self.__class__.__name__) + \
+                      (logger_name_postfix or '')
 
         # Get a logger based upon this name
         self._logger = get_logger(logger_name)

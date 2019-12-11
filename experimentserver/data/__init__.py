@@ -20,24 +20,29 @@ units.define('standard_cubic_centimeter_per_minute = cm ** 3 / min = sccm')
 # Shorthand
 Quantity = units.Quantity
 
-TYPING_RECORD = typing.Dict[str, typing.Any]
-TYPING_TAGS = typing.Dict[str, typing.Any]
+TYPING_FIELD = typing.Dict[str, typing.Any]
+TYPING_TAG = typing.Dict[str, typing.Any]
 TYPING_UNIT = typing.Union[float, str, Quantity]
 TYPING_UNIT_OPTIONAL = typing.Optional[TYPING_UNIT]
 
 
-class RecordType(enum.Enum):
+class MeasurementGroup(enum.Enum):
     """ Definition for known types of hardware or measurements. """
     EVENT = 'event'
-    HUMIDITY = 'humidity'
-    LCR = 'lcr'
-    FLOW = 'mfc'
-    MULTICHANNEL = 'multichannel'
-    MULTIMETER = 'multimeter'
+    STATUS = 'status'
+    CONDUCTOMETRIC = 'conductometric'
+    VOLTAGE = 'voltage'
+    CURRENT = 'current'
+    RESISTANCE = 'resistance'
+    CAPACITANCE = 'capacitance'
+    INDUCTANCE = 'inductance'
+    DISSIPATION = 'dissipation'
     TEMPERATURE = 'temperature'
-    PICOAMMETER = 'picoammeter'
-    NANOVOLTMETER = 'nanovoltmeter'
-    POWER_SUPPLY = 'psu'
+    HUMIDITY = 'humidity'
+    SUPPLY = 'supply'
+
+
+TYPING_MEASUREMENT_SERIES = typing.Iterable[typing.Tuple[MeasurementGroup, TYPING_FIELD]]
 
 
 def is_unit(obj: typing.Any) -> bool:
@@ -71,7 +76,7 @@ def to_unit(x: typing.Union[str, int, float, Quantity],
         if hasattr(units, default_unit):
             default_unit = getattr(units, default_unit)
         else:
-            raise ValueError("Unknown default data {}".format(default_unit))
+            raise ValueError(f"Unknown default data {default_unit}")
 
     # If input is already a data handle conversion (if necessary)
     if is_unit(x):

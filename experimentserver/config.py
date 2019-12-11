@@ -140,23 +140,27 @@ class _YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
 
     def loader_include(self, node):
         # From http://stackoverflow.com/questions/528281/how-can-i-include-an-yaml-file-inside-another
-        filename = os.path.join(self._root, self.construct_scalar(node))
-        filename = os.path.abspath(filename)
+        filename = self.construct_scalar(node)
 
-        self._logger.debug("Include {}".format(filename))
+        filename_abs = os.path.join(self._root, filename)
+        filename_abs = os.path.abspath(filename_abs)
 
-        with open(filename) as f:
+        self._logger.debug(f"Include {filename_abs}")
+
+        with open(filename_abs) as f:
             include_data = yaml.load(f, _YAMLShortcutLoader)
 
             return include_data
 
-    def loader_env(self, node):
+    @staticmethod
+    def loader_env(_, node):
         if node.value not in os.environ:
-            raise ConfigException("Environment variable {} not defined".format(node.value))
+            raise ConfigException(f"Environment variable {node.value} not defined")
 
         return os.environ[node.value]
 
-    def loader_format(self, node):
+    @staticmethod
+    def loader_format(_, node):
         module_root = experimentserver.__name__
         path_root = os.path.abspath(os.path.join(os.path.dirname(experimentserver.__file__), '..'))
 

@@ -1,34 +1,25 @@
 import abc
+import contextlib
 import inspect
-import queue
 import sys
+import threading
 import typing
+from collections import OrderedDict
 from datetime import datetime
 
-from transitions import Machine, State
+from transitions import EventData
 
-from experimentserver.data import RecordType, TYPING_TAGS, TYPING_RECORD
-from experimentserver.data.export import Exporter
+from experimentserver.data import MeasurementGroup, TYPING_FIELD, TYPING_TAG
+from experimentserver.data.export import ExporterSource, record_measurement
 from experimentserver.util.logging import LoggerObject
-from experimentserver.util.module import import_submodules
+from experimentserver.util.module import get_call_context, import_submodules
 
 
-_HARDWARE_STATE = {state.name: state for state in [
-    State(name='idle'),
-    State(name='ready', on_enter='_event_setup'),
-    State(name='running', on_enter='_event_start', on_exit='_event_stop'),
-    State(name='paused', on_enter='_handle_pause', on_exit='_handle_resume'),
-    State(name='error', on_enter='_handle_error')
-]}
-
-_HARDWARE_TRANSITIONS = [
-    {'trigger': 'setup', 'source': 'idle', 'dest': 'ready'},
-    {'trigger': 'start', 'source': 'ready', 'dest': 'running'},
-    {'trigger': 'pause', 'source': 'running', 'dest': 'paused'},
-    {'trigger': 'resume', 'source': 'paused', 'dest': 'running'},
-    {'trigger': 'stop', 'source': ['running', 'paused'], 'dest': 'ready'},
-    {'trigger': 'error', 'source': '*', 'dest': 'error'}
-]
+# Measurements may return either a dict (default metadata will be used) or a tuple containing metadata
+TYPING_MEASUREMENT = typing.Union[TYPING_FIELD, typing.Callable[[], typing.Tuple[datetime, MeasurementGroup,
+                                                                                 TYPING_FIELD,
+                                                                                 typing.Optional[TYPING_TAG]]]]
+TYPING_PARAM = typing.Dict[str, typing.Any]
 
 
 class HardwareException(Exception):
@@ -43,12 +34,39 @@ class ParameterException(HardwareException):
     pass
 
 
-class Hardware(LoggerObject, metaclass=abc.ABCMeta):
+class Hardware(LoggerObject, ExporterSource, metaclass=abc.ABCMeta):
     def __init__(self, identifier: str):
         # Force identifier to be lower case and stripped
         self._hardware_identifier = identifier.strip().lower()
 
-        super().__init__(logger_append=f":{self._hardware_identifier}")
+        super().__init__(logger_name_postfix=f":{self._hardware_identifier}")
+
+        # Hardware interaction lock
+        self._hardware_lock = threading.RLock()
+
+        # Enabled measurement map
+        self._enabled_measurement_setup = False
+        self._measurement_lock = threading.RLock()
+        self._enabled_measurement = {measure: meta['default'] for measure, meta in self.get_measurement_meta().items()
+                                     if not meta['force']}
+
+    # Instrument lock
+    @contextlib.contextmanager
+    def get_hardware_lock(self):
+        """ Aquire transaction lock.
+
+        :return:
+        """
+        context = ', '.join(get_call_context(2))
+
+        try:
+            self._logger.debug(f"Lock wait (context: {context})")
+            self._hardware_lock.acquire()
+            self._logger.debug(f"Lock acquired (context: {context})")
+            yield
+        finally:
+            self._hardware_lock.release()
+            self._logger.debug(f"Lock released (context: {context})")
 
     # Hardware metadata
     @classmethod
@@ -61,7 +79,7 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
         """
         # Try and get details from class first
         if hasattr(cls, '__author__') and hasattr(cls, '__email__'):
-            return "{} <{}>".format(getattr(cls, '__author__'), getattr(cls, '__email__'))
+            return f"{getattr(cls, '__author__')} <{getattr(cls, '__email__')}>"
         elif hasattr(cls, '__author__'):
             return getattr(cls, '__author__')
         elif hasattr(cls, '__email__'):
@@ -71,7 +89,7 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
         class_module = sys.modules[cls.__module__]
 
         if hasattr(class_module, '__author__') and hasattr(class_module, '__email__'):
-            return "{} <{}>".format(getattr(class_module, '__author__'), getattr(class_module, '__email__'))
+            return f"{getattr(class_module, '__author__')} <{getattr(class_module, '__email__')}>"
         elif hasattr(class_module, '__author__'):
             return getattr(class_module, '__author__')
         elif hasattr(class_module, '__email__'):
@@ -95,6 +113,9 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
         else:
             return self._hardware_identifier
 
+    def get_export_source_name(self) -> str:
+        return self.get_hardware_identifier()
+
     def get_hardware_instance_description(self) -> str:
         """ Provide a description of this particular instance of Hardware.
 
@@ -103,8 +124,9 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
         return f"{self.get_hardware_description()} ({self.get_hardware_identifier()})"
 
     # Parameter/measurement registration
-    def register_measurement(description: str, force: bool = False, default: bool = False,
-                             setup: typing.Optional[typing.Callable] = None,
+    def register_measurement(description: str, measurement: typing.Optional[MeasurementGroup],
+                             fields: typing.Dict[str, str], default: bool = False, force: bool = False, order: int = 50,
+                             user: bool = True, setup: typing.Optional[str] = None,
                              setup_args: typing.Optional[typing.List] = None,
                              setup_kwargs: typing.Optional[typing.Dict] = None) -> typing.Callable:
         """ Registers a methods as a mechanism for retrieving measurements from instrumentation.
@@ -112,20 +134,32 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
         Can optionally call a setup method when this measurement is first used.
 
         :param description: user readable description of the measurement(s) produced by this method
+        :param measurement:
+        :param fields:
+        :param default: if True this method is used by default
         :param force: if True this measurement method will always be called when fetching measurements in addition to \
         configured methods
-        :param default: if True this method is used by default
+        :param order:
+        :param user: if True this measurement may be enabled or disabled by the user
         :param setup: a callable method run when this measurement is first used, useful for changing instrument modes
         :param setup_args: list of arguments passed to setup method
         :param setup_kwargs: dict of keyword arguments passed to setup method
         :return:
         """
+        def wrapper(func: typing.Callable[[], TYPING_MEASUREMENT]):
+            if inspect.signature(func).return_annotation != TYPING_MEASUREMENT:
+                raise MeasurementException(f"Registered measurement method {func!r} must provide compatible return "
+                                           f"annotation")
 
-        def wrapper(func):
             func.measurement_meta = {
+                'method': func,
                 'description': description,
-                'force': force,
+                'measurement': measurement,
+                'fields': fields,
                 'default': default,
+                'force': force,
+                'order': order,
+                'user': user,
                 'setup': setup,
                 'setup_args': setup_args or [],
                 'setup_kwargs': setup_kwargs or {}
@@ -135,26 +169,24 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
 
         return wrapper
 
-    def register_parameter(description: typing.Dict[str, str], required: bool = False, order: int = 50,
-                           arg_valid: typing.Optional[typing.Dict[str, typing.List]] = None) -> typing.Callable:
+    def register_parameter(description: typing.Dict[str, str], order: int = 50,
+                           validation: typing.Optional[typing.Dict[str, typing.Callable[[typing.Any], bool]]] = None) \
+            -> typing.Callable:
         """ Registers a method for control of experimental parameters.
 
         Registered parameters can be configured during experiment runtime.
 
         :param description: user readable description of the parameter(s) controlled by this method
-        :param required: if True this parameter must be given a value on startup, otherwise it is optional
         :param order: used to configure order in which parameters are set, lower values are processed earlier
-        :param arg_valid: dict of arguments and valid values for those arguments (where arbitrary input should not be \
-        used)
         """
 
         def wrapper(func):
             func.parameter_meta = {
+                'method': func,
                 'description': description,
-                'required': required,
                 'order': order,
                 'arg_names': inspect.signature(func).parameters,
-                'arg_valid': arg_valid or {}
+                'validation': validation
             }
 
             return func
@@ -162,7 +194,7 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
         return wrapper
 
     @classmethod
-    def get_measurement_meta(cls) -> dict:
+    def get_measurement_meta(cls) -> typing.Dict[str, typing.Dict[str, typing.Any]]:
         """ Get all measurements produced by this class.
 
         This method returns a dict containing all methods that are registered using the Hardware.register_measurement
@@ -180,10 +212,13 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
             if hasattr(method, 'measurement_meta'):
                 measurement_list[method_name] = method.measurement_meta
 
+        # Sort by order
+        measurement_list = OrderedDict(sorted(measurement_list.items(), key=lambda x: x[1]['order']))
+
         return measurement_list
 
     @classmethod
-    def get_parameter_meta(cls) -> dict:
+    def get_parameter_meta(cls) -> typing.Dict[str, typing.Dict[str, typing.Any]]:
         """ Gets a list of all configurable parameters for this class.
 
         This returns a dict containing all methods that are registered using the Hardware.register_parameter decorator.
@@ -200,18 +235,100 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
             if hasattr(method, 'parameter_meta'):
                 parameter_list[method_name] = method.parameter_meta
 
+        # Sort by order
+        parameter_list = OrderedDict(sorted(parameter_list.items(), key=lambda x: x[1]['order']))
+
         return parameter_list
 
     # Parameter/measurement getter and setter
-    def set_parameter(self, parameter: typing.Dict[str, typing.Any], validate_only: bool = False) -> typing.NoReturn:
+    @register_parameter('Enable a single measurement method', order=0)
+    def set_measurement(self, name: typing.Optional[str] = None):
+        if name not in self._enabled_measurement:
+            raise MeasurementException(f"Unrecognised measurement name {name}")
+
+        with self._measurement_lock:
+            # Disable all other measurements
+            for measure in self._enabled_measurement.keys():
+                self._enabled_measurement[measure] = False
+
+            if name is not None:
+                # Enable the selected measurement
+                self.enable_measurement(name)
+
+            # Clear instrument setup flag
+            self._enabled_measurement_setup = False
+
+    @register_parameter('Enable a measurement method', order=0)
+    def enable_measurement(self, name):
+        if name not in self._enabled_measurement:
+            raise MeasurementException(f"Unrecognised measurement name {name}")
+
+        with self._measurement_lock:
+            self._enabled_measurement[name] = True
+
+            # Clear instrument setup flag
+            self._enabled_measurement_setup = False
+
+    @register_parameter('Disable a measurement method', order=0)
+    def disable_measurement(self, name):
+        if name not in self._enabled_measurement:
+            raise MeasurementException(f"Unrecognised measurement name {name}")
+
+        with self._measurement_lock:
+            self._enabled_measurement[name] = False
+
+            # Clear instrument setup flag
+            self._enabled_measurement_setup = False
+
+    def produce_measurement(self) -> bool:
+        measurement_flag = False
+
+        with self._measurement_lock:
+            # Get all measurements
+            measurement_meta = self.get_measurement_meta()
+
+            for measure, meta in measurement_meta.copy().items():
+                # Filter measurements based upon enabled or forced status
+                if not meta['force'] and self._enabled_measurement[measure]:
+                    measurement_meta.pop(measure)
+
+            if not self._enabled_measurement_setup:
+                # Apply measurement setup
+                for meta in measurement_meta.values():
+                    if meta['setup'] is not None:
+                        # Get setup method
+                        setup_method = getattr(self, meta['setup'])
+
+                        # Call with provided arguments
+                        setup_method(*meta['setup_args'], **meta['setup_kwargs'])
+
+                # Flag setup as complete
+                self._enabled_measurement_setup = True
+
+            with self.get_hardware_lock():
+                for meta in measurement_meta.values():
+                    measurement_method = meta['method']
+
+                    # Take measurement
+                    fields = measurement_method(self)
+
+                    # Record measurement
+                    record_measurement(datetime.now(), self, meta['measurement'], fields)
+
+                    # Indicate a measurement was produced
+                    measurement_flag = True
+
+        return measurement_flag
+
+    def set_parameter(self, commands: TYPING_PARAM, validate_only: bool = False) -> typing.NoReturn:
         # Validate all parameters
-        parameter_meta_dict = self.get_parameter_meta()
+        parameter_meta = self.get_parameter_meta()
 
-        for parameter_name, parameter_args in parameter.items():
-            if parameter_name not in parameter_meta_dict:
-                raise ParameterException(self, "{} is not a known parameter".format(parameter_name))
+        for parameter_name, parameter_args in commands.items():
+            if parameter_name not in parameter_meta:
+                raise ParameterException(self, f"Parameter {parameter_name} not recognised")
 
-            parameter_meta = parameter_meta_dict[parameter_name]
+            parameter_meta = parameter_meta[parameter_name]
 
             # Check arguments against supplied values
             if type(parameter_args) is not dict:
@@ -238,67 +355,84 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
             for arg_name, arg_value in parameter_args.items():
                 if arg_name in parameter_args_valid and arg_value not in parameter_args_valid[arg_name]:
                     raise ParameterException(
-                        self, "Parameter {} argument {} has a invalid value {} (valid values: {})".format(
-                            parameter_name, arg_name, arg_value, parameter_args_valid))
+                        self, f"Parameter {parameter_name} argument {arg_name} has a invalid value {arg_value} "
+                        f"(valid values: {parameter_args_valid})")
 
-            parameter[parameter_name] = parameter_args
+            commands[parameter_name] = parameter_args
 
         # Sort parameters based on order before calling the appropriate method
-        for parameter_name, parameter_args in sorted(parameter.items(),
-                                                     key=lambda x: parameter_meta_dict[x[0]]['order']):
-            parameter_method = getattr(self, parameter_name)
+        with self.get_hardware_lock():
+            for parameter_name, parameter_args in sorted(commands.items(),
+                                                         key=lambda x: parameter_meta[x[0]]['order']):
+                parameter_method = getattr(self, parameter_name)
 
-            if not validate_only:
-                parameter_method(**parameter_args)
+                if not validate_only:
+                    parameter_method(**parameter_args)
 
     # State transitions
     @abc.abstractmethod
-    def handle_setup(self):
+    def handle_setup(self, event: typing.Optional[EventData]):
         """
 
         :return:
         """
-        pass
+        self._logger.debug('Setup')
 
     @abc.abstractmethod
-    def handle_start(self):
+    def handle_start(self, event: EventData):
         """
 
         :return:
         """
-        pass
+        self._logger.debug('Start')
 
     @abc.abstractmethod
-    def handle_stop(self):
+    def handle_pause(self, event: EventData):
         """
 
         :return:
         """
-        pass
+        self._logger.debug('Pause')
 
     @abc.abstractmethod
-    def handle_pause(self):
+    def handle_resume(self, event: EventData):
         """
 
         :return:
         """
-        pass
+        self._logger.debug('Resume')
 
     @abc.abstractmethod
-    def handle_resume(self):
+    def handle_stop(self, event: EventData):
         """
 
         :return:
         """
-        pass
+        self._logger.debug('Stop')
 
     @abc.abstractmethod
-    def handle_error(self):
+    def handle_cleanup(self, event: EventData):
         """
 
         :return:
         """
-        pass
+        self._logger.debug('Cleanup')
+
+    @abc.abstractmethod
+    def handle_error(self, event: EventData):
+        """
+
+        :return:
+        """
+        self._logger.error(f"Hardware {self.get_hardware_identifier()} has entered an error state", event=True,
+                           notify=True)
+
+    def handle_reset(self, event: EventData):
+        """
+
+        :return:
+        """
+        raise NotImplementedError()
 
     # object overrides
     def __str__(self) -> str:
@@ -310,77 +444,6 @@ class Hardware(LoggerObject, metaclass=abc.ABCMeta):
     # Make decorators static
     register_measurement = staticmethod(register_measurement)
     register_parameter = staticmethod(register_parameter)
-
-
-class HardwareStateManager(LoggerObject):
-    def __init__(self, hardware: Hardware, exporter: Exporter):
-        super().__init__(logger_append=f":{hardware.get_hardware_identifier()}")
-
-        # Target hardware object
-        self._hardware = hardware
-
-        # Target for measurements
-        self._exporter = exporter
-
-        # State machine for managing hardware state
-        self._state = Machine(states=list(_HARDWARE_STATE.values()), transitions=_HARDWARE_TRANSITIONS,
-                              initial=_HARDWARE_STATE['idle'], before_state_change=self._callback_before,
-                              after_state_change=self._callback_after)
-
-        # Queue for hardware configuration
-        self._parameter_queue = queue.Queue()
-
-        # Cache for reconfiguration of instrument after a fault
-        self._parameter_cache = {}
-
-    def _record(self, record_type: RecordType, record: TYPING_RECORD, extra_tags: typing.Optional[TYPING_TAGS] = None):
-        extra_tags = extra_tags or {}
-
-        # Append source hardware identifier
-        extra_tags.update({
-            'source': self._hardware.get_hardware_identifier()
-        })
-
-        self._exporter.record(datetime.now(), record_type, record, extra_tags)
-
-    def _callback_before(self):
-        pass
-
-    def _callback_after(self):
-        pass
-
-    def _event_setup(self):
-        self._logger.info('Entering setup state')
-        self._hardware.handle_setup()
-        self._logger.debug('Setup transition OK')
-
-    def _event_start(self):
-        self._logger.info('Entering start state')
-        self._hardware.handle_start()
-        self._logger.debug('Start transition OK')
-
-    def _event_stop(self):
-        self._logger.info('Entering stop state')
-        self._hardware.handle_stop()
-        self._logger.debug('Stop transition OK')
-
-    def _event_pause(self):
-        self._logger.info('Entering pause state')
-        self._hardware.handle_pause()
-        self._logger.debug('Pause transition OK')
-
-    def _event_resume(self):
-        self._logger.info('Entering resume state')
-        self._hardware.handle_resume()
-        self._logger.debug('Resume transition OK')
-
-    def _event_error(self):
-        self._logger.info('Entering error state')
-        self._hardware.handle_error()
-        self._logger.debug('Error state transition OK')
-
-    def _thread_state_manager(self):
-        pass
 
 
 # Import submodules automatically

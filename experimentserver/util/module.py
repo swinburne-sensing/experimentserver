@@ -1,8 +1,12 @@
 import functools
+import inspect
 import importlib
+import os.path
 import pkgutil
 import typing
 import sys
+
+import experimentserver
 
 
 # From http://stackoverflow.com/questions/1176136/convert-string-to-python-class-object
@@ -39,6 +43,23 @@ def class_instance_from_dict(class_dict: typing.Dict[str, typing.Any], parent: t
     return class_instance_from_str(class_name, parent, **class_dict)
 
 
+def get_call_context(discard_calls: int = 1):
+    app_root = os.path.dirname(experimentserver.__file__)
+
+    context = inspect.stack()
+    context_list = []
+
+    # Filter stack frames from this application
+    context = [x for x in context[discard_calls:] if x[1].startswith(app_root)]
+
+    for frame in context:
+        frame_path = frame[1][len(app_root):]
+
+        context_list.append(f"{frame_path}:{frame[3]}:{frame[2]}")
+
+    return context_list
+
+
 def import_submodules(package, recursive=True):
     """
     Import submodules within a given package.
@@ -66,6 +87,9 @@ def __recurse_subclasses(subclass_list: typing.List[type]) -> typing.List[type]:
     for subclass in subclass_list:
         if len(subclass.__subclasses__()) > 0:
             return_list.extend(__recurse_subclasses(subclass.__subclasses__()))
+
+            if not inspect.isabstract(subclass):
+                return_list.append(subclass)
         else:
             return_list.append(subclass)
 

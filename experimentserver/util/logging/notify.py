@@ -11,6 +11,7 @@ from experimentserver.util.thread import QueueThread
 
 def filter_notify(record: logging.LogRecord):
     # Ignore records without the notify flag or if flag is not set
+    # noinspection PyUnresolvedReferences
     if not hasattr(record, 'notify') or not record.notify:
         return False
 
