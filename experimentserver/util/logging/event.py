@@ -72,10 +72,12 @@ class DatabaseEventHandler(logging.Handler, ExporterSource):
 
 
 class EventBufferHandler(logging.Handler):
-    def __init__(self, enable_filter: bool = True):
+    def __init__(self, max_length: int = 100, enable_filter: bool = True):
         super().__init__()
 
         # Storage for records
+        self._max_length = max_length
+
         self._record_lock = threading.RLock()
         self._records: typing.List[logging.LogRecord] = []
 
@@ -86,6 +88,10 @@ class EventBufferHandler(logging.Handler):
     def emit(self, record):
         with self._record_lock:
             self._records.append(record)
+
+            # Pop oldest records until under the limit
+            while len(self._records) > self._max_length:
+                self._records.pop(0)
 
     def clear(self):
         with self._record_lock:

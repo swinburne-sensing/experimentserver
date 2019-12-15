@@ -10,6 +10,10 @@ import typing
 from .logging import LoggerObject
 
 
+class ThreadException(Exception):
+    pass
+
+
 class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
     _thread_instances: typing.List[ThreadManager] = []
 
@@ -65,9 +69,6 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
         """
         return self._thread.is_alive()
 
-    def is_daemon(self) -> bool:
-        return self._thread.isDaemon()
-
     def start(self) -> typing.NoReturn:
         """
 
@@ -110,7 +111,7 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
         """
         for instance in cls._thread_instances:
             if instance.is_alive():
-                if instance.is_daemon():
+                if self._thread.isDaemon():
                     cls._get_class_logger().debug(f"Ignoring daemon {instance._thread_name}")
                 else:
                     cls._get_class_logger().debug(f"Joining {instance._thread_name}")
@@ -262,6 +263,9 @@ class QueueThread(ThreadManager):
         raise exc
 
     def append(self, obj):
+        if not self._thread.is_alive():
+            raise ThreadException('Queue thread is not running')
+
         self._append(_QueueCommand.PROCESS, obj)
 
     def _append(self, obj_type: _QueueCommand, obj=None):

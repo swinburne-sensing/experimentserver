@@ -162,7 +162,7 @@ class _YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
     @staticmethod
     def loader_env_optional(_, node):
         if node.value not in os.environ:
-            raise None
+            return None
 
         return os.environ[node.value]
 

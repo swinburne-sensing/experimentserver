@@ -2,6 +2,11 @@ html {
 	height: 100%;
 }
 
+header div.uk-container {
+	padding-left: 15px;
+	padding-right: 15px;
+}
+
 body {
 	display: flex;
 	flex-direction: column;
@@ -10,6 +15,10 @@ body {
 
 footer {
 	flex-shrink: 0;
+}
+
+footer nav div {
+	margin: 5px;
 }
 
 #top-head {

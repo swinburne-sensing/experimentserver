@@ -7,6 +7,7 @@ import datetime
 import getpass
 import logging.config
 import os
+import platform
 import socket
 import time
 import sys
@@ -66,40 +67,51 @@ if __name__ == '__main__':
         # Configure logging
         logging.config.dictConfig(app_config['logging'])
 
+        root_logger.disabled = False
         root_logger.info(f"Command: {' '.join(sys.argv)}")
 
         # Log platform version
         root_logger.info("Runtime: python {}".format(sys.version.replace('\n', ' ')))
         root_logger.info(f"Interpreter: {sys.executable}")
+        root_logger.info(f"Platform: {platform.python_implementation()}")
 
         if all((sys.version_info[:len(version)] != version for version in python_version_tested)):
             root_logger.warning(f"This version of Python has not been tested! Tested versions: "
                                 f"{', '.join(['.'.join(map(str, version)) for version in python_version_tested])}")
+
+        if platform.python_implementation() != 'CPython':
+            root_logger.warning(f"This python interpreter has not been tested! Tested interpreters: CPython")
 
         # Log module version
         root_logger.info(f"Launching: {experimentserver.__app_name__} {experimentserver.__version__}")
         root_logger.info(f"Developers: {', '.join(experimentserver.__credits__)}")
 
         # Dump identifiers
+        server_version = list(map(int, experimentserver.__version__.split('.')))
+
         app_metadata = {
             'hostname': socket.getfqdn(),
             'username': getpass.getuser(),
+            'mode': 'debug' if app_debug else 'release',
             'startup_timestamp': time.time(),
             'startup_time': time.strftime('%Y-%m-%d %H:%M:%S'),
             'server_name': experimentserver.__app_name__,
             'server_version': experimentserver.__version__,
-            'mode': 'debug' if app_debug else 'release'
+            'server_version_major': server_version[0],
+            'server_version_minor': server_version[1],
+            'server_version_revision': server_version[2]
         }
 
         # Append CLI metadata
-        for arg_tag in app_args.tag:
-            arg_tag_split = arg_tag.split('=')
+        if app_args.tag is not None:
+            for arg_tag in app_args.tag:
+                arg_tag_split = arg_tag.split('=')
 
-            if len(arg_tag_split) != 2:
-                root_logger.warning(f"Invalid tag argument \"{arg_tag}\", should follow the format key=value")
-                continue
+                if len(arg_tag_split) != 2:
+                    root_logger.warning(f"Invalid tag argument \"{arg_tag}\", should follow the format key=value")
+                    continue
 
-            app_metadata[arg_tag_split[0]] = arg_tag_split[1]
+                app_metadata[arg_tag_split[0]] = arg_tag_split[1]
 
         # Add global metadata
         add_tags(app_metadata)
@@ -166,13 +178,13 @@ if __name__ == '__main__':
             root_logger.exception('Unhandled exception during runtime')
             raise
         finally:
-            root_logger.debug('Unregistering exit handler')
-            atexit.unregister(__exit_handler)
-
             # Stop observer
             observer.stop()
 
             root_logger.info(f"Observer stopped")
+
+            root_logger.debug('Unregistering exit handler')
+            atexit.unregister(__exit_handler)
 
             # Remove lock file
             if os.path.isfile(LOCK_FILENAME):

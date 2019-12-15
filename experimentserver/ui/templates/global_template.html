@@ -168,9 +168,8 @@
 
     <footer>
         <nav class="uk-navbar-container" uk-navbar>
-            <div class="uk-navbar-left">
-                <p class="uk-text-small uk-text-muted">{{ metadata.server_name }} {{ metadata.server_version }}</p>
-            </div>
+            <div class="uk-navbar-left uk-text-small uk-text-muted">Launched {{ metadata.startup_time }}</div>
+            <div class="uk-navbar-right uk-text-small uk-text-muted">{{ metadata.server_name }} {{ metadata.server_version }}</div>
         </nav>
     </footer>
 </body>

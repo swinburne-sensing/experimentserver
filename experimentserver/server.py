@@ -4,7 +4,7 @@ import experimentserver.data.export as export
 import experimentserver.hardware as hardware
 import experimentserver.hardware.manager as manager
 from .config import ConfigManager
-from .data import TYPING_TAG
+from .data import TYPE_TAG_DICT
 from .util.logging import get_logger
 from .util.module import class_instance_from_dict
 from .ui.web import WebUI
@@ -17,7 +17,7 @@ class ServerException(Exception):
     pass
 
 
-def main(config: ConfigManager, metadata: TYPING_TAG):
+def main(config: ConfigManager, metadata: TYPE_TAG_DICT):
     # Configure metadata
     export.add_tags(metadata)
 

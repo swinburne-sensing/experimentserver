@@ -18,6 +18,10 @@ def filter_notify(record: logging.LogRecord):
     return True
 
 
+class NotifyException(Exception):
+    pass
+
+
 class PushoverNotificationHandler(logging.Handler):
     """
     A logging handler that emits messages via Pushover notifications.
@@ -80,6 +84,9 @@ class PushoverNotificationHandler(logging.Handler):
         self._client_thread.start()
 
     def emit(self, record):
+        if not self._client_thread.is_alive():
+            raise NotifyException('Pushover thread has stopped')
+
         msg = self.format(record)
         priority = self._priority_map[record.levelno] if record.levelno in self._priority_map else 0
 
@@ -87,7 +94,7 @@ class PushoverNotificationHandler(logging.Handler):
         self._client_thread.append((msg, priority))
 
     def _pushover_thread(self, obj):
-        if self._pushover is None:
+        if self._pushover is None or obj is None:
             return
 
         (msg, priority) = obj

@@ -35,37 +35,37 @@ class __LoggerProxy(ObjectProxy):
 
     def debug(self, msg, *args, notify: bool = False, event: bool = False, **kwargs):
         self._update_args(notify, event, kwargs)
-        self.__wrapped__.disabled = False
+        # self.__wrapped__.disabled = False
         self.__wrapped__.debug(msg, *args, **kwargs)
 
     def info(self, msg, *args, notify: bool = False, event: bool = False, **kwargs):
         self._update_args(notify, event, kwargs)
-        self.__wrapped__.disabled = False
+        # self.__wrapped__.disabled = False
         self.__wrapped__.info(msg, *args, **kwargs)
 
-    def warning(self, msg, *args, notify: bool = True, event: bool = True, **kwargs):
+    def warning(self, msg, *args, notify: bool = False, event: bool = True, **kwargs):
         self._update_args(notify, event, kwargs)
-        self.__wrapped__.disabled = False
+        # self.__wrapped__.disabled = False
         self.__wrapped__.warning(msg, *args, **kwargs)
 
     def error(self, msg, *args, notify: bool = True, event: bool = True, **kwargs):
         self._update_args(notify, event, kwargs)
-        self.__wrapped__.disabled = False
+        # self.__wrapped__.disabled = False
         self.__wrapped__.error(msg, *args, **kwargs)
 
     def exception(self, msg, *args, notify: bool = True, event: bool = True, exc_info=True, **kwargs):
         self._update_args(notify, event, kwargs)
-        self.__wrapped__.disabled = False
+        # self.__wrapped__.disabled = False
         self.__wrapped__.exception(msg, *args, exc_info=exc_info, **kwargs)
 
     def critical(self, msg, *args, notify: bool = True, event: bool = True, **kwargs):
         self._update_args(notify, event, kwargs)
-        self.__wrapped__.disabled = False
+        # self.__wrapped__.disabled = False
         self.__wrapped__.critical(msg, *args, **kwargs)
 
     def log(self, level, msg, *args, notify: bool = False, event: bool = False, **kwargs):
         self._update_args(notify, event, kwargs)
-        self.__wrapped__.disabled = False
+        # self.__wrapped__.disabled = False
         self.__wrapped__.log(level, msg, *args, **kwargs)
 
 

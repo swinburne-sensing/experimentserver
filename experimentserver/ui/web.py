@@ -4,12 +4,13 @@ from datetime import datetime
 
 import flask
 from flask import request, jsonify
+from transitions import MachineError
 
 from experimentserver.data import MeasurementGroup
-from experimentserver.data.export import ExporterSource, record_measurement, TYPING_TAG
+from experimentserver.data.export import ExporterSource, record_measurement, TYPE_TAG_DICT
 from experimentserver.config import ConfigManager
-from experimentserver.hardware.manager import Hardware, HardwareStateManager, HardwareStateException, \
-    HardwareStateTransition
+from experimentserver.hardware import Hardware, HardwareException
+from experimentserver.hardware.manager import HardwareStateManager, HardwareStateTransition
 from experimentserver.util.module import get_all_subclasses
 from experimentserver.util.thread import CallbackThread
 from experimentserver.util.logging import LoggerObject, get_logger
@@ -17,7 +18,7 @@ from experimentserver.util.logging.event import EventBufferHandler
 
 
 class WebUI(LoggerObject, ExporterSource):
-    def __init__(self, config: ConfigManager, metadata: TYPING_TAG, manager_list: typing.Dict[str, HardwareStateManager]):
+    def __init__(self, config: ConfigManager, metadata: TYPE_TAG_DICT, manager_list: typing.Dict[str, HardwareStateManager]):
         super().__init__()
 
         self._config = config
@@ -91,7 +92,7 @@ class WebUI(LoggerObject, ExporterSource):
             records = []
 
             for record in self._event_buffer.get_events():
-                records.append({
+                records.insert(0, {
                     'time': datetime.fromtimestamp(record.created).isoformat(),
                     'level': record.levelname,
                     'thread': record.threadName,
@@ -120,16 +121,16 @@ class WebUI(LoggerObject, ExporterSource):
                 class_fqn = '.'.join(class_fqn)
 
                 try:
-                    parameter_list = hardware_class.get_parameter_meta()
-                    measurement_list = hardware_class.get_measurement_meta()
+                    parameter_list = hardware_class.get_hardware_parameters()
+                    measurement_list = hardware_class.get_hardware_measurements()
 
                     hardware_class_list.append({
                         'class': class_fqn,
                         'author': hardware_class.get_author(),
                         'description': hardware_class.get_hardware_description(),
-                        'parameter': {k: v['description'] for k, v in parameter_list.items()
-                                      if not k.endswith('_measurement')},
-                        'measurement': {k: v['description'] for k, v in measurement_list.items()}
+                        'parameter': {k: v.description for k, v in parameter_list.items()
+                                      if not k.endswith('hardware_measurement')},
+                        'measurement': {k: v.description for k, v in measurement_list.items()}
                     })
                 except NotImplementedError:
                     self._logger.warning(f"Hardware class {class_fqn} lacks authorship information")
@@ -154,8 +155,9 @@ class WebUI(LoggerObject, ExporterSource):
 
         @self._app.route('/cmd/parameter', methods=['GET', 'POST'])
         def command_hardware_parameter():
-            identifier = request.args.get('identifier')
-            parameter = request.args.get('parameter')
+            identifier = request.args.get('id')
+            parameter = request.args.get('param')
+            arguments = request.args.get('args')
 
             if identifier is None or parameter is None:
                 return self._return_error('Missing identifier or parameter')
@@ -166,10 +168,11 @@ class WebUI(LoggerObject, ExporterSource):
             # Fetch hardware manager
             manager = self._manager_list[identifier]
 
-            try:
-                manager.get_hardware().set_parameter(parameter)
-            except:
-                pass
+            manager.get_hardware().set_parameter({
+                parameter: arguments
+            })
+
+            return self._return_ok('OK')
 
         @self._app.route('/cmd/shutdown')
         def command_shutdown():
@@ -210,8 +213,10 @@ class WebUI(LoggerObject, ExporterSource):
             try:
                 # Attempt to process transition
                 manager.queue_transition(transition)
-            except HardwareStateException as exc:
-                return self._return_error(f"Exception occurred during transition: {exc.__cause__}")
+            except HardwareException as exc:
+                return self._return_error(f"Hardware error occurred during transition: {exc}")
+            except MachineError as exc:
+                return self._return_error(f"State machine error occurred during transition: {exc}")
 
             return self._return_ok(f"{manager.get_hardware().get_hardware_identifier()} transitioned to state "
                                    f"{manager.get_state().value}")
@@ -227,8 +232,8 @@ class WebUI(LoggerObject, ExporterSource):
 
             # Get list of hardware state managers
             for identifier, manager in self._manager_list.items():
-                parameter_list = manager.get_hardware().get_parameter_meta()
-                measurement_list = manager.get_hardware().get_measurement_meta()
+                parameter_list = manager.get_hardware().get_hardware_parameters()
+                measurement_list = manager.get_hardware().get_hardware_measurements()
 
                 manager_list.append({
                     'identifier': identifier,
