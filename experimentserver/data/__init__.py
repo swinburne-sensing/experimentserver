@@ -20,10 +20,11 @@ units.define('standard_cubic_centimeter_per_minute = cm ** 3 / min = sccm')
 # Shorthand
 Quantity = units.Quantity
 
-TYPING_FIELD = typing.Dict[str, typing.Any]
-TYPING_TAG = typing.Dict[str, typing.Any]
-TYPING_UNIT = typing.Union[float, str, Quantity]
-TYPING_UNIT_OPTIONAL = typing.Optional[TYPING_UNIT]
+TYPE_ARGUMENT = typing.Union[None, typing.AnyStr, int, float, bool, Quantity]
+TYPE_FIELD_DICT = typing.Dict[str, TYPE_ARGUMENT]
+TYPE_TAG_DICT = typing.Dict[str, TYPE_ARGUMENT]
+TYPE_UNIT = typing.Union[str, float, Quantity]
+TYPE_UNIT_OPTIONAL = typing.Optional[TYPE_UNIT]
 
 
 class MeasurementGroup(enum.Enum):
@@ -42,7 +43,7 @@ class MeasurementGroup(enum.Enum):
     SUPPLY = 'supply'
 
 
-TYPING_MEASUREMENT_SERIES = typing.Iterable[typing.Tuple[MeasurementGroup, TYPING_FIELD]]
+TYPING_MEASUREMENT_SERIES = typing.Iterable[typing.Tuple[MeasurementGroup, TYPE_FIELD_DICT]]
 
 
 def is_unit(obj: typing.Any) -> bool:

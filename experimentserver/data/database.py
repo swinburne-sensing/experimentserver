@@ -7,7 +7,7 @@ import influxdb
 import influxdb.exceptions
 import urllib3
 
-from experimentserver.data import TYPING_FIELD, TYPING_TAG, MeasurementGroup, is_unit
+from experimentserver.data import TYPE_FIELD_DICT, TYPE_TAG_DICT, MeasurementGroup, is_unit
 from experimentserver.util.logging import LoggerObject
 from experimentserver.util.thread import QueueThread
 from .export import EXPORTER_DEFAULT, ExporterTarget
@@ -46,7 +46,7 @@ class _DatabaseClient(LoggerObject, ExporterTarget):
         self._event_thread = QueueThread(f"Database:{self._identifier}", event_callback=self._influxdb_event_handle)
         self._event_thread.start()
 
-    def record(self, timestamp: datetime, measurement: MeasurementGroup, fields: TYPING_FIELD, tags: TYPING_TAG):
+    def record(self, timestamp: datetime, measurement: MeasurementGroup, fields: TYPE_FIELD_DICT, tags: TYPE_TAG_DICT):
         # Sanitise fields for insertion to database
         fields = {key: field.magnitude if is_unit(field) else field for key, field in fields.items()}
 

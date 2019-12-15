@@ -42,6 +42,23 @@ class VISAEnum(enum.Enum):
 
         return description_map[self]
 
+    @staticmethod
+    def get_tag_name() -> str:
+        raise NotImplementedError()
+
+    @classmethod
+    def _get_tag_map(cls) -> typing.Dict[VISAEnum, typing.Any]:
+        raise NotImplementedError()
+
+    def get_tag_value(self) -> str:
+        """
+
+        :return:
+        """
+        tag_map = self._get_tag_map()
+
+        return tag_map[self]
+
     @classmethod
     def _get_visa_map(cls) -> typing.Dict[VISAEnum, str]:
         raise NotImplementedError()
@@ -91,6 +108,7 @@ class VISAEnum(enum.Enum):
 class VISAHardware(Hardware, metaclass=abc.ABCMeta):
     """ Base class for instruments relying upon the VISA communication layer. """
     __resource_manager = None
+    __resource_manager_lock = threading.RLock()
 
     def __init__(self, identifier: str, visa_address: str, *args, visa_open_args: typing.Dict[str, typing.Any] = None,
                  visa_timeout: typing.Optional[float] = None, visa_rate_limit: typing.Optional[float] = None, **kwargs):
@@ -130,10 +148,11 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
     @classmethod
     def get_visa_resource_manager(cls):
-        if cls.__resource_manager is None:
-            cls.__resource_manager = pyvisa.ResourceManager()
+        with cls.__resource_manager_lock:
+            if cls.__resource_manager is None:
+                cls.__resource_manager = pyvisa.ResourceManager()
 
-            cls._get_class_logger().info(f"VISA library: {cls.__resource_manager.visalib}")
+                cls._get_class_logger().info(f"VISA library: {cls.__resource_manager.visalib}")
 
         return cls.__resource_manager
 

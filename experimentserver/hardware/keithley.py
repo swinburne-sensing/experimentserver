@@ -4,10 +4,10 @@ import typing
 
 from transitions import EventData
 
-from . import HardwareException, TYPING_MEASUREMENT
+from . import HardwareException, MeasurementNotReady
 from .scpi import SCPIHardware, SCPIException
 from .visa import VISAException, VISAEnum
-from experimentserver.data import MeasurementGroup, to_unit
+from experimentserver.data import MeasurementGroup, to_unit, TYPE_FIELD_DICT
 
 
 __author__ = 'Chris Harrison'
@@ -177,21 +177,26 @@ class DAQ6510Multimeter(SCPIHardware):
     #             else:
     #                 self.visa_write(':{}:NPLC {}, @({})', function, nplc, channel)
 
-    @SCPIHardware.register_measurement('2-wire resistance', MeasurementGroup.RESISTANCE, {'resistance': 'Resistance'},
-                                       default=True)
-    def get_resistance(self) -> TYPING_MEASUREMENT:
+    @SCPIHardware.register_measurement(description='2-wire resistance', measurement_group=MeasurementGroup.RESISTANCE)
+    def get_resistance(self) -> TYPE_FIELD_DICT:
+        resistance = to_unit(self.visa_query(':MEAS:RES?'), 'ohm')
+
+        if resistance.magnitude > 1e37:
+            raise MeasurementNotReady('Open circuit')
+
         return {
-            'resistance': to_unit(self.visa_query(':MEAS:RES?'), 'ohm')
+            'resistance': resistance
         }
 
-    @SCPIHardware.register_measurement('AC voltage', MeasurementGroup.VOLTAGE, {'voltage_ac': 'AC Voltage'})
-    def get_voltage_ac(self) -> TYPING_MEASUREMENT:
+    @SCPIHardware.register_measurement(description='AC voltage', measurement_group=MeasurementGroup.VOLTAGE)
+    def get_voltage_ac(self) -> TYPE_FIELD_DICT:
         return {
             'voltage_ac': to_unit(self.visa_query(':MEAS:VOLT:AC?'), 'volt')
         }
 
-    @SCPIHardware.register_measurement('DC voltage', MeasurementGroup.VOLTAGE, {'voltage': 'DC Voltage'})
-    def get_voltage(self) -> TYPING_MEASUREMENT:
+    @SCPIHardware.register_measurement(description='DC voltage', measurement_group=MeasurementGroup.VOLTAGE,
+                                       default=True)
+    def get_voltage(self) -> TYPE_FIELD_DICT:
         return {
             'voltage': to_unit(self.visa_query(':MEAS:VOLT?'), 'volt')
         }
@@ -243,13 +248,9 @@ class DAQ6510Multimeter(SCPIHardware):
         self.visa_write(':ABOR')
 
     def handle_cleanup(self, event: EventData):
-        # Get final relay cycle count
-        cycle_count = ', '.join([f"{ch}: {count}" for ch, count in self.get_relay_cycle_count().items()])
-        self._logger.info(f"Relay cycle count: {cycle_count}")
-
-        # Disable slots
-        for slot in self._slot_enabled.keys():
-            self._slot_enabled[slot] = False
+        # Clear slots
+        for slot in self._slot_module.keys():
+            self._slot_module[slot] = None
 
         super(DAQ6510Multimeter, self).handle_cleanup(event)
 

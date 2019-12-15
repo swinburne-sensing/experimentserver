@@ -6,7 +6,7 @@ import threading
 import typing
 from datetime import datetime
 
-from . import TYPING_FIELD, TYPING_TAG, MeasurementGroup
+from . import TYPE_FIELD_DICT, TYPE_TAG_DICT, MeasurementGroup
 from experimentserver.util.logging import get_logger
 
 
@@ -59,13 +59,13 @@ class ExporterTarget(metaclass=abc.ABCMeta):
                 _exporter_target[self._exporter_target_name] = [self]
 
     @abc.abstractmethod
-    def record(self, timestamp: datetime, measurement: MeasurementGroup, fields: TYPING_FIELD, tags: TYPING_TAG) \
+    def record(self, timestamp: datetime, measurement: MeasurementGroup, fields: TYPE_FIELD_DICT, tags: TYPE_TAG_DICT) \
             -> typing.NoReturn:
         pass
 
 
 # Definition and storage for dynamic field callable
-TYPING_DYNAMIC_FIELD = typing.Callable[[datetime, MeasurementGroup, TYPING_FIELD, TYPING_TAG], typing.Any]
+TYPING_DYNAMIC_FIELD = typing.Callable[[datetime, MeasurementGroup, TYPE_FIELD_DICT, TYPE_TAG_DICT], typing.Any]
 _dynamic_field: typing.Dict[str, TYPING_DYNAMIC_FIELD] = {}
 
 # Storage for tags and tag stack
@@ -90,7 +90,7 @@ def add_tag(tag, value):
         _LOGGER.debug(f"Added tag {tag}: {value!r}")
 
 
-def add_tags(tags: TYPING_TAG):
+def add_tags(tags: TYPE_TAG_DICT):
     with _metadata_lock:
         _tags.update(tags)
 
@@ -121,8 +121,8 @@ def exporter_remap(source: str, target: str):
         _exporter_remap[source] = target
 
 
-def record_measurement(timestamp: datetime, source: ExporterSource, measurement: MeasurementGroup, fields: TYPING_FIELD,
-                       extra_tags: typing.Optional[TYPING_TAG] = None):
+def record_measurement(timestamp: datetime, source: ExporterSource, measurement: MeasurementGroup, fields: TYPE_FIELD_DICT,
+                       extra_tags: typing.Optional[TYPE_TAG_DICT] = None):
     # Get source
     source_name = source.get_export_source_name()
 
@@ -168,7 +168,7 @@ def record_measurement(timestamp: datetime, source: ExporterSource, measurement:
 # Basic dynamic fields
 def dynamic_field_time_delta(initial_timestamp: float) -> TYPING_DYNAMIC_FIELD:
     # noinspection PyUnusedLocal
-    def func(timestamp: datetime, record_type: MeasurementGroup, fields: TYPING_FIELD, tags: TYPING_TAG):
+    def func(timestamp: datetime, record_type: MeasurementGroup, fields: TYPE_FIELD_DICT, tags: TYPE_TAG_DICT):
         return timestamp.timestamp() - initial_timestamp
 
     return func
