@@ -32,6 +32,7 @@ hardware:
 exporter:
   multimeter: private
   multichannel: private
+  powersupply: private
 
 server: !include server.yaml
 

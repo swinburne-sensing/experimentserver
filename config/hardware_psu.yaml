@@ -3,6 +3,6 @@
 class: rigol.DP832PowerSupply
 identifier: 'powersupply'
 visa_address: 'USB0::0x1AB1::0x0E11::DP8C212902708::INSTR'
-ovp_channel2: 7.5 V
-ocp_channel2: 500 mA
+ovp_channel_2: 7.5 V
+ocp_channel_2: 500 mA
 ...
