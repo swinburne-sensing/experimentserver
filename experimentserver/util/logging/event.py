@@ -6,7 +6,7 @@ from datetime import datetime
 
 from experimentserver.data import MeasurementGroup
 from experimentserver.data.database import get_database
-from experimentserver.data.export import ExporterSource, record_measurement
+from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget
 
 
 def filter_event(record: logging.LogRecord):
@@ -18,7 +18,7 @@ def filter_event(record: logging.LogRecord):
     return True
 
 
-class DatabaseEventHandler(logging.Handler, ExporterSource):
+class DatabaseEventHandler(logging.Handler, MeasurementSource):
     def __init__(self, target: typing.Optional[str] = None, enable_filter: bool = True):
         super().__init__()
 
@@ -34,12 +34,12 @@ class DatabaseEventHandler(logging.Handler, ExporterSource):
         return 'event'
 
     def emit(self, record: logging.LogRecord):
-        # Attempt to
+        # Attempt to get database client
         if self._db_client is None:
             try:
                 self._db_client = get_database(self._db_target)
             except KeyError:
-                print('Database client not ready', file=sys.stderr)
+                print(f"Database client not available, discarding record: {record}", file=sys.stderr)
                 return
 
         record_payload = {
@@ -53,7 +53,7 @@ class DatabaseEventHandler(logging.Handler, ExporterSource):
             'line_number': int(record.lineno)
         }
 
-        # Get optional fields
+        # Get optional _fields
         if hasattr(record, 'thread'):
             record_tags['thread_id'] = int(record.thread)
 
@@ -67,12 +67,19 @@ class DatabaseEventHandler(logging.Handler, ExporterSource):
             record_tags['process'] = record.processName
 
         # Save record to database
-        record_measurement(datetime.fromtimestamp(record.created), self, MeasurementGroup.EVENT, record_payload,
-                           record_tags)
+        MeasurementTarget.record(Measurement(self, MeasurementGroup.EVENT, record_payload,
+                                             datetime.fromtimestamp(record.created), record_tags))
 
 
 class EventBufferHandler(logging.Handler):
+    """  """
+
     def __init__(self, max_length: int = 100, enable_filter: bool = True):
+        """
+
+        :param max_length:
+        :param enable_filter:
+        """
         super().__init__()
 
         # Storage for records
@@ -93,10 +100,25 @@ class EventBufferHandler(logging.Handler):
             while len(self._records) > self._max_length:
                 self._records.pop(0)
 
-    def clear(self):
+    def clear(self) -> typing.NoReturn:
+        """ Flush event buffer. """
         with self._record_lock:
             self._records.clear()
 
     def get_events(self, since: typing.Optional[float] = None):
+        """ Get event records from the buffer.
+
+        :param since:
+        :return: list
+        """
         with self._record_lock:
-            return self._records.copy()
+            if since is None:
+                return self._records.copy()
+            else:
+                record_buffer = []
+
+                for record in self._records:
+                    if record.created >= since:
+                        record_buffer.append(record)
+
+                return record_buffer

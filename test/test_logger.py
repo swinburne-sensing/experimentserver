@@ -1,7 +1,7 @@
 import logging.handlers
 import unittest
 
-import experimentserver.util.logging as experimentlogging
+from experimentserver.util.logging import get_logger
 
 
 class TestHandler(logging.handlers.BufferingHandler):
@@ -16,7 +16,7 @@ class MyTestCase(unittest.TestCase):
         handler.setLevel(logging.DEBUG)
 
         # Create test logging object
-        logger = experimentlogging.get_logger('test')
+        logger = get_logger('test')
         logger.setLevel(logging.INFO)
         logger.addHandler(handler)
 

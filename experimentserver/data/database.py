@@ -1,82 +1,81 @@
 import time
-import threading
 import typing
-from datetime import datetime
 
 import influxdb
 import influxdb.exceptions
+import requests.exceptions
 import urllib3
 
-from experimentserver.data import TYPE_FIELD_DICT, TYPE_TAG_DICT, MeasurementGroup, is_unit
+import experimentserver
+from experimentserver.data.measurement import Measurement
 from experimentserver.util.logging import LoggerObject
 from experimentserver.util.thread import QueueThread
-from .export import EXPORTER_DEFAULT, ExporterTarget
+from .measurement import MeasurementTarget
 
 
 # Suppress HTTPS warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
-class _DatabaseClient(LoggerObject, ExporterTarget):
+class DatabaseException(experimentserver.ApplicationException):
+    pass
+
+
+class _DatabaseClient(LoggerObject, MeasurementTarget):
     _BUFFER_TIMEOUT = 5
 
     def __init__(self, identifier: str, connect_args: typing.Dict[str, typing.Any]):
         self._identifier = identifier
 
-        super().__init__(logger_name_postfix=f":{self._identifier}", exporter_target_name=identifier)
+        super().__init__(logger_name_postfix=f":{self._identifier}", measurement_target_name=identifier)
 
         # Client to InfluxDB instance
         self.client = influxdb.InfluxDBClient(**connect_args)
 
-        # # Hack to fix HTTPS issues
-        # if 'https://' in self.client._session.adapters:
-        #     pool_kwargs = self.client._session.adapters['https://'].poolmanager.connection_pool_kw
-        #
-        #     pool_kwargs.update({
-        #         'cert_reqs': 'CERT_REQUIRED',
-        #         'ca_certs': certifi.where()
-        #     })
+        # Test connection
+        try:
+            self._logger.info(f"Influx DB {self.client.ping()}")
+        except requests.exceptions.ConnectionError as exc:
+            raise DatabaseException(f"Connection to database server (connection: {self._identifier}) could not be "
+                                    f"established, the server and/or local internet connection may be "
+                                    f"unavailable") from exc
 
         # Buffer for points
         self._point_buffer = []
         self._point_timeout = time.time() + self._BUFFER_TIMEOUT
-        self._point_lock = threading.RLock()
 
         # Thread for database writing
         self._event_thread = QueueThread(f"Database:{self._identifier}", event_callback=self._influxdb_event_handle)
         self._event_thread.start()
 
-    def record(self, timestamp: datetime, measurement: MeasurementGroup, fields: TYPE_FIELD_DICT, tags: TYPE_TAG_DICT):
-        # Sanitise fields for insertion to database
-        fields = {key: field.magnitude if is_unit(field) else field for key, field in fields.items()}
-
+    def _record(self, measurement: Measurement) -> typing.NoReturn:
         point = {
-            'measurement': measurement.value,
-            'tags': tags,
-            'time': int(1000000 * timestamp.timestamp()),
-            'fields': fields
+            'measurement': measurement.measurement_group.value,
+            'tags': measurement.get_tags(False),
+            'time': int(1000000 * measurement.timestamp.timestamp()),
+            'fields': measurement.get_fields(False)
         }
 
         self._event_thread.append(point)
 
     def _influxdb_event_handle(self, obj):
-        with self._point_lock:
-            if obj is not None:
-                # Append to point buffer
-                self._point_buffer.append(obj)
+        if obj is not None:
+            # Append to point buffer
+            self._point_buffer.append(obj)
 
-            if obj is None or time.time() > self._point_timeout:
-                if len(self._point_buffer) > 0:
-                    # Write points to database
-                    try:
-                        if self.client.write_points(self._point_buffer, time_precision='u'):
-                            # Flush buffer
-                            self._point_buffer = []
-                    except influxdb.exceptions.InfluxDBClientError:
-                        self._logger.warning(f"Unable to write data points to database", notify=True)
+        if obj is None or time.time() > self._point_timeout:
+            if len(self._point_buffer) > 0:
+                # Write points to database
+                try:
+                    if self.client.write_points(self._point_buffer, time_precision='u'):
+                        # Flush buffer
+                        self._point_buffer = []
+                except influxdb.exceptions.InfluxDBClientError as exc:
+                    self._logger.warning(f"Unable to write data points to database", exc_info=True, event=False,
+                                         notify=True)
 
-                # Update timeout
-                self._point_timeout = time.time() + self._BUFFER_TIMEOUT
+            # Update timeout
+            self._point_timeout = time.time() + self._BUFFER_TIMEOUT
 
 
 _db_client: typing.Dict[str, _DatabaseClient] = {}
@@ -93,7 +92,7 @@ def setup_database(identifier: str, connect_args):
 
 def get_database(identifier: typing.Optional[str] = None) -> _DatabaseClient:
     if identifier is None:
-        identifier = EXPORTER_DEFAULT
+        identifier = MeasurementTarget.MEASUREMENT_TARGET_DEFAULT
 
     if identifier not in _db_client:
         raise KeyError(f"Unknown database identifier {identifier}")

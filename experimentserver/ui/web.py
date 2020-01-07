@@ -7,23 +7,33 @@ from flask import request, jsonify
 from transitions import MachineError
 
 from experimentserver.data import MeasurementGroup
-from experimentserver.data.export import ExporterSource, record_measurement, TYPE_TAG_DICT
+from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget, TYPE_TAG_DICT
 from experimentserver.config import ConfigManager
-from experimentserver.hardware import Hardware, HardwareException
-from experimentserver.hardware.manager import HardwareStateManager, HardwareStateTransition
+from experimentserver.hardware import Hardware, HardwareError
+from experimentserver.hardware.manager import StateManager, HardwareTransition
 from experimentserver.util.module import get_all_subclasses
 from experimentserver.util.thread import CallbackThread
 from experimentserver.util.logging import LoggerObject, get_logger
 from experimentserver.util.logging.event import EventBufferHandler
 
 
-class WebUI(LoggerObject, ExporterSource):
-    def __init__(self, config: ConfigManager, metadata: TYPE_TAG_DICT, manager_list: typing.Dict[str, HardwareStateManager]):
+class WebUI(LoggerObject, MeasurementSource):
+    """  """
+
+    def __init__(self, config: ConfigManager, metadata: TYPE_TAG_DICT,
+                 manager_list: typing.Dict[str, StateManager], procedure):
+        """
+
+        :param config:
+        :param metadata:
+        :param manager_list:
+        """
         super().__init__()
 
         self._config = config
         self._metadata = metadata
         self._manager_list = manager_list
+        self._procedure = procedure
 
         # Inject event buffer into logger
         self._event_buffer = EventBufferHandler(False)
@@ -32,11 +42,9 @@ class WebUI(LoggerObject, ExporterSource):
         # Create flask instance
         self._app = flask.Flask(__name__)
 
-        # self._app.add_url_rule('/favicon.ico', redirect_to=flask.url_for('static', filename='favicon.ico'))
-
         # Register methods
         self._register_json()
-        self._register_route()
+        self._register_page()
 
         # Thread for hosting
         self._thread = CallbackThread(name='WebUI', callback=self._app.run, callback_kwargs={
@@ -70,7 +78,8 @@ class WebUI(LoggerObject, ExporterSource):
             try:
                 time.sleep(5)
 
-                record_measurement(datetime.now(), self, MeasurementGroup.STATUS, {'status': 'running', 'count': count})
+                MeasurementTarget.record(Measurement(self, MeasurementGroup.STATUS,
+                                                     {'status': 'running', 'count': count}))
 
                 count += 1
             except KeyboardInterrupt:
@@ -130,7 +139,7 @@ class WebUI(LoggerObject, ExporterSource):
                         'description': hardware_class.get_hardware_description(),
                         'parameter': {k: v.description for k, v in parameter_list.items()
                                       if not k.endswith('hardware_measurement')},
-                        'measurement': {k: v.description for k, v in measurement_list.items()}
+                        'measurement_group': {k: v.description for k, v in measurement_list.items()}
                     })
                 except NotImplementedError:
                     self._logger.warning(f"Hardware class {class_fqn} lacks authorship information")
@@ -168,7 +177,7 @@ class WebUI(LoggerObject, ExporterSource):
             # Fetch hardware manager
             manager = self._manager_list[identifier]
 
-            manager.get_hardware().set_parameter({
+            manager.get_hardware().set_parameters({
                 parameter: arguments
             })
 
@@ -206,14 +215,14 @@ class WebUI(LoggerObject, ExporterSource):
             manager = self._manager_list[identifier]
 
             try:
-                transition = HardwareStateTransition(transition)
+                transition = HardwareTransition(transition)
             except (KeyError, ValueError):
                 return self._return_error(f"Invalid state transition: {transition}")
 
             try:
                 # Attempt to process transition
                 manager.queue_transition(transition)
-            except HardwareException as exc:
+            except HardwareError as exc:
                 return self._return_error(f"Hardware error occurred during transition: {exc}")
             except MachineError as exc:
                 return self._return_error(f"State machine error occurred during transition: {exc}")
@@ -221,7 +230,7 @@ class WebUI(LoggerObject, ExporterSource):
             return self._return_ok(f"{manager.get_hardware().get_hardware_identifier()} transitioned to state "
                                    f"{manager.get_state().value}")
 
-    def _register_route(self):
+    def _register_page(self):
         @self._app.route('/')
         def page_index():
             return flask.render_template('index.html', metadata=self._metadata)
@@ -239,8 +248,8 @@ class WebUI(LoggerObject, ExporterSource):
                     'identifier': identifier,
                     'state': manager.get_state().value,
                     'parameter': parameter_list,
-                    'measurement': measurement_list
+                    'measurement_group': measurement_list
                 })
 
             return flask.render_template('state.html', metadata=self._metadata, managers=manager_list,
-                                         transitions=[x.value for x in HardwareStateTransition])
+                                         transitions=[x.value for x in HardwareTransition])

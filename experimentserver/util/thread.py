@@ -1,5 +1,6 @@
 from __future__ import annotations
 import abc
+import contextlib
 import enum
 import queue
 import _thread
@@ -7,10 +8,58 @@ import threading
 import time
 import typing
 
+import experimentserver
 from .logging import LoggerObject
 
 
-class ThreadException(Exception):
+class LockTimeout(experimentserver.ApplicationException):
+    pass
+
+
+class ThreadLock(LoggerObject):
+    def __init__(self, identifier: str, timeout_default: float):
+        super(ThreadLock, self).__init__(logger_name_postfix=f":{identifier}")
+
+        self._identifier = identifier
+
+        self._depth = 0
+        self._timeout_default = timeout_default
+        self._lock = threading.RLock()
+
+    @contextlib.contextmanager
+    def lock(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
+        timeout = timeout or self._timeout_default
+
+        # Attempt non-blocking call to get lock
+        locked = self._lock.acquire(False)
+
+        if not locked:
+            if not quiet:
+                self._logger.debug('Waiting for lock')
+
+            # Try again with timeout
+            locked = self._lock.acquire(timeout=timeout)
+
+            if not locked:
+                raise LockTimeout(f"Unable to acquire lock {self._identifier} before timeout")
+
+        try:
+            self._depth += 1
+
+            if not quiet:
+                self._logger.debug(f"Lock {self._identifier} acquired (depth: {self._depth})")
+
+            yield self._depth
+        finally:
+            self._lock.release()
+
+            if not quiet:
+                self._logger.debug(f"Lock {self._identifier} released (depth: {self._depth})")
+
+            self._depth -= 1
+
+
+class ThreadException(experimentserver.ApplicationException):
     pass
 
 
@@ -98,7 +147,6 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
         """
         pass
 
-    @abc.abstractmethod
     def _handle_thread_exception(self, exc: Exception):
         pass
 
@@ -111,7 +159,7 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
         """
         for instance in cls._thread_instances:
             if instance.is_alive():
-                if self._thread.isDaemon():
+                if instance._thread.isDaemon():
                     cls._get_class_logger().debug(f"Ignoring daemon {instance._thread_name}")
                 else:
                     cls._get_class_logger().debug(f"Joining {instance._thread_name}")
@@ -139,51 +187,52 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
         exception_count = 0
         exception_time = None
 
-        while not self._test_stop():
-            if not threading.main_thread().is_alive():
-                self._logger.error('Main thread has stopped, stopping child thread')
-                break
+        try:
+            while not self._test_stop():
+                if not threading.main_thread().is_alive():
+                    self._logger.error('Main thread has stopped, stopping child thread')
+                    break
 
-            # Clear exception counter if timeout has expired
-            if exception_time is not None and time.time() > exception_time:
-                self._logger.info('Resetting exception counter')
-                exception_count = 0
-                exception_time = None
+                # Clear exception counter if timeout has expired
+                if exception_time is not None and time.time() > exception_time:
+                    self._logger.info('Resetting exception counter')
+                    exception_count = 0
+                    exception_time = None
 
-            try:
-                self._thread_target(*self._thread_target_args, **self._thread_target_kwargs)
-            except Exception as exc:
-                self._handle_thread_exception(exc)
+                try:
+                    self._thread_target(*self._thread_target_args, **self._thread_target_kwargs)
+                except Exception as exc:
+                    self._handle_thread_exception(exc)
 
-                if self._exception_threshold is not None:
-                    # Handle exception threshold
-                    exception_count += 1
+                    if self._exception_threshold is not None:
+                        # Handle exception threshold
+                        exception_count += 1
 
-                    self._logger.exception(f"Unhandled exception in thread ({exception_count} of "
-                                           f"{self._exception_threshold} allowed)")
+                        self._logger.exception(f"Unhandled exception in thread ({exception_count} of "
+                                               f"{self._exception_threshold} allowed)")
 
-                    exception_time = time.time() + self._exception_timeout
+                        exception_time = time.time() + self._exception_timeout
 
-                    if exception_count >= self._exception_threshold:
-                        self._logger.error(f"Number of exceptions exceeds configured threshold "
-                                           f"({self._exception_threshold}), interrupting main thread")
+                        if exception_count >= self._exception_threshold:
+                            self._logger.error(f"Number of exceptions exceeds configured threshold "
+                                               f"({self._exception_threshold}), interrupting main thread")
 
-                        _thread.interrupt_main()
+                            _thread.interrupt_main()
 
-                        self._logger.error('Thread halted')
+                            self._logger.error('Thread halted')
 
-                        return
-                else:
-                    self._logger.exception('Unhandled exception in thread')
+                            return
+                    else:
+                        self._logger.exception('Unhandled exception in thread')
+        finally:
+            # Final call to target function (allows for cleanup)
+            if self._run_final:
+                try:
+                    self._thread_target(*self._thread_target_args, **self._thread_target_kwargs)
+                except Exception:
+                    self._logger.exception('Unhandled exception in thread during shutdown')
 
-        # Final call to target function (allows for cleanup)
-        if self._run_final:
-            try:
-                self._thread_target(*self._thread_target_args, **self._thread_target_kwargs)
-            except Exception:
-                self._logger.exception('Unhandled exception in thread during shutdown')
-
-        self._logger.info('Thread stopped')
+            self._logger.info('Thread stopped')
 
 
 class CallbackThread(ThreadManager):
@@ -210,9 +259,6 @@ class CallbackThread(ThreadManager):
 
     def _test_stop(self) -> bool:
         return self._thread_stop.is_set()
-
-    def _handle_thread_exception(self, exc: Exception):
-        pass
 
 
 class _QueueCommand(enum.IntEnum):

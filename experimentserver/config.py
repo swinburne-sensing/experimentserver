@@ -5,14 +5,14 @@ import typing
 
 import yaml
 
-from experimentserver.util.logging import LoggerObject
 import experimentserver
+from experimentserver.util.logging import LoggerObject
 
 
 _TYPING_NODE = typing.Dict[str, typing.Any]
 
 
-class ConfigException(Exception):
+class ConfigException(experimentserver.ApplicationException):
     pass
 
 

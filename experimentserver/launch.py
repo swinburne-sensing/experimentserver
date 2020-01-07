@@ -16,7 +16,7 @@ import experimentserver.util.thread
 from experimentserver.versions import dependencies, python_version_tested
 from experimentserver.config import ConfigManager
 from experimentserver.data.database import setup_database
-from experimentserver.data.export import dynamic_field_time_delta, add_tags, add_dynamic_field, exporter_remap
+from experimentserver.data.measurement import Measurement, MeasurementTarget, dynamic_field_time_delta
 from experimentserver.observer import Observer
 from experimentserver.server import main
 from experimentserver.util.git import get_git_hash
@@ -31,8 +31,7 @@ def __exit_handler(exit_logger):
 
 
 if __name__ == '__main__':
-    root_path = os.path.dirname(os.path.abspath(__file__))
-    config_default = os.path.abspath(os.path.join(root_path, '..', 'config/experiment.yaml'))
+    config_default = os.path.abspath(os.path.join(experimentserver.ROOT_PATH, '..', 'config/experiment.yaml'))
 
     time_startup = time.time()
 
@@ -40,7 +39,7 @@ if __name__ == '__main__':
 
     parser.add_argument('config', default=[config_default], help='YAML configuration file', nargs='*')
     parser.add_argument('--debug', action='store_true', default=False, dest='debug', help='Enable debug mode')
-    parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata tags (key=value)')
+    parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata _tags (key=value)')
 
     app_args = parser.parse_args()
 
@@ -67,7 +66,11 @@ if __name__ == '__main__':
         # Configure logging
         logging.config.dictConfig(app_config['logging'])
 
+        # Disable select loggers
         root_logger.disabled = False
+        logging.getLogger("urllib3").setLevel(logging.INFO)
+        logging.getLogger("pyvisa").setLevel(logging.INFO)
+
         root_logger.info(f"Command: {' '.join(sys.argv)}")
 
         # Log platform version
@@ -114,10 +117,10 @@ if __name__ == '__main__':
                 app_metadata[arg_tag_split[0]] = arg_tag_split[1]
 
         # Add global metadata
-        add_tags(app_metadata)
+        Measurement.add_tags(app_metadata)
 
         # Add startup dynamic field
-        add_dynamic_field('time_delta_startup', dynamic_field_time_delta(time_startup))
+        Measurement.add_dynamic_field('time_delta_startup', dynamic_field_time_delta(time_startup))
 
         app_metadata_string = '\n'.join((f"    {k!s}: {v!s}" for k, v in app_metadata.items()))
 
@@ -127,8 +130,8 @@ if __name__ == '__main__':
             db = setup_database(database_identifier, database_connect_args)
 
         # Setup database remapping
-        for exporter_source, database_target in app_config['exporter'].items():
-            exporter_remap(exporter_source, database_target)
+        for exporter_source, database_target in app_config['remap'].items():
+            MeasurementTarget.measurement_target_remap(exporter_source, database_target)
 
         root_logger.info(f"Started\nMetadata:\n{app_metadata_string}", event=True, notify=True)
 
@@ -153,7 +156,7 @@ if __name__ == '__main__':
 
         # Create lock file
         if os.path.isfile(LOCK_FILENAME):
-            root_logger.error('Process did not shutdown cleanly on previous run')
+            root_logger.warning('Process did not shutdown cleanly on previous run')
         else:
             with open(LOCK_FILENAME, 'w') as lock_file:
                 lock_file.write('')
@@ -169,14 +172,23 @@ if __name__ == '__main__':
 
             root_logger.info('Startup OK')
 
+            # If URL is available then provide it now
+            url = None
+
+            if 'url' in app_config and 'grafana' in app_config['url'] and app_config['url']['grafana'] is not None:
+                url = app_config['url']['grafana']
+
+                root_logger.info(f"Runtime Grafana URL {url.format(int(1000 * time_startup), 'now')}", notify=True)
+
             # Run main application
             main(app_config, app_metadata)
 
             runtime = str(datetime.timedelta(seconds=time.time() - time_startup))
             root_logger.info(f"Stopped, total runtime: {runtime}", notify=True, event=True)
-        except Exception as exc:
-            root_logger.exception('Unhandled exception during runtime')
-            raise
+
+            if url is not None:
+                root_logger.info(f"Completed Grafana URL "
+                                 f"{url.format(int(1000 * time_startup), int(1000 * time.time()))}", notify=True)
         finally:
             # Stop observer
             observer.stop()
@@ -191,6 +203,12 @@ if __name__ == '__main__':
                 os.unlink(LOCK_FILENAME)
             else:
                 root_logger.error('Lock file removed during run')
+    except experimentserver.ApplicationException as exc:
+        root_logger.exception(f"Application exception: {exc!s}")
+        raise
+    except Exception as exc:
+        root_logger.exception(f"Unhandled exception: {exc!s}")
+        raise
     finally:
         # Ask all threads to stop
         experimentserver.util.thread.stop_all()

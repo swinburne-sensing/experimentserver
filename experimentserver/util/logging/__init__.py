@@ -86,10 +86,20 @@ def get_logger(name: typing.Optional[str] = None) -> __LoggerProxy:
     return __LoggerProxy(logger)
 
 
-class LoggerObject(object):
-    """ Base class for objects that needs to access to a logger. """
+class LoggerClass(object):
+    """ Base class for classes that needs to access to a logger. """
     __class_logger = None
 
+    @classmethod
+    def _get_class_logger(cls):
+        if cls.__class_logger is None:
+            cls.__class_logger = get_logger(cls.__name__)
+
+        return cls.__class_logger
+
+
+class LoggerObject(LoggerClass):
+    """ Base class for objects that needs to access to a logger. """
     def __init__(self, logger_name_prefix: typing.Optional[str] = None, logger_name: typing.Optional[str] = None,
                  logger_name_postfix: typing.Optional[str] = None, **kwargs):
         """
@@ -107,10 +117,3 @@ class LoggerObject(object):
 
         # Get a logger based upon this name
         self._logger = get_logger(logger_name)
-
-    @classmethod
-    def _get_class_logger(cls):
-        if cls.__class_logger is None:
-            cls.__class_logger = get_logger(cls.__name__)
-
-        return cls.__class_logger

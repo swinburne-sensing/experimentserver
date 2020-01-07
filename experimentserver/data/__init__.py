@@ -20,7 +20,7 @@ units.define('standard_cubic_centimeter_per_minute = cm ** 3 / min = sccm')
 # Shorthand
 Quantity = units.Quantity
 
-TYPE_ARGUMENT = typing.Union[None, typing.AnyStr, int, float, bool, Quantity]
+TYPE_ARGUMENT = typing.Union[None, str, int, float, bool, Quantity]
 TYPE_FIELD_DICT = typing.Dict[str, TYPE_ARGUMENT]
 TYPE_TAG_DICT = typing.Dict[str, TYPE_ARGUMENT]
 TYPE_UNIT = typing.Union[str, float, Quantity]
@@ -29,18 +29,42 @@ TYPE_UNIT_OPTIONAL = typing.Optional[TYPE_UNIT]
 
 class MeasurementGroup(enum.Enum):
     """ Definition for known types of hardware or measurements. """
+    # Metadata
     EVENT = 'event'
     STATUS = 'status'
-    CONDUCTOMETRIC = 'conductometric'
+
+    # Electrical measurements
     VOLTAGE = 'voltage'
     CURRENT = 'current'
     RESISTANCE = 'resistance'
+
+    # LCR
     CAPACITANCE = 'capacitance'
     INDUCTANCE = 'inductance'
     DISSIPATION = 'dissipation'
+    QUALITY = 'quality'
+
+    # Measure current, supply voltage
+    CONDUCTOMETRIC_IV = 'conductometric_iv'
+
+    # Measure voltage, supply current
+    CONDUCTOMETRIC_VI = 'conductometric_vi'
+
+    # Environmental conditions
     TEMPERATURE = 'temperature'
     HUMIDITY = 'humidity'
+
+    # CV/CC power supply
     SUPPLY = 'supply'
+
+    # Frequency
+    FREQUENCY = 'frequency'
+    PERIOD = 'period'
+
+    # Complex signals
+    TIME_DOMAIN_SAMPLE = 'timedomain'
+    FREQUENY_DOMAIN_SAMPLE = 'freqdomain'
+    TIME_FREQUENCY_SAMPLE = 'tfdomain'
 
 
 TYPING_MEASUREMENT_SERIES = typing.Iterable[typing.Tuple[MeasurementGroup, TYPE_FIELD_DICT]]

@@ -1,21 +1,22 @@
 import abc
-import contextlib
 import time
 import typing
 
-import pyvisa.errors
 from transitions import EventData
 
-from experimentserver.util.module import get_call_context
-from .visa import VISAHardware, VISAException
+import experimentserver
+from . import HardwareError
+from .visa import VISAHardware, VISACommunicationError, VISAHardwareError
 
 
-class SCPIException(VISAException):
-    """ Specific subset of VISA exceptions for SCPI instruments. """
+TYPE_ERROR = typing.Union[None, str, typing.Tuple[int, str]]
+
+
+class SCPIHardwareError(VISAHardwareError):
     pass
 
 
-class SCPIDisplayException(SCPIException):
+class SCPIDisplayUnavailable(experimentserver.ApplicationException):
     """ Error occurred during update of instrument display. """
     pass
 
@@ -23,7 +24,7 @@ class SCPIDisplayException(SCPIException):
 class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     """ Base class for instrument relying upon a VISA communication layer that implement Standard Commands for
     Programmable Instruments (SCPI) commands. Note that not all SCPI instrument implement all SCPI commands. """
-    _SCPI_IDENTIFIER_DISPLAY_TIMEOUT = 1
+    _SCPI_DISPLAY_TIMEOUT = 1
 
     def __init__(self, *args, **kwargs):
         """ Constructs a SCPIHardware object. This is an abstract class and shouldn't be implemented directly.
@@ -33,59 +34,43 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         """
         super().__init__(*args, **kwargs)
 
+    # VISA implementations
+    def _visa_transaction_error_check(self) -> typing.NoReturn:
+        error_buffer = []
+
+        # Attempt to get error
+        error = self.get_scpi_error()
+
+        # Keep fetching errors if available
+        while error is not None:
+            error_buffer.append(error)
+            error = self.get_scpi_error()
+
+        if len(error_buffer) == 1:
+            raise SCPIHardwareError(f"SCPI error check returned {error_buffer[0]}")
+        elif len(error_buffer) > 1:
+            raise SCPIHardwareError(f"SCPI error check returned multiple errors: {', '.join(error_buffer)}")
+
+    # Display handling
+    @abc.abstractmethod
+    def set_scpi_display(self, msg: typing.Optional[str] = None) -> typing.NoReturn:
+        """
+
+        :param msg: display message or None if display should be cleared
+        :raises SCPIDisplayUnavailable: when no display is available or display is busy
+        """
+        pass
+
     # Error handling
     @abc.abstractmethod
-    def _get_error(self) -> typing.Union[None, str, typing.Tuple[int, str]]:
+    def get_scpi_error(self) -> TYPE_ERROR:
         """ Check for instrument generated error codes or response.
 
-        A hardware lock is acquired before calling this method.
+        A VISA transaction lock is acquired before calling this method.
 
         :return: a value or string detailing the error, None if no error has occurred
         """
         pass
-
-    def _raise_on_error(self):
-        """ Raise an SCPIException if onr or multiple errors are present in the hardware buffer.
-
-        :raise SCPIException: when an instrument error has occurred
-        """
-        error_buffer = []
-
-        # Request error message
-        with self.get_hardware_lock(False):
-            error = self._get_error()
-
-            while error is not None:
-                error_buffer.append(error)
-
-                # Try and get another error
-                error = self._get_error()
-
-        if len(error_buffer) == 1:
-            raise SCPIException(f"Instrument error: {error_buffer[0]!s} (last command: {self._visa_last_command})")
-        elif len(error_buffer) > 1:
-            raise SCPIException(f"Multiple instrument errors: {', '.join( map(str, error_buffer))} (last command: "
-                                f"{self._visa_last_command})")
-
-        self._logger.debug('No SCIP errors')
-
-    # SCPI wrapper
-    @contextlib.contextmanager
-    def get_hardware_lock(self, error_check: bool = True):
-        """
-
-        :return:
-        """
-        context = ', '.join(get_call_context(2))
-
-        with super().get_hardware_lock():
-            try:
-                yield
-            finally:
-                if error_check:
-                    if self._visa_resource is not None:
-                        self._logger.debug(f"SCIP error check (context: {context})")
-                        self._raise_on_error()
 
     # SCPI commands
     def scpi_reset(self) -> typing.NoReturn:
@@ -147,7 +132,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         """
         return self.visa_query('*OPT?')
 
-    def scpi_set_event_status_enable(self, mask):
+    def scpi_set_event_status_enable(self, mask) -> typing.NoReturn:
         """
 
         :param mask:
@@ -155,7 +140,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         """
         self.visa_write(f"*ESE {mask}")
 
-    def scpi_set_service_request_enable(self, mask):
+    def scpi_set_service_request_enable(self, mask) -> typing.NoReturn:
         """
 
         :param mask:
@@ -164,112 +149,76 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         self.visa_write(f"*SRE {mask}")
 
     def scpi_set_event_status_opc(self):
-        """
+        """ TODO
 
         :return:
         """
         self.visa_write('*OPC')
 
-    def scpi_trigger(self):
-        """
+    def scpi_trigger(self) -> typing.NoReturn:
+        """ TODO
 
         :return:
         """
         self.visa_write('*TRG')
 
-    def scpi_wait(self):
-        """
+    def scpi_wait(self) -> typing.NoReturn:
+        """ Wait for pending commands to complete.
 
-        :return:
+        Notes: from experience this command usually has mixed results. Behaviour is often defines by the status event
+        register is some way, so consider making sure that is correct. Sometimes behaviour varies by protocol too, so
+        USB commands may always return instantly even if their operation has not completed.
         """
         self.visa_write('*WAI')
 
-    # Display
-    @abc.abstractmethod
-    def display_msg(self, msg: str = None) -> typing.NoReturn:
-        """ Display a specified message on the display of this hardware.
-
-        :param msg: string message to display, None if display should be cleared
-        :raises SCPIDisplayException: when an error occurs during display or no display is available
-        """
-        pass
-
-    @staticmethod
-    @abc.abstractmethod
-    def get_hardware_description() -> str:
-        pass
-
-    @abc.abstractmethod
-    def handle_setup(self, event: EventData):
-        super().handle_setup(event)
-
-        # Log instrument identifier
-        try:
-            self._logger.info(f"SCPI ID: {self.scpi_get_identifier()}")
-        except pyvisa.errors.VisaIOError as exc:
-            raise SCPIException('Could not retrieve identifier from instrument. Check power and data connections. '
-                                'Verify that instrument VISA address is correct.') from exc
+    def handle_connect(self, event: typing.Optional[EventData] = None):
+        super().handle_connect(event)
 
         # Clear any existing errors from queue
+        self._logger.debug('Clearing existing errors from queue')
+
         try:
-            self._raise_on_error()
-        except SCPIException as exc:
-            self._logger.warning(f"Existing instrument errors found: {exc!s}")
+            self._visa_transaction_error_check()
+        except HardwareError as exc:
+            self._logger.warning(f"Existing instrument errors found: {exc}")
+
+        # Log instrument identifier
+        self._logger.info(f"SCPI ID: {self.scpi_get_identifier()}")
 
         # Reset instrument
         self.scpi_reset()
 
         try:
-            with self.get_hardware_lock(False):
+            with self.get_visa_transaction_lock(error_ignore=True):
                 # Display identifier on display
-                self.display_msg(f"ID:{self.get_hardware_identifier()}")
+                self.set_scpi_display(f"ID:{self.get_hardware_identifier()}")
 
-                time.sleep(self._SCPI_IDENTIFIER_DISPLAY_TIMEOUT)
+                time.sleep(self._SCPI_DISPLAY_TIMEOUT)
 
                 # Clear display
-                self.display_msg()
-        except SCPIDisplayException:
+                self.set_scpi_display()
+        except SCPIDisplayUnavailable:
             # If no display is available then skip
-            self._logger.warning('Unable to display instrument identifier')
+            self._logger.warning('Unable to display instrument identifier', event=False)
 
-    @abc.abstractmethod
-    def handle_start(self, event: EventData):
-        super().handle_start(event)
-
-    @abc.abstractmethod
-    def handle_pause(self, event: EventData):
-        super().handle_pause(event)
-
-    @abc.abstractmethod
-    def handle_resume(self, event: EventData):
-        super().handle_resume(event)
-
-    @abc.abstractmethod
-    def handle_stop(self, event: EventData):
-        super().handle_stop(event)
-
-    @abc.abstractmethod
-    def handle_cleanup(self, event: EventData):
+    def handle_disconnect(self, event: typing.Optional[EventData] = None):
         try:
-            with self.get_hardware_lock(False):
-                self.display_msg('Disconnect')
-
-                time.sleep(self._SCPI_IDENTIFIER_DISPLAY_TIMEOUT)
-
-                # Clear display
-                self.display_msg()
-        except SCPIDisplayException:
+            with self.get_visa_transaction_lock(error_ignore=True):
+                # Display identifier on display
+                self.set_scpi_display('Disconnected')
+        except SCPIDisplayUnavailable:
             # If no display is available then skip
-            self._logger.warning('Unable to display disconnect message')
+            self._logger.warning('Unable to display disconnect message', event=False)
 
-        super().handle_cleanup(event)
+        super().handle_disconnect(event)
 
-    @abc.abstractmethod
-    def handle_error(self, event: EventData):
+    def handle_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        try:
+            with self.get_visa_transaction_lock(error_ignore=True):
+                # Display identifier on display
+                self.set_scpi_display('Error')
+        except (HardwareError, VISACommunicationError, SCPIDisplayUnavailable):
+            # If no display is available then skip
+            self._logger.warning('Unable to display error message', event=False)
+
         super().handle_error(event)
-
-        if self._visa_resource is not None:
-            try:
-                self.display_msg('Error')
-            except VISAException:
-                self._logger.warning(f"Error occurred while attempting to display error message")

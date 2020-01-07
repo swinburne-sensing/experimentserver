@@ -93,7 +93,7 @@ $(document).ready(function() {
                     $("#event-dialog-container").append('<tr><td><time datetime="' + item.time + '"></time></td><td>' + item.level + '</td><td>' + item.thread + '</td><td>' + item.message + '</td></tr>')
                 })
 
-                // Render time tags
+                // Render time _tags
                 timeago.render(document.querySelectorAll('#event-dialog-container time'), 'en_US', {minInterval: 5});
             },
             error: function () {

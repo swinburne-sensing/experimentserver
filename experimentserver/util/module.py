@@ -38,12 +38,23 @@ def class_instance_from_str(class_name: str, parent: typing.Any, *args, **kwargs
 
 
 def class_instance_from_dict(class_dict: typing.Dict[str, typing.Any], parent: typing.Any):
+    """
+
+    :param class_dict:
+    :param parent:
+    :return:
+    """
     class_name = class_dict.pop('class')
 
     return class_instance_from_str(class_name, parent, **class_dict)
 
 
 def get_call_context(discard_calls: int = 1):
+    """
+
+    :param discard_calls:
+    :return:
+    """
     app_root = os.path.dirname(experimentserver.__file__)
 
     context = inspect.stack()
@@ -61,8 +72,8 @@ def get_call_context(discard_calls: int = 1):
 
 
 def import_submodules(package, recursive=True):
-    """
-    Import submodules within a given package.
+    """ Import all submodules within a given package.
+
     :param package: base package to begin import from
     :param recursive: if True then
     :return:
@@ -81,7 +92,7 @@ def import_submodules(package, recursive=True):
     return results
 
 
-def __recurse_subclasses(subclass_list: typing.List[type]) -> typing.List[type]:
+def __recurse_subclasses(subclass_list):
     return_list = []
 
     for subclass in subclass_list:
@@ -96,5 +107,33 @@ def __recurse_subclasses(subclass_list: typing.List[type]) -> typing.List[type]:
     return return_list
 
 
-def get_all_subclasses(class_root: type):
+T = typing.TypeVar('T', bound=type)
+
+
+def get_all_subclasses(class_root: typing.Type[T]) -> typing.List[typing.Type[T]]:
+    """ Get a list of subclasses for a given parent class.
+
+    :param class_root: parent class type
+    :return: list
+    """
     return __recurse_subclasses([class_root])
+
+
+# From https://stackoverflow.com/questions/18078744/python-hybrid-between-regular-method-and-classmethod
+class HybridMethod(object):
+    """  """
+    def __init__(self, func):
+        self.func = func
+
+    def __get__(self, obj, cls):
+        context = obj if obj is not None else cls
+
+        @functools.wraps(self.func)
+        def hybrid(*args, **kw):
+            return self.func(context, *args, **kw)
+
+        # optional, mimic methods some more
+        hybrid.__func__ = hybrid.im_func = self.func
+        hybrid.__self__ = hybrid.im_self = context
+
+        return hybrid

@@ -1,11 +1,15 @@
+import io
 import logging
+import os.path
 import queue
 import sys
 import time
+import traceback
 import typing
 
 import pushover
 
+import experimentserver
 from experimentserver.util.thread import QueueThread
 
 
@@ -18,8 +22,48 @@ def filter_notify(record: logging.LogRecord):
     return True
 
 
-class NotifyException(Exception):
+class NotifyException(experimentserver.ApplicationException):
     pass
+
+
+class EventFormatter(logging.Formatter):
+    _MSG_CHAR_LIMIT = 256
+
+    def format(self, record: logging.LogRecord) -> str:
+        # TODO Add exception cause handling
+        msg_lines = [record.msg.strip(), '', f"Thread: {record.threadName}"]
+
+        if record.exc_info:
+            trace_lines = traceback.format_exception(record.exc_info[0], record.exc_info[1], record.exc_info[2], None)
+            exception_line = trace_lines.pop()
+
+            if len(exception_line) > self._MSG_CHAR_LIMIT:
+                exception_line = exception_line[:int(self._MSG_CHAR_LIMIT / 2)] + ' ... ' + \
+                                 exception_line[-int(self._MSG_CHAR_LIMIT / 2):]
+
+            msg_lines.extend(['', f"Exception: {exception_line}", ''])
+
+            for trace in trace_lines:
+                trace = trace.strip()
+
+                # Ignore lines not beginning containing file information
+                if not trace.startswith('File'):
+                    continue
+
+                (trace_file, trace_content) = trace.strip().split('\n')
+                (trace_filename, trace_line, trace_function) = (x.strip() for x in trace_file.split(','))
+                trace_line = trace_line.split(' ')[1]
+
+                if experimentserver.ROOT_PATH in trace:
+                    # Make path relative
+                    trace_filename = trace_filename[trace_filename.find('"') + 1:-1]
+                    trace_filename = os.path.relpath(trace_filename, experimentserver.ROOT_PATH)
+
+                    msg_lines.append(f"Trace {trace_filename} line {trace_line} {trace_function}: {trace_content}")
+                else:
+                    msg_lines.append('Trace: logged')
+
+        return '\n'.join(msg_lines)
 
 
 class PushoverNotificationHandler(logging.Handler):
@@ -54,6 +98,8 @@ class PushoverNotificationHandler(logging.Handler):
         :param priority_map: dict mapping logging levels to Pushover priority levels
         """
         super().__init__(level=logging.DEBUG)
+
+        self.setFormatter(EventFormatter())
 
         # If priority map is provided then override the default mapping
         if priority_map:

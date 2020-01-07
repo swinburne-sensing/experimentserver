@@ -1,3 +1,7 @@
+import typing
+
+from transitions import EventData
+
 from . import Hardware
 
 
@@ -14,23 +18,17 @@ class TestHardware(Hardware):
     def get_hardware_description() -> str:
         return 'Test Hardware'
 
-    def handle_setup(self):
-        super().handle_setup()
+    def handle_connect(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).handle_connect(event)
 
-    def handle_start(self):
-        super().handle_start()
+    def handle_disconnect(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).handle_disconnect(event)
 
-    def handle_pause(self):
-        super().handle_pause()
+    def handle_configure(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).handle_configure(event)
 
-    def handle_resume(self):
-        super().handle_resume()
+    def handle_cleanup(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).handle_cleanup(event)
 
-    def handle_stop(self):
-        super().handle_stop()
-
-    def handle_cleanup(self):
-        super().handle_cleanup()
-
-    def handle_error(self):
-        super().handle_error()
+    def handle_error(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).handle_error(event)
