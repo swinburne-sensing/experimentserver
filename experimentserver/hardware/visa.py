@@ -14,12 +14,17 @@ import pyvisa.errors
 import pyvisa.resources.messagebased as messagebased
 from transitions import EventData
 
-from . import Hardware, CommunicationError, HardwareError
-from experimentserver.util.thread import ThreadLock
+from . import Hardware
+from experimentserver.hardware.error import CommunicationError, HardwareError
+from experimentserver.util.logging import LoggerObject
 
 
 # Disable pyvisa logging (avoids duplication)
 pyvisa.logger.disabled = True
+
+
+# Error codes may be integers, strings or a combination of both
+TYPE_ERROR = typing.Union[str, typing.Tuple[int, str]]
 
 
 # Exceptions
@@ -29,7 +34,7 @@ class VISACommunicationError(CommunicationError):
 
 
 class VISAHardwareError(HardwareError):
-    """ Wrapper for VISA I/O errors that occur during transactions. """
+    """ Wrapper for VISA command errors that occur during transactions. """
     pass
 
 
@@ -123,6 +128,10 @@ class VISAEnum(enum.Enum):
         :return: VISAEnum
         :raises ValueError: when no match is found
         """
+        # Ignore existing enums
+        if issubclass(type(x), VISAEnum):
+            return x
+
         if allow_direct:
             try:
                 return cls[x]
@@ -131,6 +140,11 @@ class VISAEnum(enum.Enum):
 
         if type(x) is str:
             x = x.strip()
+
+            try:
+                x = int(x)
+            except ValueError:
+                pass
 
         if allow_alias:
             # Test alias map if it exists
@@ -158,13 +172,271 @@ class VISAEnum(enum.Enum):
         return self.get_description()
 
 
+TYPE_ENUM = typing.TypeVar('TYPE_ENUM', bound=VISAEnum)
+TYPE_ENUM_ARGUMENT = typing.Union[str, int, TYPE_ENUM]
+
+
 # Classes
 class VISAHardware(Hardware, metaclass=abc.ABCMeta):
+    class _VISATransaction(LoggerObject):
+        _transaction_number = 1
+        _thansaction_number_lock = threading.RLock()
+
+        def __init__(self, parent: VISAHardware, timeout: typing.Optional[float], error_check: bool, error_raise: bool):
+            super().__init__()
+
+            # Handle to parent object
+            self._parent = parent
+
+            self._timeout = timeout
+            self._timeout_enter = None
+
+            # Error check enabled flag
+            self._error_check = error_check
+            self._error_raise = error_raise
+
+            # Unique identifier for transaction
+            self._number = self._get_number()
+
+            # Command cache for debugging
+            self._command_history: typing.List[str] = []
+
+        @classmethod
+        def _get_number(cls):
+            with cls._thansaction_number_lock:
+                transaction_number = cls._transaction_number
+                cls._transaction_number += 1
+
+            return transaction_number
+
+        def __enter__(self):
+            # Get lock
+            self._parent._hardware_lock.acquire()
+
+            if self._parent._visa_resource is None:
+                raise VISACommunicationError('VISA resource not available')
+
+            self._logger.debug(f"VISA transaction {self._number} opened")
+
+            # Override timeout
+            if self._timeout is not None:
+                self._timeout_enter = self._parent._visa_resource.timeout
+                self._parent._visa_resource.timeout = 1000 * self._timeout
+
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            # Release lock
+            self._parent._hardware_lock.release()
+
+            # Restore timeout
+            if self._timeout_enter is not None:
+                self._parent._visa_resource.timeout = self._timeout_enter
+
+                self._timeout_enter = None
+
+            command_history = ', '.join(self._command_history)
+
+            if exc_type is not None:
+                raise VISACommunicationError(f"Exception occurred during VISA transaction {self._number} (command "
+                                             f"history: {command_history})")
+
+            if len(self._command_history) == 0 and self._error_check:
+                self._logger.debug(f"VISA transaction {self._number} error check")
+
+                error_buffer = []
+                error_message = None
+
+                # Attempt to get error
+                error = self._parent._get_visa_error(self)
+
+                # Keep fetching errors if available
+                while error is not None:
+                    error_buffer.append(error)
+                    error = self._parent._get_visa_error(self)
+
+                if len(error_buffer) == 1:
+                    error_message = f"VISA command resulted in error {error_buffer[0]} (command history: " \
+                        f"{command_history})"
+                elif len(error_buffer) > 1:
+                    error_message = f"VISA command resulted in multiple multiple errors: {', '.join(error_buffer)} " \
+                        f"(command history: {command_history})"
+
+                if error_message is not None:
+                    if self._error_raise:
+                        raise VISAHardwareError(error_message)
+                    else:
+                        self._logger.warning(error_message, event=True)
+
+            self._command_history = []
+
+            self._logger.debug(f"VISA transaction {self._number} closed")
+
+        # VISA command formatting
+        @staticmethod
+        def _visa_format_arg(x) -> str:
+            """ Cast value to a VISA friendly string.
+
+            :param x: input variable
+            :return: string representation of that variable
+            """
+            if issubclass(type(x), VISAEnum):
+                return x.get_visa()
+            elif type(x) is bool:
+                return 'ON' if x else 'OFF'
+            elif type(x) is str:
+                return f"\"{x}\""
+            else:
+                return x
+
+        @classmethod
+        def _visa_format_command(cls, x: str, format_args, format_kwargs):
+            """
+
+            :param x:
+            :param format_args:
+            :param format_kwargs:
+            :return:
+            """
+            # Cast parameters
+            format_args = list(map(cls._visa_format_arg, format_args))
+            format_kwargs = {k: cls._visa_format_arg(v) for k, v in format_kwargs.items()}
+
+            return x.format(*format_args, **format_kwargs)
+
+        # VISA transaction operations
+        def __visa_command_wrapper(func) -> typing.Callable:
+            """ Decorator to wrap pyVISA exceptions in VISAException and provide rate limiting.
+
+            :param func: method to decorate
+            :return: decorated method
+            """
+
+            # noinspection PyProtectedMember
+            @functools.wraps(func)
+            def wrapper(self, *args, **kwargs):
+                if self._parent._visa_rate_limit is not None and self._parent._visa_comm_timestamp is not None:
+                    # Delay for minimum write interval
+                    delay = self._visa_rate_limit - (self._visa_comm_timestamp - time.time())
+
+                    if delay > 0:
+                        # self._logger.debug(f"Rate limited, waiting {delay} s")
+                        time.sleep(delay)
+                try:
+                    result = func(self, *args, **kwargs)
+
+                    # Save timestamp for current operation
+                    self._parent._visa_comm_timestamp = time.time()
+
+                    return result
+                except pyvisa.errors.Error as exc:
+                    raise VISACommunicationError('VISA library error occurred during communication') from exc
+
+            return wrapper
+
+        @__visa_command_wrapper
+        def write(self, command: str, *format_args, visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+                  **format_kwargs) -> int:
+            """ Write command to VISA resource.
+
+            Transaction lock is always held when this method is called.
+
+            :param command:
+            :param format_args:
+            :param visa_kwargs:
+            :param format_kwargs:
+            :return:
+            :raises VISACommunicationError: on VISA I/O error
+            """
+            command = self._visa_format_command(command, format_args, format_kwargs)
+            visa_kwargs = visa_kwargs or {}
+
+            self._command_history.append(command)
+
+            if len(visa_kwargs) == 0:
+                self._logger.debug(f"VISA write {command!r}")
+            else:
+                self._logger.debug(f"VISA write {command!r} (args: {visa_kwargs!s})")
+
+            return self._parent._visa_resource.write(command, **visa_kwargs)
+
+        @__visa_command_wrapper
+        def write_binary(self, command: str, payload: typing.Iterable, *format_args,
+                         visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+                         **format_kwargs) -> int:
+            """ Write binary payload to VISA resource.
+
+            Transaction lock is always held when this method is called.
+
+            :param command:
+            :param payload:
+            :param format_args:
+            :param visa_kwargs:
+            :param format_kwargs:
+            :return:
+            :raises VISACommunicationError: on VISA I/O error
+            """
+            command = self._visa_format_command(command, format_args, format_kwargs)
+            visa_kwargs = visa_kwargs or {}
+
+            self._command_history.append(command)
+
+            if len(visa_kwargs) == 0:
+                self._logger.debug(f"VISA write binary {command!r} (payload: {payload!r})")
+            else:
+                self._logger.debug(f"VISA write binary {command!r} (payload: {payload!r}) (args: {visa_kwargs!s})")
+
+            return self._parent._visa_resource.write_binary_values(command, payload, **visa_kwargs)
+
+        @__visa_command_wrapper
+        def query(self, command: typing.Optional[str], *format_args, binary: bool = False,
+                  visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+                  **format_kwargs) -> str:
+            """ Send query to VISA resource, return the string sent in reply.
+
+            Transaction lock is always held when this method is called.
+
+            :param command:
+            :param format_args:
+            :param binary:
+            :param visa_kwargs:
+            :param format_kwargs:
+            :return: query response
+            :raises VISACommunicationError: on VISA I/O error
+            """
+            visa_kwargs = visa_kwargs or {}
+
+            if command is None:
+                if not binary:
+                    response = self._parent._visa_resource.read(**visa_kwargs).strip()
+                else:
+                    response = self._parent._visa_resource.read_binary_values(**visa_kwargs)
+            else:
+                command = self._visa_format_command(command, format_args, format_kwargs)
+
+                self._command_history.append(command)
+
+                if len(visa_kwargs) == 0:
+                    self._logger.debug(f"VISA query: {command!r}")
+                else:
+                    self._logger.debug(f"VISA query: {command!r} (args: {visa_kwargs!r})")
+
+                if not binary:
+                    response = self._parent._visa_resource.query(command, **visa_kwargs).strip()
+                else:
+                    response = self._parent._visa_resource.query_binary_values(command, **visa_kwargs)
+
+            self._logger.debug(f"VISA response {response!r}")
+
+            return response
+
+        __visa_command_wrapper = staticmethod(__visa_command_wrapper)
+
     """ Base class for instruments relying upon the VISA communication layer. """
     # VISA transaction lock timeout
     _VISA_TRANSACTION_LOCK_TIMEOUT = 30
 
-    # VISA resource manager
+    # VISA resource state
     __resource_manager = None
     __resource_manager_lock = threading.RLock()
 
@@ -186,14 +458,6 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         self._visa_timeout = visa_timeout
         self._visa_rate_limit = visa_rate_limit
 
-        # Transaction lock
-        self._visa_transaction_lock = ThreadLock(f"{self._hardware_identifier}:visa",
-                                                 self._VISA_TRANSACTION_LOCK_TIMEOUT)
-
-        # Transaction buffer for debugging
-        self._visa_transaction_stack: typing.List[typing.List[str]] = []
-        self._visa_error_check_flag = False
-
         # Rate limiting time stamp
         self._visa_transaction_timestamp = None
 
@@ -210,7 +474,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
     @classmethod
     def get_visa_resource_manager(cls) -> pyvisa.ResourceManager:
-        """ Get the VISA resource manager. Typically only used by objects to connect to hardware.
+        """ Get the VISA resource state. Typically only used by objects to connect to hardware.
 
         :return: ResourceManager
         """
@@ -223,254 +487,30 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
         return cls.__resource_manager
 
+    @classmethod
     @abc.abstractmethod
-    def _visa_transaction_error_check(self) -> typing.NoReturn:
-        """ Check for errors after VISA transaction.
+    def _get_visa_error(cls, transaction: VISAHardware._VISATransaction) -> typing.Optional[TYPE_ERROR]:
+        """
 
-        VISA transaction lock is held prior to calling this method.
-
-        :raises VISACommunicationError: when VISA communication error occurs during check
-        :raises VISAReportedError: when VISA transaction has resulted in an error state
+        :param transaction:
+        :return:
         """
         pass
 
-    @contextlib.contextmanager
-    def get_visa_transaction_lock(self, error_check: typing.Optional[bool] = None, error_ignore: bool = False,
-                                  timeout: typing.Optional[float] = None) -> int:
-        """ Get an exclusive lock on VISA resource to perform transactions.
+    def visa_transaction(self, timeout: typing.Optional[float] = None, error_check: bool = True,
+                         error_raise: bool = True) -> VISAHardware._VISATransaction:
+        """
 
-        Returns the depth of lock acquisition, eg. first acquisition returns 1, a further re-enterent lock acquisition
-        returns 2, etc.
-
-        :param error_check: if True an error check is performed when lock is released, if False error check is \
-        explicitly not performed, default is perform check on exit from the first lock acquisition
-        :param error_ignore:
         :param timeout:
-        :return: int
-        :raises VISACommunicationError: when not connected to VISA resource
-        :raises HardwareError: when hardware reports error in response to processed commands
-        """
-        # Throw exception if instrument is not connected
-        if self._visa_resource is None:
-            raise VISACommunicationError('Not connected to VISA resource')
-
-        with self._visa_transaction_lock.lock(timeout) as depth:
-            try:
-                # Push transaction buffer stack
-                if not self._visa_error_check_flag:
-                    self._visa_transaction_stack.append([])
-                    self._logger.debug(f"Pushed transaction stack (depth: {len(self._visa_transaction_stack)})")
-
-                # Perform transactions
-                yield depth
-
-                # Perform error check before returning if requested or not requested but releasing the last lock
-                if not self._visa_error_check_flag and len(self._visa_transaction_stack[-1]) > 0 and \
-                        ((error_check is not None and error_check) or (error_check is None and depth == 1)):
-                    self._logger.debug('Performing VISA error check')
-
-                    self._visa_error_check_flag = True
-                    self._visa_transaction_error_check()
-                    self._visa_error_check_flag = False
-
-                    self._logger.debug('No errors')
-            except VISAHardwareError as exc:
-                transaction_buffer = ', '.join(self._visa_transaction_stack[-1])
-
-                if error_ignore:
-                    self._logger.warning(f"VISA hardware reported error {exc} after transaction: {transaction_buffer}",
-                                         event=False)
-                else:
-                    raise VISAHardwareError(f"VISA hardware reported error after transaction: {transaction_buffer}") \
-                        from exc
-            finally:
-                # Pop transaction buffer stack
-                if not self._visa_error_check_flag:
-                    self._visa_transaction_stack.pop(0)
-                    self._logger.debug(f"Popped transaction stack (depth: {len(self._visa_transaction_stack)})")
-
-                # Clear error check flag
-                self._visa_error_check_flag = False
-
-    @contextlib.contextmanager
-    def get_hardware_lock(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
-        with self._hardware_lock.lock(timeout, quiet):
-            yield self.get_visa_transaction_lock(timeout=timeout)
-
-    def _comm_stack_wrapper(func) -> typing.Callable:
-        """ Decorator to wrap pyVISA exceptions in VISAException and provide rate limiting.
-
-        :param func: method to decorate
-        :return: decorated method
-        """
-
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if 'timeout' in kwargs:
-                timeout = kwargs.pop('timeout')
-            else:
-                timeout = None
-
-            if 'error_check' in kwargs:
-                error_check = kwargs.pop('error_check')
-            else:
-                error_check = None
-
-            if 'error_ignore' in kwargs:
-                error_ignore = kwargs.pop('error_ignore')
-            else:
-                error_ignore = None
-
-            # Apply message rate limiting if enabled
-            with self.get_visa_transaction_lock(error_check, error_ignore, timeout):
-                if self._visa_rate_limit is not None and self._visa_comm_timestamp is not None:
-                    # Delay for minimum write interval
-                    delay = self._visa_rate_limit - (self._visa_comm_timestamp - time.time())
-
-                    if delay > 0:
-                        # self._logger.debug(f"Rate limited, waiting {delay} s")
-                        time.sleep(delay)
-                try:
-                    result = func(self, *args, **kwargs)
-
-                    # Save timestamp for current operation
-                    self._visa_comm_timestamp = time.time()
-
-                    return result
-                except pyvisa.errors.Error as exc:
-                    raise VISACommunicationError('VISA library error occurred during communication') from exc
-
-        return wrapper
-
-    @staticmethod
-    def _format_arg(x) -> str:
-        """ Cast value to a VISA friendly string.
-
-        :param x: input variable
-        :return: string representation of that variable
-        """
-        if issubclass(type(x), VISAEnum):
-            return x.get_visa()
-        elif type(x) is bool:
-            return 'ON' if x else 'OFF'
-        elif type(x) is str:
-            return f"\"{x}\""
-        else:
-            return x
-
-    @classmethod
-    def _format_command(cls, x: str, format_args, format_kwargs):
-        """
-
-        :param x:
-        :param format_args:
-        :param format_kwargs:
+        :param error_check:
+        :param error_raise:
         :return:
         """
-        # Cast parameters
-        format_args = list(map(cls._format_arg, format_args))
-        format_kwargs = {k: cls._format_arg(v) for k, v in format_kwargs.items()}
-
-        return x.format(*format_args, **format_kwargs)
-
-    @_comm_stack_wrapper
-    def visa_write(self, command: str, *format_args, visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                   **format_kwargs) -> int:
-        """ Write command to VISA resource.
-
-        Transaction lock is always held when this method is called.
-
-        :param command:
-        :param format_args:
-        :param visa_kwargs:
-        :param format_kwargs:
-        :return:
-        :raises VISACommunicationError: on VISA I/O error
-        """
-        command = self._format_command(command, format_args, format_kwargs)
-        visa_kwargs = visa_kwargs or {}
-
-        self._visa_transaction_stack[-1].append(command)
-
-        if len(visa_kwargs) == 0:
-            self._logger.debug(f"VISA write {command!r}")
-        else:
-            self._logger.debug(f"VISA write {command!r} (args: {visa_kwargs!s})")
-
-        return self._visa_resource.write(command, **visa_kwargs)
-
-    @_comm_stack_wrapper
-    def visa_write_binary(self, command: str, payload: typing.Iterable, *format_args,
-                          visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None, **format_kwargs) -> int:
-        """ Write binary payload to VISA resource.
-
-        Transaction lock is always held when this method is called.
-
-        :param command:
-        :param payload:
-        :param format_args:
-        :param visa_kwargs:
-        :param format_kwargs:
-        :return:
-        :raises VISACommunicationError: on VISA I/O error
-        """
-        command = self._format_command(command, format_args, format_kwargs)
-        visa_kwargs = visa_kwargs or {}
-
-        self._visa_transaction_stack[-1].append(command)
-
-        if len(visa_kwargs) == 0:
-            self._logger.debug(f"VISA write binary {command!r} (payload: {payload!r})")
-        else:
-            self._logger.debug(f"VISA write binary {command!r} (payload: {payload!r}) (args: {visa_kwargs!s})")
-
-        return self._visa_resource.write_binary_values(command, payload, **visa_kwargs)
-
-    @_comm_stack_wrapper
-    def visa_query(self, command: typing.Optional[str], *format_args, binary: bool = False,
-                   visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                   **format_kwargs) -> str:
-        """ Send query to VISA resource, return the string sent in reply.
-
-        Transaction lock is always held when this method is called.
-
-        :param command:
-        :param format_args:
-        :param binary:
-        :param visa_kwargs:
-        :param format_kwargs:
-        :return: query response
-        :raises VISACommunicationError: on VISA I/O error
-        """
-        visa_kwargs = visa_kwargs or {}
-
-        if command is None:
-            if not binary:
-                response = self._visa_resource.read(**visa_kwargs).strip()
-            else:
-                response = self._visa_resource.read_binary_values(**visa_kwargs)
-        else:
-            command = self._format_command(command, format_args, format_kwargs)
-
-            self._visa_transaction_stack[-1].append(command)
-
-            if len(visa_kwargs) == 0:
-                self._logger.debug(f"VISA query: {command!r}")
-            else:
-                self._logger.debug(f"VISA query: {command!r} (args: {visa_kwargs!r})")
-
-            if not binary:
-                response = self._visa_resource.query(command, **visa_kwargs).strip()
-            else:
-                response = self._visa_resource.query_binary_values(command, **visa_kwargs)
-
-        self._logger.debug(f"VISA response {response!r}")
-
-        return response
+        return self._VISATransaction(self, timeout, error_check, error_raise)
 
     def _visa_disconnect(self):
         if self._visa_resource is None:
-            self._logger.warning('VISA resource should be connected before requesting disconnect')
+            self._logger.warning('VISA resource must be connected before requesting disconnect')
             return
 
         # Close resource
@@ -482,11 +522,11 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         self._logger.info(f"Released VISA resource {self._visa_address}")
 
     # State transition handling
-    def handle_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        super(VISAHardware, self).handle_connect(event)
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(VISAHardware, self).transition_connect(event)
 
         if self._visa_resource is not None:
-            self._logger.warning('VISA resource not properly disconnected')
+            self._visa_disconnect()
 
         try:
             resource = self.get_visa_resource_manager().open_resource(self._visa_address, **self._visa_open_args)
@@ -499,12 +539,14 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             elif exc.error_code == pyvisa.errors.StatusCode.error_resource_busy:
                 raise VISACommunicationError(f"VISA resource {self._visa_address} in use by another process") from exc
             else:
-                raise VISACommunicationError(
-                    f"Unexpected VISA error occurred during acquisition of {self._visa_address}") \
-                    from exc
+                raise VISACommunicationError(f"Unexpected VISA error occurred during acquisition of "
+                                             f"{self._visa_address}") from exc
 
         if not issubclass(type(resource), messagebased.MessageBasedResource):
-            raise VISACommunicationError(self, 'Only message based VISA resources are supported')
+            raise VISACommunicationError(self, 'Non-message based VISA resources are unsupported')
+
+        # Clear existing data
+        resource.clear()
 
         # Set optional timeout
         if self._visa_timeout is not None:
@@ -514,30 +556,37 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
         self._logger.info(f"Acquired VISA resource {self._visa_address}")
 
-    def handle_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        # Clear existing errors
+        with self.visa_transaction(error_check=False) as transaction:
+            self._logger.debug('Clearing existing errors from queue')
+
+            error = self._get_visa_error(transaction)
+
+            while error is not None:
+                self._logger.warning(f"Existing instrument errors found: {error}")
+                error = self._get_visa_error(transaction)
+
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         self._visa_disconnect()
 
-        super(VISAHardware, self).handle_disconnect(event)
+        super(VISAHardware, self).transition_disconnect(event)
 
-    def handle_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        super(VISAHardware, self).handle_configure(event)
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(VISAHardware, self).transition_configure(event)
 
         assert self._visa_resource is not None
 
-    def handle_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         assert self._visa_resource is not None
 
-        super(VISAHardware, self).handle_cleanup(event)
+        super(VISAHardware, self).transition_cleanup(event)
 
-    def handle_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         self._visa_disconnect()
 
-        super(VISAHardware, self).handle_error(event)
+        super(VISAHardware, self).transition_error(event)
 
     # Hardware overrides
     def get_hardware_instance_description(self) -> str:
         # Append VISA resource address to the class description
         return f"{self.get_hardware_description()} ({self.get_hardware_identifier(), self.get_visa_address()})"
-
-    # Convert decorators to static methods
-    _comm_stack_wrapper = staticmethod(_comm_stack_wrapper)

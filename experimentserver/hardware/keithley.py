@@ -5,9 +5,9 @@ import typing
 from transitions import EventData
 
 from experimentserver.data import MeasurementGroup, to_unit, TYPE_FIELD_DICT
-from . import CommunicationError, HardwareError, MeasurementUnavailable
-from .scpi import SCPIHardware, TYPE_ERROR
-from .visa import VISAEnum
+from experimentserver.hardware.error import CommunicationError, MeasurementUnavailable
+from .scpi import SCPIHardware
+from .visa import VISAEnum, VISAHardware, TYPE_ERROR
 
 
 __author__ = 'Chris Harrison'
@@ -78,26 +78,27 @@ class DAQ6510Multimeter(SCPIHardware):
         # Occupied slots
         self._slot_module: typing.Dict[int, typing.Optional[str]] = {slot: None for slot in self._SLOTS}
 
-    # SCPI implementation
-    def set_scpi_display(self, msg: typing.Optional[str] = None) -> typing.NoReturn:
-        with self.get_visa_transaction_lock(error_ignore=True):
-            # Clear display
-            self.visa_write(':DISP:CLE')
+    @classmethod
+    def scpi_display(cls, transaction: VISAHardware._VISATransaction,
+                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+        # Clear display
+        transaction.write(':DISP:CLE')
 
-            if msg is not None:
-                # Truncate long messages
-                if len(msg) > 20:
-                    self._logger.warning(f"Truncating message to 20 characters (original: {msg})")
-                    msg = msg[:20]
+        if msg is not None:
+            # Truncate long messages
+            if len(msg) > 20:
+                cls._get_class_logger().warning(f"Truncating message to 20 characters (original: {msg})")
+                msg = msg[:20]
 
-                self.visa_write(':DISP:USER1:TEXT {}', msg)
-                self.visa_write(':DISP:SCR SWIPE_USER')
-            else:
-                self.visa_write(':DISP:SCR HOME_LARG')
+            transaction.write(':DISP:USER1:TEXT {}', msg)
+            transaction.write(':DISP:SCR SWIPE_USER')
+        else:
+            transaction.write(':DISP:SCR HOME_LARG')
 
-    def get_scpi_error(self) -> TYPE_ERROR:
-        error = self.visa_query(':SYST:ERR?')
-        error_match = self._RE_ERROR.search(error)
+    @classmethod
+    def _get_visa_error(cls, transaction: VISAHardware._VISATransaction) -> typing.Optional[TYPE_ERROR]:
+        error = transaction.query(':SYST:ERR?')
+        error_match = cls._RE_ERROR.search(error)
 
         if error_match is None:
             raise CommunicationError(f"Error message did not match expected format (response: {error})")
@@ -115,30 +116,31 @@ class DAQ6510Multimeter(SCPIHardware):
         return 'Keithley DAQ6510 Data Acquisition/Multimeter System'
 
     # SCPI overrides
-    def handle_connect(self, event: typing.Optional[EventData] = None):
-        super().handle_connect(event)
+    def transition_connect(self, event: typing.Optional[EventData] = None):
+        super().transition_connect(event)
 
-        # Check for available modules
-        for slot in self._SLOTS:
-            card_idn = self.visa_query(':SYST:CARD{}:IDN?', slot)
-            self._logger.info(f"Card {slot}: {card_idn}")
+        with self.visa_transaction() as transaction:
+            # Check for available modules
+            for slot in self._SLOTS:
+                card_idn = transaction.query(':SYST:CARD{}:IDN?', slot)
+                self._logger.info(f"Card {slot}: {card_idn}")
 
-            if card_idn.lower().startswith('empty slot'):
-                self._slot_module[slot] = None
-            else:
-                self._slot_module[slot] = card_idn
+                if card_idn.lower().startswith('empty slot'):
+                    self._slot_module[slot] = None
+                else:
+                    self._slot_module[slot] = card_idn
 
-    def handle_disconnect(self, event: typing.Optional[EventData] = None):
+    def transition_disconnect(self, event: typing.Optional[EventData] = None):
         # Clear available slots
         for slot in self._slot_module.keys():
             self._slot_module[slot] = None
 
-        super().handle_disconnect(event)
+        super().transition_disconnect(event)
 
     # Instrument state
     def is_front_panel(self) -> bool:
-        with self.get_hardware_lock():
-            terminals = self.visa_query(':ROUT:TERM?')
+        with self.visa_transaction() as transaction:
+            terminals = transaction.query(':ROUT:TERM?')
 
         if terminals == 'FRON':
             return True
@@ -150,7 +152,8 @@ class DAQ6510Multimeter(SCPIHardware):
     # Measurements
     @SCPIHardware.register_measurement(description='2-wire resistance', measurement_group=MeasurementGroup.RESISTANCE)
     def get_resistance(self) -> TYPE_FIELD_DICT:
-        resistance = to_unit(self.visa_query(':MEAS:RES?'), 'ohm')
+        with self.visa_transaction() as transaction:
+            resistance = to_unit(transaction.query(':MEAS:RES?'), 'ohm')
 
         if resistance.magnitude > 1e37:
             raise MeasurementUnavailable('Open circuit')
@@ -161,13 +164,16 @@ class DAQ6510Multimeter(SCPIHardware):
 
     @SCPIHardware.register_measurement(description='AC voltage', measurement_group=MeasurementGroup.VOLTAGE)
     def get_voltage_ac(self) -> TYPE_FIELD_DICT:
-        return {
-            'voltage_ac': to_unit(self.visa_query(':MEAS:VOLT:AC?'), 'volt')
-        }
+        # Switching to AC measurements can be very slow
+        with self.visa_transaction(timeout=6) as transaction:
+            return {
+                'voltage_ac': to_unit(transaction.query(':MEAS:VOLT:AC?'), 'volt')
+            }
 
     @SCPIHardware.register_measurement(description='DC voltage', measurement_group=MeasurementGroup.VOLTAGE,
                                        default=True)
     def get_voltage(self) -> TYPE_FIELD_DICT:
-        return {
-            'voltage': to_unit(self.visa_query(':MEAS:VOLT?'), 'volt')
-        }
+        with self.visa_transaction() as transaction:
+            return {
+                'voltage': to_unit(transaction.query(':MEAS:VOLT?'), 'volt')
+            }

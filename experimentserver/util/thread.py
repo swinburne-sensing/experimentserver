@@ -26,8 +26,7 @@ class ThreadLock(LoggerObject):
         self._timeout_default = timeout_default
         self._lock = threading.RLock()
 
-    @contextlib.contextmanager
-    def lock(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
+    def acquire(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> bool:
         timeout = timeout or self._timeout_default
 
         # Attempt non-blocking call to get lock
@@ -43,35 +42,66 @@ class ThreadLock(LoggerObject):
             if not locked:
                 raise LockTimeout(f"Unable to acquire lock {self._identifier} before timeout")
 
-        try:
-            self._depth += 1
+        self._depth += 1
 
-            if not quiet:
-                self._logger.debug(f"Lock {self._identifier} acquired (depth: {self._depth})")
+        if not quiet:
+            self._logger.debug(f"Lock {self._identifier} acquired (depth: {self._depth})")
 
-            yield self._depth
-        finally:
+        return True
+
+    def release(self, quiet: bool = False):
+        self._depth -= 1
+
+        if not quiet:
+            self._logger.debug(f"Lock {self._identifier} released (depth: {self._depth})")
+
+        self._lock.release()
+
+    def is_held(self):
+        # Attempt non-blocking call to get lock
+        locked = self._lock.acquire(False)
+
+        if locked:
+            # Lock is held, check current depth
+            status = self._depth != 0
+
+            # Release current hold on lock
             self._lock.release()
 
-            if not quiet:
-                self._logger.debug(f"Lock {self._identifier} released (depth: {self._depth})")
+            return status
+        else:
+            # Lock not held
+            return False
 
-            self._depth -= 1
+    @contextlib.contextmanager
+    def lock(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
+        # Get lock
+        self.acquire(timeout, quiet)
+
+        try:
+            yield self._depth
+        finally:
+            self.release(quiet)
 
 
 class ThreadException(experimentserver.ApplicationException):
     pass
 
 
-class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
-    _thread_instances: typing.List[ThreadManager] = []
+class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
+    """ Base class for threads with a managed lifecycle. Managed thread can be asked to exit cleanly.
+
+    Note that all managed threads run as daemons, so if the worst happens and everything crashes they are not left
+    running in the background (potentially preventing relaunching).
+    """
+    _thread_instances: typing.List[ManagedThread] = []
 
     def __init__(self, thread_target: typing.Callable,
                  thread_target_args: typing.Optional[typing.List[typing.Any]] = None,
                  thread_target_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
                  thread_name_prefix: typing.Optional[str] = None, thread_name: typing.Optional[str] = None,
                  thread_name_postfix: typing.Optional[str] = None, thread_daemon: bool = False,
-                 exception_threshold: typing.Optional[int] = 10, exception_timeout: typing.Optional[float] = 30.0,
+                 exception_threshold: typing.Optional[int] = 10, exception_timeout: typing.Optional[float] = 60.0,
                  run_final: bool = False):
         """
 
@@ -98,6 +128,8 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
         self._thread_target_args = thread_target_args or []
         self._thread_target_kwargs = thread_target_kwargs or {}
 
+        self._thread_daemon = thread_daemon
+
         # Thread exception handling
         self._exception_threshold = exception_threshold
         self._exception_timeout = exception_timeout
@@ -106,7 +138,7 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
 
         # Thread object
         self._thread = threading.Thread(name=self._thread_name, target=self.__thread_target_wrapper,
-                                        daemon=thread_daemon)
+                                        daemon=True)
 
         # Add self to list of instances
         self._thread_instances.append(self)
@@ -159,7 +191,7 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
         """
         for instance in cls._thread_instances:
             if instance.is_alive():
-                if instance._thread.isDaemon():
+                if instance._thread_daemon:
                     cls._get_class_logger().debug(f"Ignoring daemon {instance._thread_name}")
                 else:
                     cls._get_class_logger().debug(f"Joining {instance._thread_name}")
@@ -235,7 +267,7 @@ class ThreadManager(LoggerObject, metaclass=abc.ABCMeta):
             self._logger.info('Thread stopped')
 
 
-class CallbackThread(ThreadManager):
+class CallbackThread(ManagedThread):
     def __init__(self, name: str, callback: typing.Callable,
                  callback_args: typing.Optional[typing.List[typing.Any]] = None,
                  callback_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None, thread_daemon: bool = False,
@@ -279,7 +311,7 @@ class _QueueEntry:
         return f"({self.command.name}, {self.data})"
 
 
-class QueueThread(ThreadManager):
+class QueueThread(ManagedThread):
     QUEUE_TIMEOUT = 1
 
     def __init__(self, name: str, event_callback: typing.Callable,
@@ -345,8 +377,8 @@ class QueueThread(ThreadManager):
                 pass
 
 
-def stop_all(join: bool = True):
-    ThreadManager.stop_all()
+def stop_all(join: bool = True, timeout: typing.Optional[float] = None):
+    ManagedThread.stop_all()
 
     if join:
-        ThreadManager.join_all()
+        ManagedThread.join_all(timeout)

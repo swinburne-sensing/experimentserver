@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import abc
 import contextlib
-import copy
 import collections
 import functools
 import inspect
@@ -13,7 +12,9 @@ from collections import OrderedDict
 
 from transitions import EventData
 
-import experimentserver
+import experimentserver.util.metadata as metadata
+from .error import MeasurementError, MeasurementUnavailable, ParameterError, NoEventHandler
+from .state.transition import HardwareTransition
 from experimentserver.data import MeasurementGroup, TYPE_FIELD_DICT
 from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget
 from experimentserver.util.logging import LoggerObject
@@ -35,70 +36,7 @@ CALLABLE_MEASUREMENT = typing.Callable[[], TYPE_MEASUREMENT]
 TYPE_PARAMETER_DICT = typing.MutableMapping[str, typing.Any]
 
 
-class CommandError(experimentserver.ApplicationException):
-    """ Base exception for errors caused by setting parameters or taking measurements.
-
-    May be attached to a HardwareCommunicationError or HardwareReportedError.
-    """
-    pass
-
-
-class CommunicationError(experimentserver.ApplicationException):
-    """ Base exception for IO and other Hardware communication errors.
-
-    This covers errors that are reported server side, and may require reconnection of the Hardware in order to
-    recover.
-    """
-    pass
-
-
-class HardwareError(experimentserver.ApplicationException):
-    """ Base exception for Hardware reported errors or for errors caused by unexpected or invalid instrument response.
-
-    This covers errors reported by the Hardware itself, and may not require reconnection of the Hardware in order to
-    recover."""
-    pass
-
-
-class MeasurementError(CommandError):
-    """ Exception thrown during measurement capture. """
-    pass
-
-
-class MeasurementUnavailable(MeasurementError):
-    pass
-
-
-class ParameterError(CommandError):
-    """ Exception thrown during parameter configuration. """
-    pass
-
-
-class NoEventHandler(experimentserver.ApplicationException):
-    """ Exception to indicate that reset events should be handled as setup events. """
-    pass
-
-
-class __OrderedRegistered(object):
-    def __init__(self, method: typing.Callable, order: int):
-        self.method = method
-        self.order = order
-
-    def __lt__(self, other):
-        return self.order < other.order
-
-    def __call__(self, *args, **kwargs):
-        return self.method(*args, **kwargs)
-
-    def bind(self, parent: Hardware):
-        child = copy.deepcopy(self)
-
-        child.method = child.method.__get__(parent, parent.__class__)
-
-        return child
-
-
-class _RegisteredMeasurement(__OrderedRegistered):
+class _MeasurementMetadata(metadata.OrderedMetadata):
     """ Registered Hardware measurement method. """
 
     def __init__(self, method: CALLABLE_MEASUREMENT, description: str,
@@ -120,6 +58,17 @@ class _RegisteredMeasurement(__OrderedRegistered):
         """
         super().__init__(method, order)
 
+        return_annotation = inspect.signature(method).return_annotation
+
+        if return_annotation != TYPE_FIELD_DICT and return_annotation != Measurement \
+                and return_annotation != TYPE_MEASUREMENT_LIST:
+            raise MeasurementError(f"Registered measurement method {method!r} must provide compatible "
+                                   f"return annotation")
+
+        if return_annotation == TYPE_FIELD_DICT and measurement_group is None:
+            raise MeasurementError('Registered measurement methods that return a dict must provide a '
+                                   'MeasurementGroup')
+
         self.description = description
         self.measurement_group = measurement_group
         self.default = default
@@ -129,16 +78,8 @@ class _RegisteredMeasurement(__OrderedRegistered):
         self.setup_args = setup_args or []
         self.setup_kwargs = setup_kwargs or {}
 
-    def call_setup(self, parent: Hardware):
-        if self.setup is None:
-            return
 
-        method = getattr(parent, self.setup)
-
-        return method(*self.setup_args, **self.setup_kwargs)
-
-
-class _RegisteredParameter(__OrderedRegistered):
+class _ParameterMetadata(metadata.OrderedMetadata):
     """  """
     def __init__(self, method: CALLABLE_PARAMETER, description: typing.Dict[str, str], order: int = 50,
                  validation: typing.Optional[typing.Dict[str, typing.Callable[[typing.Any], bool]]] = None):
@@ -191,9 +132,6 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         # Enabled measurement map
         self._measurement_lock = threading.RLock()
         self._measurement: typing.Optional[str, bool] = None
-
-        # Measurement setup status flag
-        self._measurement_setup = False
 
     # Hardware metadata
     @classmethod
@@ -256,72 +194,32 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
     def get_export_source_name(self) -> str:
         return self.get_hardware_identifier()
 
-    # Error checking
-    @abc.abstractmethod
-    def _hardware_error_check(self):
-        pass
-
     # Instrument lock
     @contextlib.contextmanager
-    def get_hardware_lock(self, timeout: typing.Optional[float] = None, quiet: bool = False,
-                          error_check: typing.Optional[bool] = None) -> int:
+    def hardware_lock(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
         """ Acquire exclusive reentrant hardware lock. Checks for any errors when released.
 
         :param timeout:
         :param quiet:
-        :param error_check:
         :return: lock depth
         """
         with self._hardware_lock.lock(timeout, quiet) as depth:
             yield depth
 
-            if error_check and depth == 1:
-                self._hardware_error_check()
+    def hardware_lock_wrapper(func):
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            with self.hardware_lock():
+                return func(self, *args, **kwargs)
+
+        return wrapper
 
     # Parameter/measurement registration
-    def register_measurement(measurement_group: typing.Optional[MeasurementGroup] = None,
-                             **kwargs) -> typing.Callable:
-        """ Registers a methods as a mechanism for retrieving measurements from instrumentation.
-
-        Can optionally call a setup method when this measurement is first used.
-
-        :param measurement_group:
-        :param kwargs: passed to _HardwareMeasurement.__init__
-        :return: decorated method
-        """
-        def wrapper(func):
-            return_annotation = inspect.signature(func).return_annotation
-
-            if return_annotation != TYPE_FIELD_DICT and return_annotation != Measurement \
-                    and return_annotation != TYPE_MEASUREMENT_LIST:
-                raise MeasurementError(f"Registered measurement method {func!r} must provide compatible "
-                                       f"return annotation")
-
-            if return_annotation == TYPE_FIELD_DICT and measurement_group is None:
-                raise MeasurementError('Registered measurement methods that return a dict must provide a '
-                                       'MeasurementGroup')
-
-            return _RegisteredMeasurement(func, measurement_group=measurement_group, **kwargs)
-
-        return wrapper
-
-    def register_parameter(**kwargs) -> typing.Callable:
-        """ Registers a method for control of experimental parameters.
-
-        Registered parameters can be configured during experiment runtime.
-
-        :param kwargs: passed to _HardwareParameter.__init__
-        :return: decorated method
-        """
-
-        def wrapper(func):
-            return _RegisteredParameter(func, **kwargs)
-
-        return wrapper
+    register_measurement = functools.partial(metadata.register_metadata, _MeasurementMetadata)
+    register_parameter = functools.partial(metadata.register_metadata, _ParameterMetadata)
 
     @HybridMethod
-    def get_hardware_measurements(self, include_force: bool = True) \
-            -> typing.MutableMapping[str, _RegisteredMeasurement]:
+    def get_hardware_measurements(self, include_force: bool = True) -> typing.MutableMapping[str, _MeasurementMetadata]:
         """ Get all measurements produced by this class.
 
         This method returns a dict containing all methods that are registered using the Hardware.register_measurement
@@ -332,25 +230,15 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         :param include_force: if True then forced measurements will be included, otherwise they will be ignored
         :return: dict containing all methods registered as result fetching methods
         """
-        measurement_list = {}
+        measurement_metadata = metadata.get_metadata(self, _MeasurementMetadata)
 
-        for attrib_name in dir(self):
-            # Get a concrete reference from the method name
-            attrib = getattr(self, attrib_name)
+        if not include_force:
+            measurement_metadata = {k: v for k, v in measurement_metadata.items() if not v.force}
 
-            # Check for metadata
-            if type(attrib) is _RegisteredMeasurement:
-                # Filter forced methods
-                if attrib.force and not include_force:
-                    continue
-
-                measurement_list[attrib_name] = attrib
-
-        # Sort by order
-        return OrderedDict(sorted(measurement_list.items(), key=lambda x: x[1]))
+        return measurement_metadata
 
     @HybridMethod
-    def get_hardware_parameters(self) -> typing.MutableMapping[str, _RegisteredParameter]:
+    def get_hardware_parameters(self) -> typing.MutableMapping[str, _ParameterMetadata]:
         """ Gets a list of all configurable parameters for this class.
 
         This returns a dict containing all methods that are registered using the Hardware.register_parameter decorator.
@@ -359,18 +247,7 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
 
         :return: dict containing all methods registered as configuration parameters
         """
-        parameter_list = {}
-
-        for attrib_name in dir(self):
-            # Get a concrete reference from the method name
-            attrib = getattr(self, attrib_name)
-
-            # Check for metadata
-            if type(attrib) is _RegisteredParameter:
-                parameter_list[attrib_name] = attrib
-
-        # Sort by order
-        return OrderedDict(sorted(parameter_list.items(), key=lambda x: x[1]))
+        return metadata.get_metadata(self, _ParameterMetadata)
 
     # Parameter/measurement getter and setter
     @register_parameter(description='Enable a single measurement method', order=0)
@@ -392,9 +269,6 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
                 # Enable the selected measurement
                 self.enable_hardware_measurement(name)
 
-            # Clear instrument setup flag
-            self._measurement_setup = False
-
     @register_parameter(description='Enable a measurement method', order=0)
     def enable_hardware_measurement(self, name):
         """
@@ -408,9 +282,6 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         with self._measurement_lock:
             self._measurement[name] = True
 
-            # Clear instrument setup flag
-            self._measurement_setup = False
-
     @register_parameter(description='Disable a measurement method', order=0)
     def disable_hardware_measurement(self, name):
         """
@@ -423,9 +294,6 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
 
         with self._measurement_lock:
             self._measurement[name] = False
-
-            # Clear instrument setup flag
-            self._measurement_setup = False
 
     def produce_measurement(self) -> bool:
         """
@@ -446,36 +314,34 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
                 if not measurement_enabled and not measurement_meta[measurement].force:
                     measurement_meta.pop(measurement)
 
-            if not self._measurement_setup:
-                # Apply measurement setup
+            with self.hardware_lock():
                 for meta in measurement_meta.values():
-                    meta.call_setup(self)
-
-                # Flag setup as complete
-                self._measurement_setup = True
-
-            with self.get_hardware_lock():
-                for meta in measurement_meta.values():
+                    # Bind method
                     measurement_method = meta.bind(self)
 
-                    measurement_return = measurement_method()
+                    try:
+                        measurement_return = measurement_method()
 
-                    if measurement_return is not None:
-                        if type(measurement_return) is Measurement:
-                            # Single result with metadata
-                            MeasurementTarget.record(measurement_return)
-                        elif type(measurement_return) is list:
-                            # Multiple results with metadata
-                            for measurement in measurement_return:
-                                MeasurementTarget.record(measurement)
-                        elif type(measurement_return) is dict:
-                            # Single result
-                            MeasurementTarget.record(Measurement(self, meta.measurement_group, measurement_return))
-                        else:
-                            raise MeasurementError(f"Unexpected return from measurement method: {measurement_return!r}")
+                        if measurement_return is not None:
+                            if type(measurement_return) is Measurement:
+                                # Single result with metadata
+                                MeasurementTarget.record(measurement_return)
+                            elif type(measurement_return) is list:
+                                # Multiple results with metadata
+                                for measurement in measurement_return:
+                                    MeasurementTarget.record(measurement)
+                            elif type(measurement_return) is dict:
+                                # Single result
+                                MeasurementTarget.record(Measurement(self, meta.measurement_group, measurement_return))
+                            else:
+                                raise MeasurementError(
+                                    f"Unexpected return from measurement method: {measurement_return!r}")
 
-                        # Indicate a measurement was produced
-                        measurement_flag = True
+                            # Indicate a measurement was produced
+                            measurement_flag = True
+                    except MeasurementUnavailable as exc:
+                        # Ignore unavailable measurements
+                        pass
 
         return measurement_flag
 
@@ -540,16 +406,18 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
 
         # Sort parameters based on order before calling the appropriate method
         with self._parameter_lock:
-            with self.get_hardware_lock():
-                for parameter_name, parameter_args in parameter_commands.items():
-                    parameter_list[parameter_name](**parameter_args)
+            with self.hardware_lock():
+                for parameter_name, parameter_kwargs in parameter_commands.items():
+                    parameter_method = parameter_list[parameter_name].bind(self)
+
+                    parameter_method(**parameter_kwargs)
 
                     # Buffer parameter after successful execution
-                    self._parameter_buffer[parameter_name] = parameter_args
+                    self._parameter_buffer[parameter_name] = parameter_kwargs
 
     # State transition handling
     @abc.abstractmethod
-    def handle_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """ Handle connecting to external Hardware.
 
         :param event: transition metadata
@@ -558,15 +426,14 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         """
         # Configure default measurements
         with self._measurement_lock:
-            self._measurement = {measure: meta.default for measure, meta in
-                                 self.get_hardware_measurements(include_force=False).items()}
+            self._measurement = {measure: meta.default for measure, meta in self.get_hardware_measurements().items()}
 
             enabled_list = ', '.join([measure for measure, enabled in self._measurement.items() if enabled])
 
             self._logger.debug(f"Configured default measurements: {enabled_list}")
 
     @abc.abstractmethod
-    def handle_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """ Handle disconnection from external Hardware.
 
         :param event: transition metadata
@@ -577,8 +444,12 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         with self._measurement_lock:
             self._measurement = None
 
+        # Clear buffered parameters
+        with self._parameter_lock:
+            self._parameter_buffer.clear()
+
     @abc.abstractmethod
-    def handle_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """
 
         :param event: transition metadata
@@ -586,10 +457,11 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         :raises HardwareReportedError: when Hardware reports fatal error during configuration
         """
         # If parameters were previously provided then configure them now
-        pass
+        with self._parameter_lock:
+            self.set_parameters(self._parameter_buffer, validated=True)
 
     @abc.abstractmethod
-    def handle_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """
 
         :param event: transition metadata
@@ -598,7 +470,7 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         """
         pass
 
-    def handle_start(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_start(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """
 
         :param event: transition metadata
@@ -607,7 +479,7 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         """
         pass
 
-    def handle_stop(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_stop(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """
 
         :param event: transition metadata
@@ -617,7 +489,7 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def handle_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """
 
         :param event: transition metadata
@@ -625,7 +497,7 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         self._logger.error(f"Hardware {self.get_hardware_identifier()} has entered an error state", event=True,
                            notify=True)
 
-    def handle_reset(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_reset(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """
 
         :param event: transition metadata
@@ -635,10 +507,6 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         """
         raise NoEventHandler()
 
-    # Force handling methods to be wrapped by hardware lock acquisition
-    def __getattribute__(self, item):
-        return super(Hardware, self).__getattribute__(item)
-
     # object overrides
     def __str__(self) -> str:
         return self.get_hardware_instance_description()
@@ -647,6 +515,7 @@ class Hardware(LoggerObject, MeasurementSource, metaclass=abc.ABCMeta):
         return f"<{self.__class__.__module__}.{self.__class__.__qualname__} ({self.get_hardware_identifier()}) object>"
 
     # Convert decorators to static methods
+    hardware_lock_wrapper = staticmethod(hardware_lock_wrapper)
     register_measurement = staticmethod(register_measurement)
     register_parameter = staticmethod(register_parameter)
 

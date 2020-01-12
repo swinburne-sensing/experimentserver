@@ -18,17 +18,17 @@ class TestHardware(Hardware):
     def get_hardware_description() -> str:
         return 'Test Hardware'
 
-    def handle_connect(self, event: typing.Optional[EventData] = None):
-        super(TestHardware, self).handle_connect(event)
+    def transition_connect(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).transition_connect(event)
 
-    def handle_disconnect(self, event: typing.Optional[EventData] = None):
-        super(TestHardware, self).handle_disconnect(event)
+    def transition_disconnect(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).transition_disconnect(event)
 
-    def handle_configure(self, event: typing.Optional[EventData] = None):
-        super(TestHardware, self).handle_configure(event)
+    def transition_configure(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).transition_configure(event)
 
-    def handle_cleanup(self, event: typing.Optional[EventData] = None):
-        super(TestHardware, self).handle_cleanup(event)
+    def transition_cleanup(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).transition_cleanup(event)
 
-    def handle_error(self, event: typing.Optional[EventData] = None):
-        super(TestHardware, self).handle_error(event)
+    def transition_error(self, event: typing.Optional[EventData] = None):
+        super(TestHardware, self).transition_error(event)

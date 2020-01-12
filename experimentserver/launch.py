@@ -18,11 +18,15 @@ from experimentserver.config import ConfigManager
 from experimentserver.data.database import setup_database
 from experimentserver.data.measurement import Measurement, MeasurementTarget, dynamic_field_time_delta
 from experimentserver.observer import Observer
-from experimentserver.server import main
+from experimentserver.server import start_server
 from experimentserver.util.git import get_git_hash
 from experimentserver.util.logging import get_logger
 
 
+# Timeout before ignoring running threads and exiting in release mode
+THREAD_TIMEOUT = 60
+
+# Lock file name, used to detect crashes
 LOCK_FILENAME = './experimentserver.lock'
 
 
@@ -181,7 +185,7 @@ if __name__ == '__main__':
                 root_logger.info(f"Runtime Grafana URL {url.format(int(1000 * time_startup), 'now')}", notify=True)
 
             # Run main application
-            main(app_config, app_metadata)
+            start_server(app_config, app_metadata)
 
             runtime = str(datetime.timedelta(seconds=time.time() - time_startup))
             root_logger.info(f"Stopped, total runtime: {runtime}", notify=True, event=True)
@@ -211,7 +215,10 @@ if __name__ == '__main__':
         raise
     finally:
         # Ask all threads to stop
-        experimentserver.util.thread.stop_all()
+        if app_debug:
+            experimentserver.util.thread.stop_all()
+        else:
+            experimentserver.util.thread.stop_all(timeout=THREAD_TIMEOUT)
 
         root_logger.info(f"Threads stopped")
 

@@ -1,3 +1,4 @@
+import logging
 import time
 import typing
 from datetime import datetime
@@ -9,8 +10,10 @@ from transitions import MachineError
 from experimentserver.data import MeasurementGroup
 from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget, TYPE_TAG_DICT
 from experimentserver.config import ConfigManager
-from experimentserver.hardware import Hardware, HardwareError
-from experimentserver.hardware.manager import StateManager, HardwareTransition
+from experimentserver.hardware import Hardware
+from experimentserver.hardware.error import HardwareError
+from experimentserver.hardware.state.manager import StateManager
+from experimentserver.hardware.state.transition import HardwareTransition
 from experimentserver.util.module import get_all_subclasses
 from experimentserver.util.thread import CallbackThread
 from experimentserver.util.logging import LoggerObject, get_logger
@@ -36,7 +39,8 @@ class WebUI(LoggerObject, MeasurementSource):
         self._procedure = procedure
 
         # Inject event buffer into logger
-        self._event_buffer = EventBufferHandler(False)
+        self._event_buffer = EventBufferHandler(enable_filter=False)
+        self._event_buffer.setLevel(logging.INFO)
         get_logger().addHandler(self._event_buffer)
 
         # Create flask instance
@@ -139,7 +143,7 @@ class WebUI(LoggerObject, MeasurementSource):
                         'description': hardware_class.get_hardware_description(),
                         'parameter': {k: v.description for k, v in parameter_list.items()
                                       if not k.endswith('hardware_measurement')},
-                        'measurement_group': {k: v.description for k, v in measurement_list.items()}
+                        'measurement': {k: v.description for k, v in measurement_list.items()}
                     })
                 except NotImplementedError:
                     self._logger.warning(f"Hardware class {class_fqn} lacks authorship information")
@@ -174,12 +178,12 @@ class WebUI(LoggerObject, MeasurementSource):
             if identifier not in self._manager_list:
                 return self._return_error(f"Invalid hardware identifier: {identifier}")
 
-            # Fetch hardware manager
+            # Fetch hardware state
             manager = self._manager_list[identifier]
 
-            manager.get_hardware().set_parameters({
+            manager.queue_parameter({
                 parameter: arguments
-            })
+            }, timeout=5)
 
             return self._return_ok('OK')
 
@@ -211,7 +215,7 @@ class WebUI(LoggerObject, MeasurementSource):
             if identifier not in self._manager_list:
                 return self._return_error(f"Invalid hardware identifier: {identifier}")
 
-            # Fetch hardware manager
+            # Fetch hardware state
             manager = self._manager_list[identifier]
 
             try:

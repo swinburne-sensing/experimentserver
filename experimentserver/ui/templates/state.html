@@ -21,7 +21,8 @@
                 },
                 failure: function (result) {
                     UIkit.notification({message: 'AJAX Error, response: ' + result})
-                }
+                },
+                timeout: 5000
             });
         });
     });

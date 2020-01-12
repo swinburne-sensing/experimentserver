@@ -2,10 +2,10 @@ import typing
 
 import experimentserver
 import experimentserver.hardware as hardware
-import experimentserver.hardware.manager as manager
 from .config import ConfigManager
 from .data import TYPE_TAG_DICT
 from .experiment import Procedure
+from .hardware.state.manager import StateManager
 from .util.logging import get_logger
 from .util.module import class_instance_from_dict
 from .ui.web import WebUI
@@ -18,10 +18,10 @@ class ServerException(experimentserver.ApplicationException):
     pass
 
 
-def main(config: ConfigManager, metadata: TYPE_TAG_DICT):
-    # Hardware and manager instances
+def start_server(config: ConfigManager, metadata: TYPE_TAG_DICT):
+    # Hardware and state instances
     hardware_list: typing.Dict[str, hardware.Hardware] = {}
-    manager_list: typing.Dict[str, manager.StateManager] = {}
+    manager_list: typing.Dict[str, StateManager] = {}
 
     # Setup hardware instances and managers
     for hardware_inst_config in config.get('hardware', default=[]):
@@ -35,8 +35,8 @@ def main(config: ConfigManager, metadata: TYPE_TAG_DICT):
 
             hardware_list[hardware_inst.get_hardware_identifier()] = hardware_inst
 
-            # Create and start manager
-            manager_inst = manager.StateManager(hardware_inst)
+            # Create and start state
+            manager_inst = StateManager(hardware_inst)
             manager_inst.start()
 
             manager_list[hardware_inst.get_hardware_identifier()] = manager_inst
