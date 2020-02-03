@@ -1,0 +1,171 @@
+<div id="acknowledgements-dialog" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body uk-margin-auto-vertical">
+        <h2 class="uk-modal-title">About</h2>
+        <p>Research outputs generated using this software should acknowledge the following institutions for their financial and/or material support:</p>
+        <p><a href="https://arena.gov.au/"><img data-src="{{ url_for('static', filename='arena.svg') }}" width="300"
+                height="" alt="" uk-img></a></p>
+        <p>This project received funding from <a
+                href="https://arena.gov.au/">ARENA</a> as part of ARENA's Research and Development Program – Renewable Hydrogen for Export (Contract No. 2018/RND012).
+        </p>
+        <p>
+            <a href="https://nectar.org.au/"><img data-src="{{ url_for('static', filename='nectar.png') }}" width="300" height="" alt="" uk-img></a>
+        </p>
+        <p>Powered by <a
+                href="https://nectar.org.au/">Nectar</a>. Nectar is supported by the Australian Government through the National Collaborative Research Infrastructure Strategy (NCRIS).
+        </p>
+        <p>This software was created at <a href="https://swinburne.edu.au">Swinburne University of Technology</a> by <a
+                href="mailto:cjharrison@swin.edu.au">Chris Harrison</a>.</p>
+        <p>Additionally software is built using open source software including
+            <a href="https://python.org/">Python</a>. The <a
+                    href="http://www.famfamfam.com/lab/icons/silk/">silk</a> icon set is used as part of this software.
+        </p>
+        <p>For support contact <a href="mailto:mshafiei@swin.edu.au">Mahnaz Shafiei</a> or <a
+                href="mailto:cjharrison@swin.edu.au">Chris Harrison</a>.</p>
+        <p class="uk-text-right">
+            <button class="uk-button uk-button-default uk-modal-close" type="button">Close</button>
+        </p>
+    </div>
+</div>
+
+<div id="hardware-dialog" class="uk-modal-container" uk-modal>
+    <div class="uk-modal-dialog" style="width: auto">
+        <div class="uk-modal-header">
+            <h2 class="uk-modal-title">Hardware State</h2>
+        </div>
+
+        <div class="uk-modal-body" uk-overflow-auto>
+            <table class="uk-table uk-table-divider uk-table-middle uk-table-small">
+                <thead>
+                    <tr>
+                        <th class="uk-table-shrink">Identifier</th>
+                        <th class="uk-table-shrink">Class</th>
+                        <th class="uk-table-shrink">State</th>
+                        <th class="uk-table-expand">Description</th>
+                    </tr>
+                </thead>
+                <tbody id="hardware-dialog-container-state">
+                    {% for hardware_metadata in hardware %}
+                        <tr>
+                            <td>{{ hardware_metadata.identifier }}</td>
+                            <td>{{ hardware_metadata.class }}</td>
+                            <td>
+                                <span class="uk-label es-hardware-state" identifier="{{ hardware_metadata.identifier }}">Loading</span>
+                            </td>
+                            <td>{{ hardware_metadata.description }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="uk-modal-header">
+            <h2 class="uk-modal-title">Hardware Classes</h2>
+        </div>
+
+        <div class="uk-modal-body" uk-overflow-auto>
+            <table class="uk-table uk-table-divider uk-table-small">
+                <thead>
+                    <tr>
+                        <th class="uk-table-shrink">Class</th>
+                        <th>Description</th>
+                        <th class="uk-table-expand">Parameters</th>
+                        <th class="uk-table-expand">Measurements</th>
+                    </tr>
+                </thead>
+                <tbody id="hardware-dialog-container-class">
+                    {% for hardware_class_metadata in hardware_class %}
+                        <tr>
+                            <td>{{ hardware_class_metadata.class }}<br><span
+                                    class="uk-text-small">{{ hardware_class_metadata.author }}</span></td>
+                            <td>{{ hardware_class_metadata.description }}</td>
+                            <td>
+                                <ul class="uk-list">
+                                    {% for parameter_name, parameter_description in hardware_class_metadata.parameters.items() %}
+                                        <li><b>{{ parameter_name }}: </b>{{ parameter_description }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </td>
+                            <td>
+                                <ul class="uk-list">
+                                    {% for measurement_name, measurement_description in hardware_class_metadata.measurements.items() %}
+                                        <li><b>{{ measurement_name }}: </b>{{ measurement_description }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="uk-modal-footer uk-text-right">
+            <button class="uk-button uk-button-default uk-modal-close" type="button">
+                <span><span uk-icon="icon: close" style="padding-right: 5px"></span> Close</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="event-dialog" class="uk-modal-container" uk-modal>
+    <div class="uk-modal-dialog">
+        <div class="uk-modal-header">
+            <h2 class="uk-modal-title">Event Log</h2>
+        </div>
+
+        <div class="uk-modal-body" uk-overflow-auto>
+            <table class="uk-table uk-table-divider uk-table-middle uk-table-small">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th class="uk-table-shrink">Severity</th>
+                        <th class="uk-table-shrink">Thread</th>
+                        <th class="uk-table-expand">Message</th>
+                    </tr>
+                </thead>
+                <tbody id="event-dialog-container">
+                    <tr>
+                        <td>Now</td>
+                        <td>LOTS</td>
+                        <td>Main</td>
+                        <td>TODO</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="uk-modal-footer uk-text-right">
+            <button class="uk-button uk-button-default uk-modal-close" type="button" id="event-dialog-clear"><span
+                    uk-icon="icon: trash" style="padding-right: 5px"></span> Clear
+            </button>
+            <button class="uk-button uk-button-default uk-modal-close" type="button"><span uk-icon="icon: close"
+                    style="padding-right: 5px"></span> Close
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<div id="shutdown-dialog" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body uk-margin-auto-vertical">
+        <h2 class="uk-modal-title">Do you want to shut down experimentserver?</h2>
+        <p><span class="uk-label uk-label-danger">This will stop all experiments and disconnect all hardware.</span></p>
+        <p>Some hardware devices may be returned to a default or safe state. Ensure you have completed all work before shutting down this application.</p>
+        <p class="uk-text-danger">Remember to close cylinder valves when experiments have been completed.</p>
+        <div class="uk-card uk-card-secondary uk-card-body" id="shutdown-result" style="display: none;">
+            <h3 class="uk-card-title">Command Result</h3>
+        </div>
+        <p class="uk-text-right" id="shutdown-control">
+            <button class="uk-button uk-button-default uk-modal-close" type="button">Cancel</button>
+            <button class="uk-button uk-button-danger uk-text-middle" type="button" id="shutdown-button"><span
+                    uk-icon="icon: bolt" style="padding-right: 5px"></span> Shutdown
+            </button>
+        </p>
+    </div>
+</div>
+
+<div id="comm-error-dialog" class="uk-flex-top" uk-modal>
+    <div class="uk-modal-dialog uk-modal-body uk-margin-auto-vertical">
+        <h1><span uk-icon="icon: server; ratio: 2.2"></span> Communication Error</h1>
+        <p>Unable to communicate with server. This may be caused by an unstable network connection, by a requested shutdown, or because of a fatal error. The software must be restarted to resume experiments.</p>
+    </div>
+</div>

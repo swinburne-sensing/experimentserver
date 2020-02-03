@@ -2,7 +2,14 @@ import logging
 import sys
 import typing
 
-from wrapt import ObjectProxy
+
+# Shortcuts
+NOTSET = logging.NOTSET
+DEBUG = logging.DEBUG
+INFO = logging.INFO
+WARNING = logging.WARNING
+ERROR = logging.ERROR
+CRITICAL = logging.CRITICAL
 
 
 class _ModifiedLogger(logging.Logger):
@@ -15,9 +22,6 @@ class _ModifiedLogger(logging.Logger):
 
         return co.co_filename, f.f_lineno, co.co_name, None
 
-
-# noinspection PyAbstractClass
-class __LoggerProxy(ObjectProxy):
     @staticmethod
     def _update_args(notify, event, kwargs):
         if 'extra' not in kwargs:
@@ -35,55 +39,50 @@ class __LoggerProxy(ObjectProxy):
 
     def debug(self, msg, *args, notify: bool = False, event: bool = False, **kwargs):
         self._update_args(notify, event, kwargs)
-        # self.__wrapped__.disabled = False
-        self.__wrapped__.debug(msg, *args, **kwargs)
+        super(_ModifiedLogger, self).debug(msg, *args, **kwargs)
 
     def info(self, msg, *args, notify: bool = False, event: bool = False, **kwargs):
         self._update_args(notify, event, kwargs)
-        # self.__wrapped__.disabled = False
-        self.__wrapped__.info(msg, *args, **kwargs)
+        super(_ModifiedLogger, self).info(msg, *args, **kwargs)
 
     def warning(self, msg, *args, notify: bool = False, event: bool = True, **kwargs):
         self._update_args(notify, event, kwargs)
-        # self.__wrapped__.disabled = False
-        self.__wrapped__.warning(msg, *args, **kwargs)
+        super(_ModifiedLogger, self).warning(msg, *args, **kwargs)
 
     def error(self, msg, *args, notify: bool = True, event: bool = True, **kwargs):
         self._update_args(notify, event, kwargs)
-        # self.__wrapped__.disabled = False
-        self.__wrapped__.error(msg, *args, **kwargs)
+        super(_ModifiedLogger, self).error(msg, *args, **kwargs)
 
     def exception(self, msg, *args, notify: bool = True, event: bool = True, exc_info=True, **kwargs):
         self._update_args(notify, event, kwargs)
-        # self.__wrapped__.disabled = False
-        self.__wrapped__.exception(msg, *args, exc_info=exc_info, **kwargs)
+        super(_ModifiedLogger, self).exception(msg, *args, exc_info=exc_info, **kwargs)
 
     def critical(self, msg, *args, notify: bool = True, event: bool = True, **kwargs):
         self._update_args(notify, event, kwargs)
-        # self.__wrapped__.disabled = False
-        self.__wrapped__.critical(msg, *args, **kwargs)
+        super(_ModifiedLogger, self).critical(msg, *args, **kwargs)
 
     def log(self, level, msg, *args, notify: bool = False, event: bool = False, **kwargs):
         self._update_args(notify, event, kwargs)
-        # self.__wrapped__.disabled = False
-        self.__wrapped__.log(level, msg, *args, **kwargs)
+        super(_ModifiedLogger, self).log(level, msg, *args, **kwargs)
 
 
-def get_logger(name: typing.Optional[str] = None) -> __LoggerProxy:
+# Use derived logger class
+logging.setLoggerClass(_ModifiedLogger)
+
+
+def get_logger(name: typing.Optional[str] = None) -> _ModifiedLogger:
     """ Get a wrapped Logging object.
 
     :param name: name of the Logger to get from the logging library
-    :return: LoggerWrapper
+    :return: logger
     """
-    # Use derived class
-    logging.setLoggerClass(_ModifiedLogger)
-
     logger = logging.getLogger(name)
+    logger = typing.cast(_ModifiedLogger, logger)
 
     # Ensure logger is enabled
     logger.disabled = False
 
-    return __LoggerProxy(logger)
+    return logger
 
 
 class LoggerClass(object):
@@ -91,7 +90,7 @@ class LoggerClass(object):
     __class_logger = None
 
     @classmethod
-    def _get_class_logger(cls):
+    def get_class_logger(cls):
         if cls.__class_logger is None:
             cls.__class_logger = get_logger(cls.__name__)
 
@@ -101,7 +100,7 @@ class LoggerClass(object):
 class LoggerObject(LoggerClass):
     """ Base class for objects that needs to access to a logger. """
     def __init__(self, logger_name_prefix: typing.Optional[str] = None, logger_name: typing.Optional[str] = None,
-                 logger_name_postfix: typing.Optional[str] = None, **kwargs):
+                 logger_name_postfix: typing.Optional[str] = None):
         """
         Creates a new object that has a logging capability. An optional custom name and/or a custom name may be
         appended to the fetched logger.
@@ -109,11 +108,14 @@ class LoggerObject(LoggerClass):
         :param logger_name: string to use as the logger name, defaults to the class name
         :param logger_name_postfix: string to append to the logger name
         """
-        super().__init__(**kwargs)
+        LoggerClass.__init__(self)
 
         # If no name is provided then used the class name as the logger name
         logger_name = (logger_name_prefix or '') + (logger_name or self.__class__.__name__) + \
                       (logger_name_postfix or '')
 
         # Get a logger based upon this name
-        self._logger = get_logger(logger_name)
+        self.__logger = get_logger(logger_name)
+
+    def get_logger(self) -> _ModifiedLogger:
+        return self.__logger

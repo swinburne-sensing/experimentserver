@@ -1,6 +1,7 @@
 %YAML 1.2
 ---
 version: 1
+disable_existing_loggers: False
 formatters:
   console_format:
     format: "%(asctime)s [%(levelname).1s] %(threadName)s %(name)s: %(message)s"

@@ -1,29 +1,92 @@
+from __future__ import annotations
+
 import abc
 import collections
+import functools
+import inspect
 import typing
+
+
+class BoundMetadataCall(object):
+    """  """
+
+    def __init__(self, parent: Metadata, target: object, **kwargs):
+        """
+
+        :param parent:
+        :param target:
+        :param args:
+        :param kwargs:
+        """
+        super(BoundMetadataCall, self).__init__()
+        
+        self.parent = parent
+        self.kwargs = kwargs
+        self.partial = functools.partial(self.parent.method.__get__(target, target.__class__), **kwargs)
+
+    def __call__(self, **kwargs):
+        return self.partial(**kwargs)
+
+    def __hash__(self):
+        if self.parent.primary_key is None:
+            return super(BoundMetadataCall, self).__hash__()
+        
+        # Generate hash based off arguments
+        key = []
+
+        for attribute in self.parent.primary_key:
+            if attribute in self.partial.keywords:
+                key.append(self.partial.keywords[attribute])
+            else:
+                key.append(None)
+
+        return hash(tuple(key))
+
+    def __lt__(self, other):
+        # Sort calls by parent
+        return self.parent < other.parent
 
 
 class Metadata(metaclass=abc.ABCMeta):
     """  """
 
-    def __init__(self, method: typing.Callable):
+    def __init__(self, method: typing.Callable, primary_key: typing.Optional[typing.List[str]] = None):
         """
 
         :param method:
-        :param priority:
+        :param primary_key
         """
         self.method = method
+        self.signature = inspect.signature(method)
+        self.primary_key = primary_key or tuple(self.signature.parameters)[1:]
 
-    def bind(self, target):
-        return self.method.__get__(target, target.__class__)
+    def bind(self, target: object, **kwargs) -> BoundMetadataCall:
+        """ Bind the wrapped method to a given parent class.
+
+        :param target: class to bind the method to
+        :param kwargs: arguments to pass to bound method
+        :return: BoundMetadataCall partial wrapper for the enclosed method
+        """
+        return BoundMetadataCall(self, target, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.__class__.__name__}({self.method})"
 
 
 TYPE_METADATA = typing.TypeVar('TYPE_METADATA', bound=Metadata)
 
 
 class OrderedMetadata(Metadata):
-    def __init__(self, method: typing.Callable, order):
-        super(OrderedMetadata, self).__init__(method)
+    """  """
+
+    def __init__(self, method: typing.Callable, order: int, primary_key: typing.Optional[typing.List[str]] = None):
+        """
+
+        :param method:
+        :param order:
+        :param primary_key:
+        """
+        super(OrderedMetadata, self).__init__(method, primary_key)
         
         self.order = order
 

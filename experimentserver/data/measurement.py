@@ -3,11 +3,12 @@ from __future__ import annotations
 import abc
 import threading
 import typing
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import experimentserver
+from experimentserver.data import TYPE_VALUE
 from experimentserver.util.logging import LoggerClass
-from . import TYPE_FIELD_DICT, TYPE_TAG_DICT, MeasurementGroup, is_unit
+from . import MeasurementGroup, is_unit
 
 
 class MeasurementTargetRemappingException(experimentserver.ApplicationException):
@@ -74,32 +75,25 @@ class Measurement(LoggerClass):
         for field_key, field_callable in dynamic_field.items():
             self._fields[field_key] = field_callable(self)
 
-    def update_tags(self, tags: TYPE_TAG_DICT) -> typing.NoReturn:
+    def get_fields(self, timedelta_support: bool = True, quantity_support: bool = True):
         """
 
-        :param tags:
-        :return:
-        """
-        self._tags.update(tags)
-
-    def update_fields(self, fields: TYPE_FIELD_DICT) -> typing.NoReturn:
-        """
-
-        :param fields:
-        :return:
-        """
-        self._fields.update(fields)
-
-    def get_fields(self, quantity_support: bool = True):
-        """
-
+        :param timedelta_support:
         :param quantity_support:
         :return:
         """
-        if quantity_support:
-            return self._fields
-        else:
-            return {key: field.magnitude if is_unit(field) else field for key, field in self._fields.items()}
+        fields = self._fields
+
+        for key in fields.keys():
+            if not quantity_support:
+                if is_unit(fields[key]):
+                    fields[key] = fields[key].magnitude
+
+            if timedelta_support:
+                if type(fields[key]) is timedelta:
+                    fields[key] = fields[key].total_seconds()
+
+        return fields
 
     def get_tags(self, quantity_support: bool = True):
         """ TODO
@@ -129,6 +123,15 @@ class Measurement(LoggerClass):
         """
         return self.generate_source_hash(self.source.get_export_source_name(), self.measurement_group)
 
+    def __getitem__(self, item):
+        if item in self._fields:
+            return self._fields[item]
+
+        if item in self._tags:
+            return self._tags[item]
+
+        raise ValueError(f"{item} not a valid field or tag")
+
     def __str__(self) -> str:
         fields = {k: f"{v}" if is_unit(v) else v for k, v in self._fields.items()}
 
@@ -144,7 +147,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             cls._metadata_dynamic_fields[name] = callback
 
-            cls._get_class_logger().debug(f"Registered dynamic field {name} = {callback!r}")
+            cls.get_class_logger().debug(f"Registered dynamic field {name} = {callback!r}")
 
     @classmethod
     def add_tag(cls, tag, value) -> typing.NoReturn:
@@ -156,7 +159,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             cls._metadata_global_tags[tag] = value
 
-            cls._get_class_logger().debug(f"Registered tag {tag} = {value!r}")
+            cls.get_class_logger().debug(f"Registered tag {tag} = {value!r}")
 
     @classmethod
     def add_tags(cls, tags: TYPE_TAG_DICT) -> typing.NoReturn:
@@ -167,7 +170,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             cls._metadata_global_tags.update(tags)
 
-            cls._get_class_logger().debug(f"Registered tags {tags!r}")
+            cls.get_class_logger().debug(f"Registered tags {tags!r}")
 
     @classmethod
     def push_metadata(cls) -> typing.NoReturn:
@@ -176,7 +179,7 @@ class Measurement(LoggerClass):
             cls._metadata_global_tags_stack.append((cls._metadata_dynamic_fields.copy(),
                                                     cls._metadata_global_tags.copy()))
 
-            cls._get_class_logger().debug(f"Pushed tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.get_class_logger().debug(f"Pushed tag stack (depth: {len(cls._metadata_global_tags_stack)})")
 
     @classmethod
     def pop_metadata(cls) -> typing.NoReturn:
@@ -190,7 +193,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             (cls._metadata_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop()
 
-            cls._get_class_logger().debug(f"Popped tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.get_class_logger().debug(f"Popped tag stack (depth: {len(cls._metadata_global_tags_stack)})")
 
 
 class MeasurementTarget(metaclass=abc.ABCMeta):
@@ -277,12 +280,19 @@ class DummyTarget(LoggerClass, MeasurementTarget):
         super(DummyTarget, self).__init__()
 
     def _record(self, measurement: Measurement) -> typing.NoReturn:
-        self._get_class_logger().info(measurement)
+        self.get_class_logger().debug(measurement)
+
+
+# Type hinting definitions for measurements
+TYPE_MEASUREMENT_LIST = typing.Sequence[Measurement]
+TYPE_FIELD_DICT = typing.Dict[str, TYPE_VALUE]
+TYPE_TAG_DICT = typing.Dict[str, TYPE_VALUE]
+TYPE_MEASUREMENT = typing.Union[Measurement, TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT]
 
 
 # Basic dynamic fields
-def dynamic_field_time_delta(initial_timestamp: float) -> Measurement.TYPE_DYNAMIC_FIELD:
+def dynamic_field_time_delta(initial_time: datetime) -> Measurement.TYPE_DYNAMIC_FIELD:
     def func(measurement: Measurement):
-        return measurement.timestamp.timestamp() - initial_timestamp
+        return (measurement.timestamp - initial_time).total_seconds()
 
     return func

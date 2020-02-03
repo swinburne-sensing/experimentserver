@@ -4,29 +4,29 @@ import typing
 
 from transitions import EventData
 
+from ..error import CommunicationError, ExternalError
+from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
+from ..base.scpi import SCPIHardware
+from ..base.visa import TYPE_ERROR, VISAHardware
 from experimentserver.data import MeasurementGroup, to_unit, TYPE_UNIT, TYPE_UNIT_OPTIONAL
 from experimentserver.data.measurement import Measurement
-from experimentserver.hardware.visa import TYPE_ERROR, VISAHardware
-from experimentserver.hardware.error import HardwareError
-from .visa import VISAEnum, TYPE_ENUM_ARGUMENT
-from .scpi import SCPIHardware
 
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
 
 
-class RigolError(HardwareError):
+class RigolError(ExternalError):
     pass
 
 
-class PowerSupplyChannel(VISAEnum):
+class PowerSupplyChannel(HardwareEnum):
     CHANNEL1 = enum.auto()
     CHANNEL2 = enum.auto()
     CHANNEL3 = enum.auto()
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[VISAEnum, typing.List[typing.Any]]]:
+    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[typing.Any]]]:
         return {
             cls.CHANNEL1: ['channel1', 'channel 1', 'ch1', 'ch 1', 1],
             cls.CHANNEL2: ['channel2', 'channel 2', 'ch2', 'ch 2', 2],
@@ -34,7 +34,7 @@ class PowerSupplyChannel(VISAEnum):
         }
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[VISAEnum, str]:
+    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
         return {
             cls.CHANNEL1: 'Channel 1',
             cls.CHANNEL2: 'Channel 2',
@@ -42,7 +42,7 @@ class PowerSupplyChannel(VISAEnum):
         }
 
     @classmethod
-    def _get_visa_map(cls) -> typing.Dict[VISAEnum, str]:
+    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
         return {
             cls.CHANNEL1: 'CH1',
             cls.CHANNEL2: 'CH2',
@@ -54,7 +54,7 @@ class PowerSupplyChannel(VISAEnum):
         return 'channel'
 
     @classmethod
-    def _get_tag_map(cls) -> typing.Dict[VISAEnum, typing.Any]:
+    def _get_tag_map(cls) -> typing.Dict[HardwareEnum, typing.Any]:
         return {
             cls.CHANNEL1: 1,
             cls.CHANNEL2: 2,
@@ -65,24 +65,8 @@ class PowerSupplyChannel(VISAEnum):
 class DP832PowerSupply(SCPIHardware):
     _RE_ERROR = re.compile(r'([0-9]+),"([\w\d\; ]+)"')
 
-    def __init__(self, *args, ovp_channel_1: TYPE_UNIT_OPTIONAL = None, ovp_channel_2: TYPE_UNIT_OPTIONAL = None,
-                 ovp_channel_3: TYPE_UNIT_OPTIONAL = None, ocp_channel_1: TYPE_UNIT_OPTIONAL = None,
-                 ocp_channel_2: TYPE_UNIT_OPTIONAL = None, ocp_channel_3: TYPE_UNIT_OPTIONAL = None,
-                 output_failsafe: bool = True, **kwargs):
+    def __init__(self, *args, output_failsafe: bool = True, **kwargs):
         super(DP832PowerSupply, self).__init__(*args, **kwargs)
-
-        # Save over voltage/current limits if provided
-        self._ovp = {
-            PowerSupplyChannel.CHANNEL1: to_unit(ovp_channel_1, 'volt'),
-            PowerSupplyChannel.CHANNEL2: to_unit(ovp_channel_2, 'volt'),
-            PowerSupplyChannel.CHANNEL3: to_unit(ovp_channel_3, 'volt')
-        }
-
-        self._ocp = {
-            PowerSupplyChannel.CHANNEL1: to_unit(ocp_channel_1, 'amp'),
-            PowerSupplyChannel.CHANNEL2: to_unit(ocp_channel_2, 'amp'),
-            PowerSupplyChannel.CHANNEL3: to_unit(ocp_channel_3, 'amp')
-        }
 
         # On error attempt to disable output channels
         self._output_failsafe = output_failsafe
@@ -92,7 +76,7 @@ class DP832PowerSupply(SCPIHardware):
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         if msg is not None:
             if len(msg) > 45:
-                cls._get_class_logger().warning("Truncating message to 45 characters (original: {})".format(msg))
+                cls.get_class_logger().warning("Truncating message to 45 characters (original: {})".format(msg))
                 msg = msg[:45]
 
             transaction.write(":DISP:TEXT \"{}\"".format(msg))
@@ -117,10 +101,10 @@ class DP832PowerSupply(SCPIHardware):
 
     # Hardware implementation
     @staticmethod
-    def get_hardware_description() -> str:
+    def get_hardware_class_description() -> str:
         return 'Rigol DP832 3-Channel Power Supply'
 
-    # Instrument state
+    # Instrument manager
     def get_ocp_alarm(self, channel: PowerSupplyChannel):
         with self.visa_transaction() as transaction:
             alarm = transaction.query(':OUTP:OCP:ALAR? {}', channel)
@@ -143,49 +127,66 @@ class DP832PowerSupply(SCPIHardware):
         else:
             raise RigolError(f"Unexpected response to OVP alarm query: {alarm!r}")
 
-    @SCPIHardware.register_parameter(description='Enable output channel')
-    def enable_output(self, channel: TYPE_ENUM_ARGUMENT):
+    @SCPIHardware.register_parameter(description='Enable/disable output channel', order=90, primary_key=['channel'])
+    def set_output(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], enable: bool):
         channel = PowerSupplyChannel.from_input(channel)
 
         with self.visa_transaction() as transaction:
-            transaction.write(':OUTP {},ON', channel)
+            transaction.write(':OUTP {},{}', 'ON' if enable else 'OFF')
 
-    @SCPIHardware.register_parameter(description='Disable output channel')
-    def disable_output(self, channel: TYPE_ENUM_ARGUMENT):
+    @SCPIHardware.register_parameter(description='Set output current limit', order=40, primary_key=['channel'])
+    def set_ocp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: TYPE_UNIT_OPTIONAL = None):
         channel = PowerSupplyChannel.from_input(channel)
+        current = to_unit(current, 'amp', magnitude=True)
 
         with self.visa_transaction() as transaction:
-            transaction.write(':OUTP {},OFF', channel)
+            if current is not None:
+                transaction.write(':OUTP:OCP {},ON', channel)
+                transaction.write(':OUTP:OCP:VAL {},{}', channel, current)
+            else:
+                transaction.write(':OUTP:OCP {},OFF', channel)
 
-    @SCPIHardware.register_parameter(description='Set output voltage')
-    def set_voltage(self, channel: TYPE_ENUM_ARGUMENT, voltage: TYPE_UNIT):
+    @SCPIHardware.register_parameter(description='Set output voltage limit', order=40, primary_key=['channel'])
+    def set_ovp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], voltage: TYPE_UNIT_OPTIONAL = None):
+        channel = PowerSupplyChannel.from_input(channel)
+        voltage = to_unit(voltage, 'volt', magnitude=True)
+
+        with self.visa_transaction() as transaction:
+            if voltage is not None:
+                transaction.write(':OUTP:OVP {},ON', channel)
+                transaction.write(':OUTP:OVP:VAL {},{}', channel, voltage)
+            else:
+                transaction.write(':OUTP:OVP {},OFF', channel)
+
+    @SCPIHardware.register_parameter(description='Set output voltage', primary_key=['channel'])
+    def set_voltage(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], voltage: TYPE_UNIT):
         channel = PowerSupplyChannel.from_input(channel)
         voltage = to_unit(voltage, 'volt', magnitude=True)
 
         with self.visa_transaction() as transaction:
             transaction.write(':SOUR{}:VOLT {}', channel, voltage)
 
-    @SCPIHardware.register_parameter(description='Set output voltage')
-    def set_current(self, channel: TYPE_ENUM_ARGUMENT, current: TYPE_UNIT):
+    @SCPIHardware.register_parameter(description='Set output voltage', primary_key=['channel'])
+    def set_current(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: TYPE_UNIT):
         channel = PowerSupplyChannel.from_input(channel)
         current = to_unit(current, 'amp', magnitude=True)
 
         with self.visa_transaction() as transaction:
             transaction.write(':SOUR{}:CURR {}', channel, current)
 
-    @SCPIHardware.register_measurement(description='Output state, voltage and current',
+    @SCPIHardware.register_measurement(description='Output manager, voltage and current',
                                        measurement_group=MeasurementGroup.SUPPLY, force=True)
-    def get_supply_state(self) -> Measurement:
+    def get_supply_state(self) -> typing.Sequence[Measurement]:
         status = []
 
         for channel in PowerSupplyChannel:
             with self.visa_transaction() as transaction:
                 # Query over voltage and current alarms
                 if self.get_ocp_alarm(channel):
-                    self._logger.error(f"Over current alarm triggered on channel {channel}")
+                    self.get_logger().error(f"Over current alarm triggered on channel {channel}")
 
                 if self.get_ovp_alarm(channel):
-                    self._logger.error(f"Over voltage alarm triggered on channel {channel}")
+                    self.get_logger().error(f"Over voltage alarm triggered on channel {channel}")
 
                 channel_ocp = transaction.query(':OUTP:OCP:VAL?', channel)
                 channel_ovp = transaction.query(':OUTP:OVP:VAL?', channel)
@@ -228,32 +229,13 @@ class DP832PowerSupply(SCPIHardware):
 
         return status
 
+    # Event handling
     def transition_connect(self, event: typing.Optional[EventData] = None):
         super().transition_connect(event)
 
         # Enable remote mode
         with self.visa_transaction() as transaction:
             transaction.write(':SYST:REM')
-        
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        super(DP832PowerSupply, self).transition_configure(event)
-        
-        # Apply over voltage/current limits to channels
-        for channel, limit in self._ovp.items():
-            with self.visa_transaction() as transaction:
-                if limit is not None:
-                    transaction.write(':OUTP:OVP {},ON', channel)
-                    transaction.write(':OUTP:OVP:VAL {},{}', channel, limit.magnitude)
-                else:
-                    transaction.write(':OUTP:OVP {},OFF', channel)
-
-        for channel, limit in self._ocp.items():
-            with self.visa_transaction() as transaction:
-                if limit is not None:
-                    transaction.write(':OUTP:OCP {},ON', channel)
-                    transaction.write(':OUTP:OCP:VAL {},{}', channel, limit.magnitude)
-                else:
-                    transaction.write(':OUTP:OCP {},OFF', channel)
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None):
         # Return to local control
@@ -262,15 +244,21 @@ class DP832PowerSupply(SCPIHardware):
 
         super().transition_disconnect(event)
 
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        if self._output_failsafe:
+            for channel in PowerSupplyChannel:
+                self.set_output(channel, False)
+
     def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         # Disconnect all output channels
         if self._output_failsafe:
             if self._visa_resource is not None:
-                with self.visa_transaction(error_check=False) as transaction:
+                with self.visa_transaction(error_raise=False) as transaction:
                     for channel in PowerSupplyChannel:
                         try:
-                            transaction.write(':OUTP {} OFF', channel)
-                        except HardwareError:
-                            self._logger.warning(f"Failed to disable output channel {channel} after error", notify=True)
+                            transaction.write(':OUTP {},OFF', channel)
+                        except (CommunicationError, ExternalError):
+                            self.get_logger().warning(f"Failed to disable output channel {channel} after error",
+                                                      notify=True)
 
         super().transition_error(event)

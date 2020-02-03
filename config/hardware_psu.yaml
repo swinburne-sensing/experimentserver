@@ -3,6 +3,13 @@
 class: rigol.DP832PowerSupply
 identifier: 'powersupply'
 visa_address: 'USB0::0x1AB1::0x0E11::DP8C212902708::INSTR'
-ovp_channel_2: 7.5 V
-ocp_channel_2: 500 mA
+parameters:
+  # Limit for LED channel
+  - set_ovp: 2, 7.5V
+  - set_ocp: 2, 500mA
+
+  # Supply for auxiliary equipment
+  - set_voltage: 3, 5V
+  - set_current: 3, 1A
+  - set_output: 3, True
 ...

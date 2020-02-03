@@ -1,0 +1,33 @@
+<header id="top-head">
+    <div class="uk-container uk-container-expand uk-background-secondary"
+            uk-sticky="sel-target: .uk-navbar-container; cls-active: uk-navbar-sticky">
+        <nav class="uk-navbar" data-uk-navbar="mode:click; duration: 250">
+            <div class="uk-navbar-left uk-light">
+                <ul class="uk-navbar-nav">
+                    <li class="uk-active"><a href="/">
+                        <span class="uk-text-large"><span uk-icon="icon: rss"_stage_inde></span> {{ metadata.app_name }}</span></a>
+                    </li>
+                    <li><a href="#acknowledgements-dialog" uk-toggle>About</a></li>
+                </ul>
+            </div>
+            <div class="uk-navbar-right uk-light">
+                <ul class="uk-navbar-nav uk-visible@m">
+                    {% if metadata.mode == "debug" %}
+                        <li class="uk-active">
+                            <a href="/debug/manager"><span uk-icon="icon: hashtag"_stage_inde></span>Debug</a>
+                        </li>
+                    {% endif %}
+                    <li class="uk-active">
+                        <a href="#hardware-dialog" id="hardware-dialog-open" uk-toggle><span uk-icon="icon: settings"_stage_inde></span> Hardware</a>
+                    </li>
+                    <li class="uk-active">
+                        <a href="#event-dialog" id="event-dialog-open" uk-toggle><span uk-icon="icon: comments"_stage_inde></span> Event Log</a>
+                    </li>
+                    <li class="uk-active">
+                        <a href="#shutdown-dialog" uk-toggle><span uk-icon="icon: bolt"_stage_inde></span>Shutdown</a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+    </div>
+</header>

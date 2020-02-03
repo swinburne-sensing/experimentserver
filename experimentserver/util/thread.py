@@ -34,7 +34,7 @@ class ThreadLock(LoggerObject):
 
         if not locked:
             if not quiet:
-                self._logger.debug('Waiting for lock')
+                self.get_logger().debug('Waiting for lock')
 
             # Try again with timeout
             locked = self._lock.acquire(timeout=timeout)
@@ -45,7 +45,7 @@ class ThreadLock(LoggerObject):
         self._depth += 1
 
         if not quiet:
-            self._logger.debug(f"Lock {self._identifier} acquired (depth: {self._depth})")
+            self.get_logger().debug(f"Lock {self._identifier} acquired (depth: {self._depth})")
 
         return True
 
@@ -53,7 +53,7 @@ class ThreadLock(LoggerObject):
         self._depth -= 1
 
         if not quiet:
-            self._logger.debug(f"Lock {self._identifier} released (depth: {self._depth})")
+            self.get_logger().debug(f"Lock {self._identifier} released (depth: {self._depth})")
 
         self._lock.release()
 
@@ -92,7 +92,7 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
     """ Base class for threads with a managed lifecycle. Managed thread can be asked to exit cleanly.
 
     Note that all managed threads run as daemons, so if the worst happens and everything crashes they are not left
-    running in the background (potentially preventing relaunching).
+    running in the background (potentially holding resources, preventing relaunching).
     """
     _thread_instances: typing.List[ManagedThread] = []
 
@@ -103,25 +103,25 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
                  thread_name_postfix: typing.Optional[str] = None, thread_daemon: bool = False,
                  exception_threshold: typing.Optional[int] = 10, exception_timeout: typing.Optional[float] = 60.0,
                  run_final: bool = False):
-        """
+        """ Instantiate a managed thread.
 
-        :param thread_target:
-        :param thread_target_args:
-        :param thread_target_kwargs:
+        :param thread_target: target callable to run in thread
+        :param thread_target_args: arguments passed to target callable when run
+        :param thread_target_kwargs: keyword arguments passed to target callable when run
         :param thread_name_prefix:
         :param thread_name:
         :param thread_name_postfix:
-        :param thread_daemon:
-        :param exception_threshold:
-        :param exception_timeout:
+        :param thread_daemon: if True then run thread as daemon
+        :param exception_threshold: allowable number of unhandled exceptions before killing thread
+        :param exception_timeout: timeout before exception counter is reset
         """
         # Thread name
         self._thread_name = (thread_name_prefix or '') + (thread_name or self.__class__.__name__) + \
                             (thread_name_postfix or '')
 
-        super().__init__(logger_name=self._thread_name)
+        LoggerObject.__init__(self, logger_name=self._thread_name)
 
-        self._logger.debug(f"Created thread {self._thread_name}")
+        self.get_logger().debug(f"Created thread {self._thread_name}")
 
         # Thread target and arguments
         self._thread_target = thread_target
@@ -143,36 +143,36 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
         # Add self to list of instances
         self._thread_instances.append(self)
 
-    def is_alive(self) -> bool:
+    def is_thread_alive(self) -> bool:
         """
 
         :return:
         """
         return self._thread.is_alive()
 
-    def start(self) -> typing.NoReturn:
+    def thread_start(self) -> typing.NoReturn:
         """
 
         :return:
         """
-        self._logger.debug('Requesting start')
+        self.get_logger().debug('Requesting start')
         self._thread.start()
 
     @abc.abstractmethod
-    def stop(self, *args, **kwargs) -> typing.NoReturn:
+    def thread_stop(self, *args, **kwargs) -> typing.NoReturn:
         """
 
         :param args:
         :param kwargs:
         :return:
         """
-        self._logger.debug('Requesting stop')
+        self.get_logger().debug('Requesting stop')
 
     def join(self, timeout: typing.Optional[float] = None):
         self._thread.join(timeout)
 
     @abc.abstractmethod
-    def _test_stop(self) -> bool:
+    def _test_thread_stop(self) -> bool:
         """
 
         :return:
@@ -183,24 +183,24 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
         pass
 
     @classmethod
-    def join_all(cls, timeout: typing.Optional[float] = None) -> typing.NoReturn:
+    def join_all_thread(cls, timeout: typing.Optional[float] = None) -> typing.NoReturn:
         """
 
         :param timeout:
         :return:
         """
         for instance in cls._thread_instances:
-            if instance.is_alive():
+            if instance.is_thread_alive():
                 if instance._thread_daemon:
-                    cls._get_class_logger().debug(f"Ignoring daemon {instance._thread_name}")
+                    cls.get_class_logger().debug(f"Ignoring daemon {instance._thread_name}")
                 else:
-                    cls._get_class_logger().debug(f"Joining {instance._thread_name}")
+                    cls.get_class_logger().debug(f"Joining {instance._thread_name}")
                     instance._thread.join(timeout)
             else:
-                cls._get_class_logger().debug(f"Thread {instance._thread_name} is not running")
+                cls.get_class_logger().debug(f"Thread {instance._thread_name} is not running")
 
     @classmethod
-    def stop_all(cls, *args, **kwargs) -> typing.NoReturn:
+    def stop_all_thread(cls, *args, **kwargs) -> typing.NoReturn:
         """
 
         :param args:
@@ -208,26 +208,26 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
         :return:
         """
         for instance in cls._thread_instances:
-            if instance.is_alive():
-                instance.stop(*args, **kwargs)
+            if instance.is_thread_alive():
+                instance.thread_stop(*args, **kwargs)
             else:
-                cls._get_class_logger().debug(f"Thread {instance._thread_name} is already stopped")
+                cls.get_class_logger().debug(f"Thread {instance._thread_name} is already stopped")
 
     def __thread_target_wrapper(self) -> typing.NoReturn:
-        self._logger.info('Thread started')
+        self.get_logger().info('Thread started')
 
         exception_count = 0
         exception_time = None
 
         try:
-            while not self._test_stop():
+            while not self._test_thread_stop():
                 if not threading.main_thread().is_alive():
-                    self._logger.error('Main thread has stopped, stopping child thread')
+                    self.get_logger().error('Main thread has stopped, stopping child thread')
                     break
 
                 # Clear exception counter if timeout has expired
                 if exception_time is not None and time.time() > exception_time:
-                    self._logger.info('Resetting exception counter')
+                    self.get_logger().info('Resetting exception counter')
                     exception_count = 0
                     exception_time = None
 
@@ -240,56 +240,70 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
                         # Handle exception threshold
                         exception_count += 1
 
-                        self._logger.exception(f"Unhandled exception in thread ({exception_count} of "
-                                               f"{self._exception_threshold} allowed)")
+                        self.get_logger().exception(f"Unhandled exception in thread ({exception_count} of "
+                                                    f"{self._exception_threshold} allowed)")
 
                         exception_time = time.time() + self._exception_timeout
 
                         if exception_count >= self._exception_threshold:
-                            self._logger.error(f"Number of exceptions exceeds configured threshold "
-                                               f"({self._exception_threshold}), interrupting main thread")
+                            self.get_logger().error(f"Number of exceptions exceeds configured threshold "
+                                                    f"({self._exception_threshold}), interrupting main thread")
 
                             _thread.interrupt_main()
 
-                            self._logger.error('Thread halted')
+                            self.get_logger().error('Thread halted')
 
                             return
                     else:
-                        self._logger.exception('Unhandled exception in thread')
+                        self.get_logger().exception('Unhandled exception in thread')
         finally:
             # Final call to target function (allows for cleanup)
             if self._run_final:
                 try:
                     self._thread_target(*self._thread_target_args, **self._thread_target_kwargs)
                 except Exception:
-                    self._logger.exception('Unhandled exception in thread during shutdown')
+                    self.get_logger().exception('Unhandled exception in thread during shutdown')
 
-            self._logger.info('Thread stopped')
+            self.get_logger().info('Thread stopped')
 
 
 class CallbackThread(ManagedThread):
-    def __init__(self, name: str, callback: typing.Callable,
+    """  """
+
+    def __init__(self, name: typing.Optional[str], callback: typing.Callable,
                  callback_args: typing.Optional[typing.List[typing.Any]] = None,
                  callback_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None, thread_daemon: bool = False,
                  run_final: bool = False):
-        super().__init__(thread_name_postfix=':' + name, thread_target=callback, thread_target_args=callback_args or [],
+        """
+
+        :param name:
+        :param callback:
+        :param callback_args:
+        :param callback_kwargs:
+        :param thread_daemon:
+        :param run_final:
+        """
+        if name is not None:
+            name = ':' + name
+
+        super().__init__(thread_name_postfix=name, thread_target=callback, thread_target_args=callback_args or [],
                          thread_target_kwargs=callback_kwargs or {}, thread_daemon=thread_daemon, run_final=run_final)
 
         # Thread stop flag
         self._thread_stop = threading.Event()
 
-    def start(self) -> typing.NoReturn:
+    def thread_start(self) -> typing.NoReturn:
         # Clear existing stop flag if any
         self._thread_stop.clear()
 
-        super().start()
+        super().thread_start()
 
-    def stop(self, *args, **kwargs) -> typing.NoReturn:
-        super().stop()
+    def thread_stop(self, *args, **kwargs) -> typing.NoReturn:
+        super().thread_stop()
 
         self._thread_stop.set()
 
-    def _test_stop(self) -> bool:
+    def _test_thread_stop(self) -> bool:
         return self._thread_stop.is_set()
 
 
@@ -330,10 +344,10 @@ class QueueThread(ManagedThread):
         # Thread stop flag
         self._thread_stop = False
 
-    def stop(self, *args, **kwargs) -> typing.NoReturn:
+    def thread_stop(self, *args, **kwargs) -> typing.NoReturn:
         self._append(_QueueCommand.FINISH)
 
-    def _test_stop(self) -> bool:
+    def _test_thread_stop(self) -> bool:
         return self._thread_stop
 
     def _handle_thread_exception(self, exc: Exception):
@@ -357,20 +371,20 @@ class QueueThread(ManagedThread):
                 queue_entry = self._queue.get(timeout=self.QUEUE_TIMEOUT)
 
                 if queue_entry.command is _QueueCommand.STOP:
-                    self._logger.info('Immediate stop requested')
+                    self.get_logger().info('Immediate stop requested')
                     self._thread_stop = True
                     break
                 elif queue_entry.command is _QueueCommand.PROCESS:
                     # Pass object to callback
                     self._event_callback(queue_entry.data, *self._event_callback_args, **self._event_callback_kwargs)
                 elif queue_entry.command is _QueueCommand.FINISH:
-                    self._logger.info('Delayed stop requested')
+                    self.get_logger().info('Delayed stop requested')
 
                     # Send empty call to callback to finalise process
                     try:
                         self._event_callback(None, *self._event_callback_args, **self._event_callback_kwargs)
                     except Exception:
-                        self._logger.exception(f"Unhandled exception in queue callback when processing cleanup")
+                        self.get_logger().exception(f"Unhandled exception in queue callback when processing cleanup")
                     finally:
                         self._thread_stop = True
             except queue.Empty:
@@ -378,7 +392,7 @@ class QueueThread(ManagedThread):
 
 
 def stop_all(join: bool = True, timeout: typing.Optional[float] = None):
-    ManagedThread.stop_all()
+    ManagedThread.stop_all_thread()
 
     if join:
-        ManagedThread.join_all(timeout)
+        ManagedThread.join_all_thread(timeout)

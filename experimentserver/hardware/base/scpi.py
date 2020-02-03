@@ -5,7 +5,7 @@ import typing
 from transitions import EventData
 
 import experimentserver
-from .visa import VISAHardware, VISACommunicationError, VISAHardwareError
+from .visa import VISAHardware, VISACommunicationError, VISAExternalError
 
 
 class SCPIDisplayUnavailable(experimentserver.ApplicationException):
@@ -42,18 +42,25 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     # SCPI commands
     @staticmethod
     def scpi_reset(transaction: typing.Optional[VISAHardware._VISATransaction] = None) -> typing.NoReturn:
-        """ Issue SCPI instrument reset command. Should return instrument to power-up defaults. """
+        """ Issue SCPI instrument reset command. Should return instrument to power-up defaults.
+
+        :param transaction:
+        """
         transaction.write('*RST')
 
     @staticmethod
     def scpi_clear(transaction: VISAHardware._VISATransaction) -> typing.NoReturn:
-        """ Issue SCPI instrument clear status command. Clears event registers and error queue. """
+        """ Issue SCPI instrument clear status command. Clears event registers and error queue.
+
+        :param transaction:
+        """
         transaction.write('*CLS')
 
     @staticmethod
     def scpi_get_event_status_enable(transaction: VISAHardware._VISATransaction) -> int:
         """ Query SCPI event status enable register.
 
+        :param transaction:
         :return: integer containing current event status enable register value
         """
         return int(transaction.query('*ESE?'))
@@ -62,6 +69,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_get_event_status_opc(transaction: VISAHardware._VISATransaction) -> bool:
         """ Query SCPI operation complete status.
 
+        :param transaction:
         :return: True when all pending operations are complete
         """
         return bool(transaction.query('*OPC?'))
@@ -70,6 +78,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_get_service_request(transaction: VISAHardware._VISATransaction) -> int:
         """ Query SCPI service request enable register.
 
+        :param transaction:
         :return: integer containing current service request enable register value
         """
         return int(transaction.query('*SRE?'))
@@ -78,6 +87,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_get_status(transaction: VISAHardware._VISATransaction) -> int:
         """ Query SCPI status byte.
 
+        :param transaction:
         :return: integer containing current status byte register value
         """
         return int(transaction.query('*STB?'))
@@ -86,6 +96,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_get_event_status(transaction: VISAHardware._VISATransaction) -> int:
         """
 
+        :param transaction:
         :return:
         """
         return int(transaction.query('*ESR?'))
@@ -96,6 +107,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
 
         Typically returns manufacturer, model number, serial number, firmware version and/or software revision.
 
+        :param transaction:
         :return: string containing identification information
         """
         return transaction.query('*IDN?')
@@ -104,6 +116,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_get_options(transaction: VISAHardware._VISATransaction) -> str:
         """
 
+        :param transaction:
         :return:
         """
         return transaction.query('*OPT?')
@@ -112,6 +125,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_set_event_status_enable(transaction: VISAHardware._VISATransaction, mask) -> typing.NoReturn:
         """
 
+        :param transaction:
         :param mask:
         :return:
         """
@@ -121,6 +135,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_set_service_request_enable(transaction: VISAHardware._VISATransaction, mask) -> typing.NoReturn:
         """
 
+        :param transaction:
         :param mask:
         :return:
         """
@@ -130,6 +145,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_set_event_status_opc(transaction: VISAHardware._VISATransaction):
         """ TODO
 
+        :param transaction:
         :return:
         """
         transaction.write('*OPC')
@@ -138,6 +154,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     def scpi_trigger(transaction: VISAHardware._VISATransaction) -> typing.NoReturn:
         """ TODO
 
+        :param transaction:
         :return:
         """
         transaction.write('*TRG')
@@ -149,6 +166,8 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         Notes: from experience this command usually has mixed results. Behaviour is often defines by the status event
         register is some way, so consider making sure that is correct. Sometimes behaviour varies by protocol too, so
         USB commands may always return instantly even if their operation has not completed.
+
+        :param transaction:
         """
         transaction.write('*WAI')
 
@@ -160,7 +179,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
             self.scpi_reset(transaction)
 
             # Log instrument identifier
-            self._logger.info(f"SCPI ID: {self.scpi_get_identifier(transaction)}")
+            self.get_logger().info(f"SCPI ID: {self.scpi_get_identifier(transaction)}")
 
         with self.visa_transaction(error_raise=False) as transaction:
             try:
@@ -173,7 +192,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 self.scpi_display(transaction)
             except SCPIDisplayUnavailable:
                 # If no display is available then skip
-                self._logger.warning('Unable to display instrument identifier', event=False)
+                self.get_logger().warning('Unable to display instrument identifier', event=False)
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None):
         with self.visa_transaction(error_raise=False) as transaction:
@@ -182,7 +201,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 self.scpi_display(transaction, 'Disconnected')
             except SCPIDisplayUnavailable:
                 # If no display is available then skip
-                self._logger.warning('Unable to display disconnect message', event=False)
+                self.get_logger().warning('Unable to display disconnect message', event=False)
 
         super().transition_disconnect(event)
 
@@ -190,8 +209,8 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         with self.visa_transaction(error_raise=False) as transaction:
             try:
                 self.scpi_display(transaction, 'Error')
-            except (VISAHardwareError, VISACommunicationError, SCPIDisplayUnavailable):
+            except (VISAExternalError, VISACommunicationError, SCPIDisplayUnavailable):
                 # If no display is available then skip
-                self._logger.warning('Unable to display error message', event=False)
+                self.get_logger().warning('Unable to display error message', event=False)
 
         super().transition_error(event)

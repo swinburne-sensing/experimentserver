@@ -1,4 +1,3 @@
-import io
 import logging
 import os.path
 import queue
@@ -127,10 +126,10 @@ class PushoverNotificationHandler(logging.Handler):
 
         # Thread for sending messages, prevents blocking for logging
         self._client_thread = QueueThread('Pushover', self._pushover_thread)
-        self._client_thread.start()
+        self._client_thread.thread_start()
 
     def emit(self, record):
-        if not self._client_thread.is_alive():
+        if not self._client_thread.is_thread_alive():
             raise NotifyException('Pushover thread has stopped')
 
         msg = self.format(record)

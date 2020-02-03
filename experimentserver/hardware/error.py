@@ -1,7 +1,12 @@
 import experimentserver
 
 
-class CommandError(experimentserver.ApplicationException):
+class HardwareError(experimentserver.ApplicationException):
+    """ Base exception for all errors thrown by Hardware devices. """
+    pass
+
+
+class CommandError(HardwareError):
     """ Base exception for errors caused by setting parameters or taking measurements.
 
     May be attached to a HardwareCommunicationError or HardwareReportedError.
@@ -9,7 +14,7 @@ class CommandError(experimentserver.ApplicationException):
     pass
 
 
-class CommunicationError(experimentserver.ApplicationException):
+class CommunicationError(HardwareError):
     """ Base exception for IO and other Hardware communication errors.
 
     This covers errors that are reported server side, and may require reconnection of the Hardware in order to
@@ -18,7 +23,7 @@ class CommunicationError(experimentserver.ApplicationException):
     pass
 
 
-class HardwareError(experimentserver.ApplicationException):
+class ExternalError(HardwareError):
     """ Base exception for Hardware reported errors or for errors caused by unexpected or invalid instrument response.
 
     This covers errors reported by the Hardware itself, and may not require reconnection of the Hardware in order to
@@ -40,6 +45,6 @@ class ParameterError(CommandError):
     pass
 
 
-class NoEventHandler(experimentserver.ApplicationException):
+class NoResetHandler(experimentserver.ApplicationException):
     """ Exception to indicate that reset events should be handled as setup events. """
     pass

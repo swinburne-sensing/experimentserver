@@ -1,5 +1,112 @@
 {% extends "global_template.html" %}
 
+{% block head %}
+    {{ super() }}
+    <script>
+    let stages = [];
+
+    function updateStages() {
+        // Clear table
+        $('#procedure-stage').empty();
+
+        let index = 0;
+
+        stages.forEach(function (item) {
+            $('#procedure-stage').append(
+                '<tr>' +
+                    '<td>' + (item.index + 1) + '</td>' +
+                    '<td>' + item.type + '</td>' +
+                    '<td>' + item.duration + '</td>' +
+                    '<td>Cake</td>' +
+                    '<td><a href="#" class="uk-icon-button procedure-edit stage-delete" uk-icon="close" stage-index="' + index + '" uk-tooltip="title: Delete this stage; pos: bottom"></a></td>' +
+                '</tr>'
+            );
+
+            index++;
+        });
+
+        $('.stage-delete').click(function () {
+            let index = $(this).attr('stage-index');
+
+            stages.splice(index, 1);
+
+            updateStages();
+        });
+    }
+
+    $(document).ready(function() {
+        const revertAjax = registerAjax('#procedure-revert', '/procedure/stage', function (response) {
+            // Update local stages
+            stages = response.data;
+
+            updateStages();
+        }, undefined, 'Unable to retrieve stages from server.');
+        revertAjax();
+    });
+    </script>
+{% endblock %}
+
 {% block content %}
-<h1>This is a test</h1>
+    <div>
+        <h2>Settings</h2>
+
+        <p>This is a test.</p>
+
+        <h2>Procedure</h2>
+
+        <div id="control-edit" class="uk-display-inline-block">
+            <div class="uk-inline">
+                <button class="uk-button uk-button-default uk-button-small" uk-tooltip="title: Add and remove hardware from experiment; pos: bottom" type="button"><span uk-icon="icon: cog"></span> Hardware</button>
+                <div class="es-hardware" uk-dropdown="mode: click">
+                    <ul class="uk-nav uk-dropdown-nav">
+                        {% for hardware_metadata in hardware %}
+                            <li class="uk-active es-hardware-identifier"><input class="uk-checkbox procedure-edit hardware-enable" type="checkbox"{% if hardware_metadata.active %} checked{% endif %} identifier="{{ hardware_metadata.identifier }}"> {{ hardware_metadata.identifier }}</li>
+                            <li class="es-hardware-description">{{ hardware_metadata.description }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+
+            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Add time delay; pos: bottom" id="procedure-delay"><span uk-icon="icon: future"></span> Add Delay</button>
+            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Add analyte exposure; pos: bottom" id="procedure-pulse"><span uk-icon="icon: sign-in"></span> Add Pulse</button>
+            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Save changes to procedure; pos: bottom" id="procedure-save"><span uk-icon="icon: push"></span> Save</button>
+            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Reset changes to procedure; pos: bottom" id="procedure-revert"><span uk-icon="icon: pull"></span> Revert</button>
+            <button class="uk-button uk-button-default uk-button-small" uk-tooltip="title: Export procedure to a file; pos: bottom" id="procedure-export"><span uk-icon="icon: download"></span> Export</button>
+        </div>
+
+        <table id="procedure" class="uk-table uk-table-divider">
+        <thead>
+            <tr>
+                <th class="uk-table-shrink">Stage</th>
+                <th class="uk-table-shrink">Type</th>
+                <th class="uk-table-shrink">Duration</th>
+                <th>Configuration</th>
+                <th class="uk-table-shrink"></th>
+            </tr>
+        </thead>
+        <tbody id="procedure-stage">
+            <tr>
+                <td>1</td>
+                <td>1:00:00</td>
+                <td>1</td>
+                <td>1</td>
+                <td><a href="" class="uk-icon-button" uk-icon="close" uk-tooltip="title: Delete this stage; pos: bottom"></a></td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>1:00:00</td>
+                <td>2</td>
+                <td>2</td>
+                <td><a href="" class="uk-icon-button" uk-icon="close"></a></td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>1</td>
+                <td>3</td>
+                <td>1:00:00</td>
+                <td><a href="" class="uk-icon-button" uk-icon="close"></a></td>
+            </tr>
+        </tbody>
+        </table>
+    </div>
 {% endblock %}

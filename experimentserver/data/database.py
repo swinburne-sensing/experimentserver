@@ -27,17 +27,18 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
     def __init__(self, identifier: str, connect_args: typing.Dict[str, typing.Any]):
         self._identifier = identifier
 
-        super().__init__(logger_name_postfix=f":{self._identifier}", measurement_target_name=identifier)
+        LoggerObject.__init__(self, logger_name_postfix=f":{self._identifier}")
+        MeasurementTarget.__init__(self, identifier)
 
         # Client to InfluxDB instance
         self.client = influxdb.InfluxDBClient(**connect_args)
 
         # Test connection
         try:
-            self._logger.info(f"Influx DB {self.client.ping()}")
+            self.get_logger().info(f"Influx DB {self.client.ping()}")
         except requests.exceptions.ConnectionError as exc:
             raise DatabaseException(f"Connection to database server (connection: {self._identifier}) could not be "
-                                    f"established, the server and/or local internet connection may be "
+                                    f"established, the server or local internet connection may be "
                                     f"unavailable") from exc
 
         # Buffer for points
@@ -46,14 +47,14 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
 
         # Thread for database writing
         self._event_thread = QueueThread(f"Database:{self._identifier}", event_callback=self._influxdb_event_handle)
-        self._event_thread.start()
+        self._event_thread.thread_start()
 
     def _record(self, measurement: Measurement) -> typing.NoReturn:
         point = {
             'measurement': measurement.measurement_group.value,
             'tags': measurement.get_tags(False),
             'time': int(1000000 * measurement.timestamp.timestamp()),
-            'fields': measurement.get_fields(False)
+            'fields': measurement.get_fields(False, False)
         }
 
         self._event_thread.append(point)
@@ -64,18 +65,26 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
             self._point_buffer.append(obj)
 
         if obj is None or time.time() > self._point_timeout:
+            # Update timeout
+            self._point_timeout = time.time() + self._BUFFER_TIMEOUT
+
             if len(self._point_buffer) > 0:
-                # Write points to database
                 try:
+                    # Write points to database
                     if self.client.write_points(self._point_buffer, time_precision='u'):
                         # Flush buffer
                         self._point_buffer = []
-                except influxdb.exceptions.InfluxDBClientError as exc:
-                    self._logger.warning(f"Unable to write data points to database", exc_info=True, event=False,
-                                         notify=True)
+                except influxdb.exceptions.InfluxDBServerError:
+                    # Problem server side, retry later
+                    self.get_logger().warning(f"Unable to write data points to database (server error)", exc_info=True,
+                                              event=False, notify=False)
+                except influxdb.exceptions.InfluxDBClientError:
+                    # Dump response, will include possibly bad payload
+                    self.get_logger().error(f"Unable to write data points to database (client error)", exc_info=True,
+                                            event=False, notify=True)
 
-            # Update timeout
-            self._point_timeout = time.time() + self._BUFFER_TIMEOUT
+                    # Flush buffer
+                    self._point_buffer = []
 
 
 _db_client: typing.Dict[str, _DatabaseClient] = {}

@@ -960,7 +960,7 @@ a.uk-link-reset,
 .uk-table-hover tbody tr:hover {
   background: #ffd;
 }
-/* Active state
+/* Active manager
  ========================================================================== */
 .uk-table > tr.uk-active,
 .uk-table tbody tr.uk-active {
@@ -1284,7 +1284,7 @@ button.uk-icon:not(:disabled) {
 /* Track
  ========================================================================== */
 /*
- * 1. Safari doesn't have a focus state. Using active instead.
+ * 1. Safari doesn't have a focus manager. Using active instead.
  */
 /* Webkit */
 .uk-range::-webkit-slider-runnable-track {
@@ -2147,7 +2147,7 @@ select.uk-form-width-xsmall {
 /*
      * Create position context to superimpose the successor elements border
      * Known issue: If you use an `a` element as button and an icon inside,
-     * the active state will not work if you click the icon inside the button
+     * the active manager will not work if you click the icon inside the button
      * Workaround: Just use a `button` or `input` element as button
      */
 .uk-button-group .uk-button:hover,
@@ -4119,7 +4119,7 @@ ul.uk-nav-sub {
 }
 /*
  * Hover
- * Apply hover style also to focus state and if dropdown is opened
+ * Apply hover style also to focus manager and if dropdown is opened
  */
 .uk-navbar-nav > li:hover > a,
 .uk-navbar-nav > li > a:focus,
@@ -5789,7 +5789,7 @@ ul.uk-nav-sub {
 /*
  * Prepare slide-out animation (Used in reveal and push mode)
  * Using `position: left` instead of `transform` because position `fixed` elements like sticky navbars
- * lose their fixed state and behaves like `absolute` within a transformed container
+ * lose their fixed manager and behaves like `absolute` within a transformed container
  * 1. Provide a fixed width and prevent shrinking
  */
 .uk-offcanvas-container {
@@ -6145,14 +6145,14 @@ ul.uk-nav-sub {
   margin-top: 20px;
 }
 /*
- * Remove animated circles for indeterminate state in IE11 and Edge
+ * Remove animated circles for indeterminate manager in IE11 and Edge
  */
 .uk-progress:indeterminate {
   color: transparent;
 }
 /*
  * Progress container
- * 2. Remove progress bar for indeterminate state in Firefox
+ * 2. Remove progress bar for indeterminate manager in Firefox
  */
 .uk-progress::-webkit-progress-bar {
   background-color: #f8f8f8;

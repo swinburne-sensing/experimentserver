@@ -1,5 +1,6 @@
 import enum
 import typing
+from datetime import timedelta
 
 import pint
 
@@ -20,15 +21,19 @@ units.define('standard_cubic_centimeter_per_minute = cm ** 3 / min = sccm')
 # Shorthand
 Quantity = units.Quantity
 
-TYPE_ARGUMENT = typing.Union[None, str, int, float, bool, Quantity]
-TYPE_FIELD_DICT = typing.Dict[str, TYPE_ARGUMENT]
-TYPE_TAG_DICT = typing.Dict[str, TYPE_ARGUMENT]
+# Values are optional fields that represent data of some sort
+TYPE_VALUE = typing.Union[None, str, int, float, bool, Quantity]
+
+# Unit type hinting
 TYPE_UNIT = typing.Union[str, float, Quantity]
 TYPE_UNIT_OPTIONAL = typing.Optional[TYPE_UNIT]
+
+TYPE_TIME = typing.Union[float, str, timedelta]
 
 
 class MeasurementGroup(enum.Enum):
     """ Definition for known types of hardware or measurements. """
+
     # Metadata
     EVENT = 'event'
     STATUS = 'status'
@@ -63,11 +68,8 @@ class MeasurementGroup(enum.Enum):
 
     # Complex signals
     TIME_DOMAIN_SAMPLE = 'timedomain'
-    FREQUENY_DOMAIN_SAMPLE = 'freqdomain'
+    FREQUENCY_DOMAIN_SAMPLE = 'freqdomain'
     TIME_FREQUENCY_SAMPLE = 'tfdomain'
-
-
-TYPING_MEASUREMENT_SERIES = typing.Iterable[typing.Tuple[MeasurementGroup, TYPE_FIELD_DICT]]
 
 
 def is_unit(obj: typing.Any) -> bool:
@@ -79,21 +81,25 @@ def is_unit(obj: typing.Any) -> bool:
     return type(obj) is Quantity
 
 
-def to_unit(x: typing.Union[str, int, float, Quantity],
-            default_unit: typing.Optional[typing.Union[str, units.Unit]] = None,
-            magnitude: bool = False) -> Quantity:
+def to_unit(x: TYPE_VALUE, default_unit: typing.Optional[typing.Union[str, units.Unit]] = None,
+            magnitude: bool = False, allow_none: bool = True) -> Quantity:
     """ Create a data from arbitrary input.
 
-    If input is already a Quantity then it is returned in prefered units. If a number or a string then a new Quantity is
-    created, using pint for recognition of input.
+    If input is already a Quantity then it is returned in preferred units. If a number or a string then a new Quantity
+    is created, using pint for recognition of input.
 
     :param x:
-    :param default_unit:
-    :param magnitude:
+    :param default_unit: if provided this unit will be used if none is provided, if a unit is provided in input then \
+        input will be cast to this unit
+    :param magnitude: if True return the magnitude of the unit (nomalised to base unit)
+    :param allow_none: if False then exception is thrown if input is None or empty
     :return:
     """
     # Ignore empty inputs
-    if x is None:
+    if x is None or len(x) == 0:
+        if not allow_none:
+            raise ValueError('None not allowed in this context')
+
         return None
 
     # Fetch data if provided as a string
@@ -142,3 +148,9 @@ def to_unit(x: typing.Union[str, int, float, Quantity],
         return x.magnitude
     else:
         return x
+
+
+def to_timedelta(x: TYPE_VALUE):
+    x = to_unit(x, 'sec', magnitude=True, allow_none=False)
+
+    return timedelta(seconds=x)

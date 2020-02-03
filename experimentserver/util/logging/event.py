@@ -47,24 +47,24 @@ class DatabaseEventHandler(logging.Handler, MeasurementSource):
         }
 
         record_tags = {
-            'level': record.levelname,
-            'level_number': int(record.levelno),
-            'function': record.funcName,
-            'line_number': int(record.lineno)
+            'log_level': record.levelname,
+            'log_level_number': int(record.levelno),
+            'log_function': record.funcName,
+            'log_line_number': int(record.lineno)
         }
 
         # Get optional _fields
         if hasattr(record, 'thread'):
-            record_tags['thread_id'] = int(record.thread)
+            record_tags['log_thread_id'] = int(record.thread)
 
         if hasattr(record, 'threadName'):
-            record_tags['thread'] = record.threadName
+            record_tags['log_thread'] = record.threadName
 
         if hasattr(record, 'process'):
-            record_tags['process_id'] = int(record.process)
+            record_tags['log_process_id'] = int(record.process)
 
         if hasattr(record, 'processName'):
-            record_tags['process'] = record.processName
+            record_tags['log_process'] = record.processName
 
         # Save record to database
         MeasurementTarget.record(Measurement(self, MeasurementGroup.EVENT, record_payload,

@@ -2,8 +2,7 @@ import typing
 
 from transitions import EventData
 
-from . import Hardware
-
+from .. import Hardware
 
 # Author tag for support purposes
 __author__ = 'Chris Harrison'
@@ -15,7 +14,7 @@ class TestHardware(Hardware):
         super().__init__(*args, **kwargs)
 
     @staticmethod
-    def get_hardware_description() -> str:
+    def get_hardware_class_description() -> str:
         return 'Test Hardware'
 
     def transition_connect(self, event: typing.Optional[EventData] = None):

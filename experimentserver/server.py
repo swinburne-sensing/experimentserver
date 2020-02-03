@@ -1,14 +1,17 @@
 import typing
 
 import experimentserver
-import experimentserver.hardware as hardware
 from .config import ConfigManager
-from .data import TYPE_TAG_DICT
-from .experiment import Procedure
-from .hardware.state.manager import StateManager
+from .data.measurement import TYPE_TAG_DICT
+from .experiment.procedure import Procedure
+from .experiment.stage import DelayStage
+from .hardware import Hardware, device
+from .hardware.manager import HardwareManager
 from .util.logging import get_logger
 from .util.module import class_instance_from_dict
-from .ui.web import WebUI
+from .ui.web import WebServer
+from .ui.html import register_html
+from .ui.json import register_json
 
 
 _LOGGER = get_logger(__name__)
@@ -19,9 +22,9 @@ class ServerException(experimentserver.ApplicationException):
 
 
 def start_server(config: ConfigManager, metadata: TYPE_TAG_DICT):
-    # Hardware and state instances
-    hardware_list: typing.Dict[str, hardware.Hardware] = {}
-    manager_list: typing.Dict[str, StateManager] = {}
+    # Hardware and manager instances
+    hardware_list: typing.Dict[str, Hardware] = {}
+    manager_list: typing.Dict[str, HardwareManager] = {}
 
     # Setup hardware instances and managers
     for hardware_inst_config in config.get('hardware', default=[]):
@@ -29,15 +32,15 @@ def start_server(config: ConfigManager, metadata: TYPE_TAG_DICT):
 
         try:
             # Create hardware object
-            hardware_inst = class_instance_from_dict(hardware_inst_config, hardware)
+            hardware_inst = class_instance_from_dict(hardware_inst_config, device)
 
-            hardware_inst = typing.cast(hardware.Hardware, hardware_inst)
+            hardware_inst = typing.cast(Hardware, hardware_inst)
 
             hardware_list[hardware_inst.get_hardware_identifier()] = hardware_inst
 
-            # Create and start state
-            manager_inst = StateManager(hardware_inst)
-            manager_inst.start()
+            # Create and start manager
+            manager_inst = HardwareManager(hardware_inst)
+            manager_inst.thread_start()
 
             manager_list[hardware_inst.get_hardware_identifier()] = manager_inst
         except Exception as exc:
@@ -45,12 +48,23 @@ def start_server(config: ConfigManager, metadata: TYPE_TAG_DICT):
                 from exc
 
     # Create experiment procedure
-    procedure = Procedure(manager_list)
+    procedure = Procedure()
+    procedure.thread_start()
+
+    # FIXME remove in final
+    procedure.add_hardware('multimeter')
+    procedure.add_stage(DelayStage('30 secs', True))
+    procedure.add_stage(DelayStage('0.1min'))
+    procedure.add_stage(DelayStage('1min'))
+
+    # Setup web server
+    ui = WebServer(config, metadata, procedure)
+    register_html(ui)
+    register_json(ui)
 
     # Start web server
-    ui = WebUI(config, metadata, manager_list, procedure)
     ui.run()
 
     # Cleanup managers
     for manager_inst in manager_list.values():
-        manager_inst.stop()
+        manager_inst.thread_stop()

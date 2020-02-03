@@ -3,7 +3,6 @@
 
 import argparse
 import atexit
-import datetime
 import getpass
 import logging.config
 import os
@@ -11,6 +10,7 @@ import platform
 import socket
 import time
 import sys
+from datetime import datetime
 
 import experimentserver.util.thread
 from experimentserver.versions import dependencies, python_version_tested
@@ -37,13 +37,13 @@ def __exit_handler(exit_logger):
 if __name__ == '__main__':
     config_default = os.path.abspath(os.path.join(experimentserver.ROOT_PATH, '..', 'config/experiment.yaml'))
 
-    time_startup = time.time()
+    time_startup = datetime.now()
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description=f"{experimentserver.__app_name__} {experimentserver.__version__}")
 
     parser.add_argument('config', default=[config_default], help='YAML configuration file', nargs='*')
     parser.add_argument('--debug', action='store_true', default=False, dest='debug', help='Enable debug mode')
-    parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata _tags (key=value)')
+    parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata tags (key=value)')
 
     app_args = parser.parse_args()
 
@@ -97,16 +97,16 @@ if __name__ == '__main__':
         server_version = list(map(int, experimentserver.__version__.split('.')))
 
         app_metadata = {
-            'hostname': socket.getfqdn(),
-            'username': getpass.getuser(),
-            'mode': 'debug' if app_debug else 'release',
-            'startup_timestamp': time.time(),
-            'startup_time': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'server_name': experimentserver.__app_name__,
-            'server_version': experimentserver.__version__,
-            'server_version_major': server_version[0],
-            'server_version_minor': server_version[1],
-            'server_version_revision': server_version[2]
+            'launch_hostname': socket.getfqdn(),
+            'launch_username': getpass.getuser(),
+            'launch_timestamp': time.time(),
+            'launch_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'app_mode': 'debug' if app_debug else 'release',
+            'app_name': experimentserver.__app_name__,
+            'app_version': experimentserver.__version__,
+            'app_version_major': server_version[0],
+            'app_version_minor': server_version[1],
+            'app_version_revision': server_version[2]
         }
 
         # Append CLI metadata
@@ -124,9 +124,7 @@ if __name__ == '__main__':
         Measurement.add_tags(app_metadata)
 
         # Add startup dynamic field
-        Measurement.add_dynamic_field('time_delta_startup', dynamic_field_time_delta(time_startup))
-
-        app_metadata_string = '\n'.join((f"    {k!s}: {v!s}" for k, v in app_metadata.items()))
+        Measurement.add_dynamic_field('time_delta_launch', dynamic_field_time_delta(time_startup))
 
         # Setup database connections
         for database_identifier, database_connect_args in app_config['database'].items():
@@ -137,6 +135,7 @@ if __name__ == '__main__':
         for exporter_source, database_target in app_config['remap'].items():
             MeasurementTarget.measurement_target_remap(exporter_source, database_target)
 
+        app_metadata_string = '\n'.join((f"    {k!s}: {v!s}" for k, v in app_metadata.items()))
         root_logger.info(f"Started\nMetadata:\n{app_metadata_string}", event=True, notify=True)
 
         # Append git hash if available
@@ -154,7 +153,6 @@ if __name__ == '__main__':
         for module_name, module_version in dependencies.items():
             root_logger.info(f"Library: {module_name} {module_version}")
 
-        # Launch application
         root_logger.debug('Registering exit handler')
         atexit.register(__exit_handler, root_logger)
 
@@ -179,20 +177,18 @@ if __name__ == '__main__':
             # If URL is available then provide it now
             url = None
 
-            if 'url' in app_config and 'grafana' in app_config['url'] and app_config['url']['grafana'] is not None:
-                url = app_config['url']['grafana']
-
-                root_logger.info(f"Runtime Grafana URL {url.format(int(1000 * time_startup), 'now')}", notify=True)
+            if 'url.grafana' in app_config:
+                url = app_config.get('url.grafana').format(int(1000 * time_startup.timestamp()), 'now')
+                root_logger.info(f"Runtime Grafana URL {url}", notify=True)
 
             # Run main application
             start_server(app_config, app_metadata)
 
-            runtime = str(datetime.timedelta(seconds=time.time() - time_startup))
-            root_logger.info(f"Stopped, total runtime: {runtime}", notify=True, event=True)
+            root_logger.info(f"Stopped, total runtime: {datetime.now() - time_startup!s}", notify=True, event=True)
 
             if url is not None:
                 root_logger.info(f"Completed Grafana URL "
-                                 f"{url.format(int(1000 * time_startup), int(1000 * time.time()))}", notify=True)
+                                 f"{url.format(int(1000 * time_startup.timestamp()), int(1000 * time.time()))}", notify=True)
         finally:
             # Stop observer
             observer.stop()

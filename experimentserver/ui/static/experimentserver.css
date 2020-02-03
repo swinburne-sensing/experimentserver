@@ -1,36 +1,93 @@
 html {
-	height: 100%;
+    height: 100%;
 }
 
 header div.uk-container {
-	padding-left: 15px;
-	padding-right: 15px;
+    padding-left: 15px;
+    padding-right: 15px;
 }
 
 body {
-	display: flex;
-	flex-direction: column;
-	height: 100%;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
 
 footer {
-	flex-shrink: 0;
+    flex-shrink: 0;
 }
 
 footer nav div {
-	margin: 5px;
+    margin: 5px;
 }
 
 #top-head {
-	z-index: 9;
-	top: 0;
-	left: 0;
-	right: 0;
+    z-index: 9;
+    top: 0;
+    left: 0;
+    right: 0;
+}
+
+#control {
+    background: #eee;
+    padding: 3px;
+}
+
+#control-status {
+    margin-left: 5px;
+}
+
+#control-main {
+    margin-left: 10px;
+}
+
+#control-jump {
+    margin-left: 10px;
+}
+
+#control-jump .uk-button-default {
+    background-color: #fff;
 }
 
 #content {
-	flex: 1 0 auto;
-	margin-left: 0;
-	margin-top: 52px;
-	padding: 30px 10px 0 10px;
+    flex: 1 0 auto;
+    margin-left: 0;
+    margin-top: 0;
+    padding: 0;
+}
+
+#body {
+    padding: 0 10px 0 10px;
+}
+
+.uk-button svg {
+    top: -1.5px;
+    position: relative;
+}
+
+.uk-notification {
+    border: 1px #000;
+    min-width: 400px;
+    width: auto;
+}
+
+.uk-notification hr {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.es-hardware {
+    padding-bottom: 10px;
+}
+
+li.es-hardware-description {
+    margin-bottom: 15px;
+}
+
+li.es-hardware-identifier {
+    font-weight: bold;
+}
+
+header a span {
+    padding-right: 5px !important;
 }

@@ -3,7 +3,7 @@
 logging: !include logging.yaml
 
 url:
-  grafana: "https://research.etoast.net/grafana"
+  grafana: !envopt GRAFANA_URL
 
 database:
   default:
@@ -26,12 +26,12 @@ database:
     database: !env INFLUXDB_USER_DATABASE
 
 hardware:
+  - !include hardware_mfc.yaml
   - !include hardware_multimeter.yaml
   - !include hardware_psu.yaml
 
-exporter:
+remap:
   multimeter: private
-  multichannel: private
   powersupply: private
 
 server: !include server.yaml

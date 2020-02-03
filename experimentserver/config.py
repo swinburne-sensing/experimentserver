@@ -145,7 +145,7 @@ class _YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
         filename_abs = os.path.join(self._root, filename)
         filename_abs = os.path.abspath(filename_abs)
 
-        self._logger.debug(f"Include {filename_abs}")
+        self.get_logger().debug(f"Include {filename_abs}")
 
         with open(filename_abs) as f:
             include_data = yaml.load(f, _YAMLShortcutLoader)

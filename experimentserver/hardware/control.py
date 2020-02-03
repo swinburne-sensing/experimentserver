@@ -1,12 +1,10 @@
-from __future__ import annotations
-
-import enum
+from experimentserver.util.state import ManagedState, ManagedTransition
 
 
-class HardwareState(enum.Enum):
-    """ Enum representing Hardware state machine states. """
+class HardwareState(ManagedState):
+    """ Enum representing Hardware manager machine states. """
 
-    # Disconnected state, Hardware is not connected in any way
+    # Disconnected manager, Hardware is not connected in any way
     DISCONNECTED = 'disconnected'
 
     # Hardware is connected but requires configuration
@@ -18,7 +16,7 @@ class HardwareState(enum.Enum):
     # Hardware is producing measurements
     RUNNING = 'running'
 
-    # Error state
+    # Error manager
     ERROR = 'error'
 
     def is_active(self) -> bool:
@@ -39,9 +37,9 @@ class HardwareState(enum.Enum):
         return not self.is_error() and self != self.DISCONNECTED and self != self.CONNECTED
 
     def is_error(self) -> bool:
-        """ Test if Hardware is in error state.
+        """ Test if Hardware is in error manager.
 
-        :return: True when in error state, False otherwise
+        :return: True when in error manager, False otherwise
         """
         return self == self.ERROR
 
@@ -53,8 +51,8 @@ class HardwareState(enum.Enum):
         return self == self.RUNNING
 
 
-class HardwareTransition(enum.Enum):
-    """ Enum representing Hardware state machine transitions. """
+class HardwareTransition(ManagedTransition):
+    """ Enum representing Hardware manager machine transitions. """
 
     # Connect and disconnect from hardware
     CONNECT = 'connect'
@@ -68,41 +66,38 @@ class HardwareTransition(enum.Enum):
     START = 'start'
     STOP = 'stop'
 
-    # Move to error state
+    # Move to error manager
     ERROR = 'error'
 
-    # Reset from error state (and possibly resume operation)
+    # Reset from error manager (and possibly resume operation)
     RESET = 'reset'
 
-    def apply(self, model) -> bool:
-        # Fetch method
-        method = getattr(model, self.value)
+    # Process parameters (contains metadata)
+    PARAMETER = 'parameter'
 
-        return method()
-
-    @staticmethod
-    def get_transitions():
+    @classmethod
+    def get_transitions(cls):
         return [
             # Connect
             {
                 # From disconnected
-                'trigger': HardwareTransition.CONNECT.value,
+                'trigger': cls.CONNECT.value,
                 'source': HardwareState.DISCONNECTED.value,
                 'dest': HardwareState.CONNECTED.value,
-                'before': 'transition_' + HardwareTransition.CONNECT.value
+                'before': 'transition_' + cls.CONNECT.value
             },
 
             # Disconnect
             {
                 # From connected
-                'trigger': HardwareTransition.DISCONNECT.value,
+                'trigger': cls.DISCONNECT.value,
                 'source': HardwareState.CONNECTED.value,
                 'dest': HardwareState.DISCONNECTED.value,
-                'before': 'transition_' + HardwareTransition.DISCONNECT.value
+                'before': 'transition_' + cls.DISCONNECT.value
             },
             {
                 # From error
-                'trigger': HardwareTransition.DISCONNECT.value,
+                'trigger': cls.DISCONNECT.value,
                 'source': HardwareState.ERROR.value,
                 'dest': HardwareState.DISCONNECTED.value
             },
@@ -110,49 +105,49 @@ class HardwareTransition(enum.Enum):
             # Configure
             {
                 # From connected
-                'trigger': HardwareTransition.CONFIGURE.value,
+                'trigger': cls.CONFIGURE.value,
                 'source': HardwareState.CONNECTED.value,
                 'dest': HardwareState.CONFIGURED.value,
-                'before': 'transition_' + HardwareTransition.CONFIGURE.value
+                'before': 'transition_' + cls.CONFIGURE.value
             },
 
             # Cleanup
             {
                 # From configured
-                'trigger': HardwareTransition.CLEANUP.value,
+                'trigger': cls.CLEANUP.value,
                 'source': HardwareState.CONFIGURED.value,
                 'dest': HardwareState.CONNECTED.value,
-                'before': 'transition_' + HardwareTransition.CLEANUP.value
+                'before': 'transition_' + cls.CLEANUP.value
             },
 
             # Start
             {
                 # From configured
-                'trigger': HardwareTransition.START.value,
+                'trigger': cls.START.value,
                 'source': HardwareState.CONFIGURED.value,
                 'dest': HardwareState.RUNNING.value,
-                'before': 'transition_' + HardwareTransition.START.value
+                'before': 'transition_' + cls.START.value
             },
 
             # Stop
             {
                 # From running
-                'trigger': HardwareTransition.STOP.value,
+                'trigger': cls.STOP.value,
                 'source': HardwareState.RUNNING.value,
                 'dest': HardwareState.CONFIGURED.value,
-                'before': 'transition_' + HardwareTransition.STOP.value
+                'before': 'transition_' + cls.STOP.value
             },
 
             # Error transitions
             {
                 # From disconnected
-                'trigger': HardwareTransition.ERROR.value,
+                'trigger': cls.ERROR.value,
                 'source': HardwareState.DISCONNECTED.value,
-                'dest': HardwareState.ERROR.value
+                'dest': HardwareState.DISCONNECTED.value
             },
             {
                 # From connected
-                'trigger': HardwareTransition.ERROR.value,
+                'trigger': cls.ERROR.value,
                 'source': [HardwareState.CONNECTED.value, HardwareState.CONFIGURED.value, HardwareState.RUNNING.value],
                 'dest': HardwareState.ERROR.value,
                 'after': '_wrapped_transition_error'
@@ -161,9 +156,23 @@ class HardwareTransition(enum.Enum):
             # Reset transitions
             {
                 # from reconnect
-                'trigger': HardwareTransition.RESET.value,
+                'trigger': cls.RESET.value,
                 'source': HardwareState.ERROR.value,
                 'dest': HardwareState.DISCONNECTED.value,
                 'before': '_wrapped_transition_reset',
+            },
+
+            # Parameter transitions
+            {
+                'trigger': cls.PARAMETER.value,
+                'source': [HardwareState.CONFIGURED.value, HardwareState.RUNNING.value],
+                'dest': '=',
+                'after': '_handle_parameter'
+            },
+            {
+                'trigger': cls.PARAMETER.value,
+                'source': HardwareState.ERROR.value,
+                'dest': '=',
+                'after': '_buffer_parameters'
             }
         ]

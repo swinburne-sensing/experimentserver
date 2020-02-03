@@ -4,17 +4,18 @@ import typing
 
 from transitions import EventData
 
-from experimentserver.data import MeasurementGroup, to_unit, TYPE_FIELD_DICT
+from experimentserver.data import MeasurementGroup, to_unit
+from experimentserver.data.measurement import TYPE_FIELD_DICT
 from experimentserver.hardware.error import CommunicationError, MeasurementUnavailable
-from .scpi import SCPIHardware
-from .visa import VISAEnum, VISAHardware, TYPE_ERROR
-
+from experimentserver.hardware.base.scpi import SCPIHardware
+from experimentserver.hardware.base.visa import VISAHardware, TYPE_ERROR
+from experimentserver.hardware.base.enum import HardwareEnum
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
 
 
-class DAQChannelFunction(VISAEnum):
+class DAQChannelFunction(HardwareEnum):
     VOLTAGE_DC = enum.auto()
     VOLTAGE_AC = enum.auto()
     CURRENT_DC = enum.auto()
@@ -28,7 +29,7 @@ class DAQChannelFunction(VISAEnum):
     PERIOD = enum.auto()
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[VISAEnum, typing.List[str]]]:
+    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
         return {
             cls.VOLTAGE_DC: ['v', 'volt', 'volts', 'voltage'],
             cls.CURRENT_DC: ['a', 'i', 'amp', 'amps', 'amperage'],
@@ -36,7 +37,7 @@ class DAQChannelFunction(VISAEnum):
         }
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[VISAEnum, str]:
+    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
         return {
             cls.VOLTAGE_DC: 'Voltage DC',
             cls.VOLTAGE_AC: 'Voltage AC',
@@ -52,7 +53,7 @@ class DAQChannelFunction(VISAEnum):
         }
 
     @classmethod
-    def _get_visa_map(cls) -> typing.Dict[VISAEnum, str]:
+    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
         return {
             cls.VOLTAGE_DC: '\"VOLT\"',
             cls.VOLTAGE_AC: '\"VOLT:AC\"',
@@ -87,7 +88,7 @@ class DAQ6510Multimeter(SCPIHardware):
         if msg is not None:
             # Truncate long messages
             if len(msg) > 20:
-                cls._get_class_logger().warning(f"Truncating message to 20 characters (original: {msg})")
+                cls.get_class_logger().warning(f"Truncating message to 20 characters (original: {msg})")
                 msg = msg[:20]
 
             transaction.write(':DISP:USER1:TEXT {}', msg)
@@ -112,7 +113,7 @@ class DAQ6510Multimeter(SCPIHardware):
 
     # Hardware implementation
     @staticmethod
-    def get_hardware_description() -> str:
+    def get_hardware_class_description() -> str:
         return 'Keithley DAQ6510 Data Acquisition/Multimeter System'
 
     # SCPI overrides
@@ -123,7 +124,7 @@ class DAQ6510Multimeter(SCPIHardware):
             # Check for available modules
             for slot in self._SLOTS:
                 card_idn = transaction.query(':SYST:CARD{}:IDN?', slot)
-                self._logger.info(f"Card {slot}: {card_idn}")
+                self.get_logger().info(f"Card {slot}: {card_idn}")
 
                 if card_idn.lower().startswith('empty slot'):
                     self._slot_module[slot] = None
@@ -137,7 +138,7 @@ class DAQ6510Multimeter(SCPIHardware):
 
         super().transition_disconnect(event)
 
-    # Instrument state
+    # Instrument manager
     def is_front_panel(self) -> bool:
         with self.visa_transaction() as transaction:
             terminals = transaction.query(':ROUT:TERM?')

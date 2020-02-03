@@ -19,11 +19,11 @@ class Observer(LoggerObject):
 
     def start(self):
         self._process.start()
-        self._logger.info('Observer process started')
+        self.get_logger().info('Observer process started')
 
     def stop(self):
         if not self._process.is_alive():
-            self._logger.error('Observer process not running')
+            self.get_logger().error('Observer process not running')
 
         self._process_stop_flag.set()
         self._process.join()
