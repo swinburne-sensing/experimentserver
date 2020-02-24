@@ -5,11 +5,17 @@ import typing
 
 # Shortcuts
 NOTSET = logging.NOTSET
+DEBUG_LOCK = logging.DEBUG - 2
+DEBUG_TRANS = logging.DEBUG - 1
 DEBUG = logging.DEBUG
 INFO = logging.INFO
 WARNING = logging.WARNING
 ERROR = logging.ERROR
 CRITICAL = logging.CRITICAL
+
+# New logging levels
+logging.addLevelName(DEBUG_LOCK, 'LOCK')
+logging.addLevelName(DEBUG_TRANS, 'TRANS')
 
 
 class _ModifiedLogger(logging.Logger):
@@ -36,6 +42,34 @@ class _ModifiedLogger(logging.Logger):
             kwargs['extra'].update({'event': True})
         else:
             kwargs['extra'].update({'event': False})
+
+    def debug_lock(self, msg, *args, notify: bool = False, event: bool = False, **kwargs) -> typing.NoReturn:
+        """ Debug for lock/threading level events, normally not needed unless something is very wrong.
+
+        :param msg: passed to log
+        :param args: passed to log
+        :param notify: passed to log
+        :param event: passed to log
+        :param kwargs: passed to log
+        """
+        self._update_args(notify, event, kwargs)
+
+        if self.isEnabledFor(DEBUG_LOCK):
+            self.log(DEBUG_TRANS, msg, *args, **kwargs)
+
+    def debug_transaction(self, msg, *args, notify: bool = False, event: bool = False, **kwargs) -> typing.NoReturn:
+        """ Debug for transaction level events, normally not needed unless something is very wrong.
+
+        :param msg: passed to log
+        :param args: passed to log
+        :param notify: passed to log
+        :param event: passed to log
+        :param kwargs: passed to log
+        """
+        self._update_args(notify, event, kwargs)
+
+        if self.isEnabledFor(DEBUG_TRANS):
+            self.log(DEBUG_TRANS, msg, *args, **kwargs)
 
     def debug(self, msg, *args, notify: bool = False, event: bool = False, **kwargs):
         self._update_args(notify, event, kwargs)

@@ -34,7 +34,7 @@ class ThreadLock(LoggerObject):
 
         if not locked:
             if not quiet:
-                self.get_logger().debug('Waiting for lock')
+                self.get_logger().debug_lock('Waiting for lock')
 
             # Try again with timeout
             locked = self._lock.acquire(timeout=timeout)
@@ -45,7 +45,7 @@ class ThreadLock(LoggerObject):
         self._depth += 1
 
         if not quiet:
-            self.get_logger().debug(f"Lock {self._identifier} acquired (depth: {self._depth})")
+            self.get_logger().debug_lock(f"Lock {self._identifier} acquired (depth: {self._depth})")
 
         return True
 
@@ -53,7 +53,7 @@ class ThreadLock(LoggerObject):
         self._depth -= 1
 
         if not quiet:
-            self.get_logger().debug(f"Lock {self._identifier} released (depth: {self._depth})")
+            self.get_logger().debug_lock(f"Lock {self._identifier} released (depth: {self._depth})")
 
         self._lock.release()
 
@@ -172,7 +172,7 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
         self._thread.join(timeout)
 
     @abc.abstractmethod
-    def _test_thread_stop(self) -> bool:
+    def thread_stop_requested(self) -> bool:
         """
 
         :return:
@@ -220,7 +220,7 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
         exception_time = None
 
         try:
-            while not self._test_thread_stop():
+            while not self.thread_stop_requested():
                 if not threading.main_thread().is_alive():
                     self.get_logger().error('Main thread has stopped, stopping child thread')
                     break
@@ -303,7 +303,7 @@ class CallbackThread(ManagedThread):
 
         self._thread_stop.set()
 
-    def _test_thread_stop(self) -> bool:
+    def thread_stop_requested(self) -> bool:
         return self._thread_stop.is_set()
 
 
@@ -347,7 +347,7 @@ class QueueThread(ManagedThread):
     def thread_stop(self, *args, **kwargs) -> typing.NoReturn:
         self._append(_QueueCommand.FINISH)
 
-    def _test_thread_stop(self) -> bool:
+    def thread_stop_requested(self) -> bool:
         return self._thread_stop
 
     def _handle_thread_exception(self, exc: Exception):

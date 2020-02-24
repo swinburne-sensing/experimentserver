@@ -2,7 +2,7 @@ import typing
 from datetime import datetime, timedelta
 
 from . import BaseStage
-from experimentserver.data import to_timedelta, TYPE_TIME
+from ..data import TYPE_TIME, to_timedelta
 
 
 class DelayStage(BaseStage):

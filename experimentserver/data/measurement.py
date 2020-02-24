@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import abc
+import enum
 import threading
 import typing
 from datetime import datetime, timedelta
 
 import experimentserver
-from experimentserver.data import TYPE_VALUE
 from experimentserver.util.logging import LoggerClass
-from . import MeasurementGroup, is_unit
+from .unit import is_unit, TYPE_VALUE
 
 
 class MeasurementTargetRemappingException(experimentserver.ApplicationException):
@@ -135,7 +135,10 @@ class Measurement(LoggerClass):
     def __str__(self) -> str:
         fields = {k: f"{v}" if is_unit(v) else v for k, v in self._fields.items()}
 
-        return f"Measurement(fields={fields}, tags={self._tags})"
+        return f"Measurement(source={self.source.get_export_source_name()}, " \
+               f"measurement_group={self.measurement_group}, fields={fields}, " \
+               f"timestamp={self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}, " \
+               f"tags={self._tags})"
 
     @classmethod
     def add_dynamic_field(cls, name, callback: TYPE_DYNAMIC_FIELD) -> typing.NoReturn:
@@ -280,7 +283,7 @@ class DummyTarget(LoggerClass, MeasurementTarget):
         super(DummyTarget, self).__init__()
 
     def _record(self, measurement: Measurement) -> typing.NoReturn:
-        self.get_class_logger().debug(measurement)
+        self.get_class_logger().info(measurement)
 
 
 # Type hinting definitions for measurements
@@ -296,3 +299,47 @@ def dynamic_field_time_delta(initial_time: datetime) -> Measurement.TYPE_DYNAMIC
         return (measurement.timestamp - initial_time).total_seconds()
 
     return func
+
+
+class MeasurementGroup(enum.Enum):
+    """ Definition for known types of hardware or measurements. """
+
+    # Metadata
+    EVENT = 'event'
+    STATUS = 'status'
+
+    # Gas flow
+    MFC = 'mfc'
+
+    # Electrical measurements
+    VOLTAGE = 'voltage'
+    CURRENT = 'current'
+    RESISTANCE = 'resistance'
+
+    # LCR
+    CAPACITANCE = 'capacitance'
+    INDUCTANCE = 'inductance'
+    DISSIPATION = 'dissipation'
+    QUALITY = 'quality'
+
+    # Measure current, supply voltage
+    CONDUCTOMETRIC_IV = 'conductometric_iv'
+
+    # Measure voltage, supply current
+    CONDUCTOMETRIC_VI = 'conductometric_vi'
+
+    # Environmental conditions
+    TEMPERATURE = 'temperature'
+    HUMIDITY = 'humidity'
+
+    # CV/CC power supply
+    SUPPLY = 'supply'
+
+    # Frequency
+    FREQUENCY = 'frequency'
+    PERIOD = 'period'
+
+    # Complex signals
+    TIME_DOMAIN_SAMPLE = 'timedomain'
+    FREQUENCY_DOMAIN_SAMPLE = 'freqdomain'
+    TIME_FREQUENCY_SAMPLE = 'tfdomain'

@@ -26,8 +26,11 @@ database:
     database: !env INFLUXDB_USER_DATABASE
 
 hardware:
+  - !include hardware_lcr.yaml
+  - !include hardware_linkam.yaml
   - !include hardware_mfc.yaml
   - !include hardware_multimeter.yaml
+  - !include hardware_picoammeter.yaml
   - !include hardware_psu.yaml
 
 remap:

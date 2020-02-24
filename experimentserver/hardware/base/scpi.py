@@ -195,7 +195,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 self.get_logger().warning('Unable to display instrument identifier', event=False)
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None):
-        with self.visa_transaction(error_raise=False) as transaction:
+        with self.visa_transaction(error_check=False) as transaction:
             try:
                 # Show disconnected message on display
                 self.scpi_display(transaction, 'Disconnected')

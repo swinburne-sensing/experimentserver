@@ -1,6 +1,6 @@
 %YAML 1.2
 ---
-class: keithley.DAQ6510Multimeter
+class: keithley.MultimeterDAQ6510
 identifier: 'multimeter'
 visa_address: 'USB0::0x05E6::0x6510::04444866::INSTR'
 ...

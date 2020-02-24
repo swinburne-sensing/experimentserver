@@ -8,9 +8,8 @@ from ..error import CommunicationError, ExternalError
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
 from ..base.scpi import SCPIHardware
 from ..base.visa import TYPE_ERROR, VISAHardware
-from experimentserver.data import MeasurementGroup, to_unit, TYPE_UNIT, TYPE_UNIT_OPTIONAL
-from experimentserver.data.measurement import Measurement
-
+from ...data.unit import to_unit, TYPE_UNIT, TYPE_UNIT_OPTIONAL
+from experimentserver.data.measurement import Measurement, MeasurementGroup
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'

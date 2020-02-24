@@ -8,6 +8,7 @@ import logging.config
 import os
 import platform
 import socket
+import threading
 import time
 import sys
 from datetime import datetime
@@ -15,7 +16,7 @@ from datetime import datetime
 import experimentserver.util.thread
 from experimentserver.versions import dependencies, python_version_tested
 from experimentserver.config import ConfigManager
-from experimentserver.data.database import setup_database
+from experimentserver.database import setup_database
 from experimentserver.data.measurement import Measurement, MeasurementTarget, dynamic_field_time_delta
 from experimentserver.observer import Observer
 from experimentserver.server import start_server
@@ -210,6 +211,9 @@ if __name__ == '__main__':
         root_logger.exception(f"Unhandled exception: {exc!s}")
         raise
     finally:
+        for thread in threading.enumerate():
+            root_logger.info(f"Running thread: {thread!r}", notify=False, event=False)
+
         # Ask all threads to stop
         if app_debug:
             experimentserver.util.thread.stop_all()
@@ -217,5 +221,8 @@ if __name__ == '__main__':
             experimentserver.util.thread.stop_all(timeout=THREAD_TIMEOUT)
 
         root_logger.info(f"Threads stopped")
+
+        for thread in threading.enumerate():
+            root_logger.warning(f"Remaining thread: {thread!r}", notify=False, event=False)
 
         root_logger.info('Done')

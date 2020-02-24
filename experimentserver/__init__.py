@@ -20,7 +20,7 @@ ROOT_PATH = os.path.dirname(os.path.abspath(__file__))
 
 class ApplicationException(Exception):
     """ Base exception for all custom application exceptions that occur during runtime. """
-    def get_user_str(self, seperator: str = '\n') -> str:
+    def get_user_str(self, separator: str = '\n') -> str:
         exc = self
         exc_str = []
 
@@ -28,7 +28,7 @@ class ApplicationException(Exception):
             exc_str.append(str(exc))
             exc = exc.__cause__
 
-        return seperator.join(exc_str)
+        return separator.join(exc_str)
 
 
 class MultipleException(Exception):

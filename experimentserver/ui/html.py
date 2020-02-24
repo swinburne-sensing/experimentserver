@@ -1,7 +1,7 @@
 import flask
 
 from .web import WebServer
-from ..experiment.procedure_state import ProcedureTransition
+from ..experiment.control import ProcedureTransition
 from experimentserver.hardware import Hardware, HardwareTransition
 from experimentserver.hardware.manager import HardwareManager
 from experimentserver.util.module import get_all_subclasses
@@ -73,5 +73,4 @@ def register_html(ui: WebServer):
 
     @ui.app.route('/debug')
     def page_debug():
-        return _render_html(ui, 'debug.html', hardware_transitions=[x.value for x in HardwareTransition],
-                            procedure_transitions=[x.value for x in ProcedureTransition])
+        return _render_html(ui, 'debug.html', hardware_transitions=[x.value for x in HardwareTransition])

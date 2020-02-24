@@ -1,6 +1,8 @@
 ### experimentserver
 *.log
 *.lock
+*.lsk
+*.dll
 
 # Created by .ignore support plugin (hsz.mobi)
 ### Windows template

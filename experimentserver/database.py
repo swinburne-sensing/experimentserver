@@ -10,7 +10,7 @@ import experimentserver
 from experimentserver.data.measurement import Measurement
 from experimentserver.util.logging import LoggerObject
 from experimentserver.util.thread import QueueThread
-from .measurement import MeasurementTarget
+from experimentserver.data.measurement import MeasurementTarget
 
 
 # Suppress HTTPS warnings

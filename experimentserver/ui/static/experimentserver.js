@@ -190,7 +190,7 @@ function updateStatus() {
 
 function autoUpdateStatus() {
     updateStatus();
-    setTimeout(autoUpdateStatus, 1000);
+    setInterval(updateStatus, 1000);
 }
 
 $(document).ready(function() {

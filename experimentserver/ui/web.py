@@ -3,11 +3,11 @@ import time
 import flask
 
 import experimentserver
-from experimentserver.data import MeasurementGroup
-from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget, TYPE_TAG_DICT
+from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget, TYPE_TAG_DICT, \
+    MeasurementGroup
 from experimentserver.config import ConfigManager
 from experimentserver.experiment.procedure import Procedure
-from experimentserver.experiment.procedure_state import ProcedureTransition
+from experimentserver.experiment.control import ProcedureTransition
 from experimentserver.hardware.manager import HardwareManager
 from experimentserver.util.thread import CallbackThread
 from experimentserver.util.logging import LoggerObject, get_logger, INFO

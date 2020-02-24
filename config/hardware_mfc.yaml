@@ -1,36 +1,41 @@
 %YAML 1.2
 ---
 - class: mks.GE50MassFlowController
+  identifier: mfc_testing
+  host: localhost
+  port: 8000
+  balance: air
+- class: mks.GE50MassFlowController
   identifier: mfc_air
-  address: 192.168.2.157
+  host: 192.168.2.157
   balance: air
 - class: mks.GE50MassFlowController
   identifier: mfc_acetone
-  address: 192.168.2.155
+  host: 192.168.2.155
   balance: air
   composition:
     acetone: 50 ppm
 - class: mks.GE50MassFlowController
   identifier: mfc_methane
-  address: 192.168.2.159
+  host: 192.168.2.159
   balance: air
   composition:
     methane: 50 ppm
 - class: mks.GE50MassFlowController
   identifier: mfc_hydrogen
-  address: 192.168.2.158
+  host: 192.168.2.158
   balance: air
   composition:
     hydrogen: 1%
 - class: mks.GE50MassFlowController
   identifier: mfc_ammonia
-  address: 192.168.2.160
+  host: 192.168.2.160
   balance: air
   composition:
     ammonia: 50 ppm
 - class: mks.GE50MassFlowController
   identifier: mfc_nitrogendioxide
-  address: 192.168.2.156
+  host: 192.168.2.156
   balance: air
   composition:
     nitrogen-dioxide: 12 ppm

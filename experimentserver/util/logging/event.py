@@ -4,9 +4,8 @@ import threading
 import typing
 from datetime import datetime
 
-from experimentserver.data import MeasurementGroup
-from experimentserver.data.database import get_database
-from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget
+from experimentserver.database import get_database
+from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget, MeasurementGroup
 
 
 def filter_event(record: logging.LogRecord):

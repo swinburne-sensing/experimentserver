@@ -4,8 +4,7 @@
     {{ super() }}
     <script>
     $(document).ready(function() {
-        registerAjax('.hardware-transitions button', '/cmd/hardware/state', function (result) {}, ['identifier', 'transition']);
-        registerAjax('.procedure-transitions button', '/cmd/procedure/state', function (result) {}, ['transition']);
+        registerAjax('.hardware-transitions button', '/server/state/queue', function (result) {}, ['target', 'identifier', 'transition']);
     });
     </script>
 {% endblock %}
@@ -13,11 +12,6 @@
 {% block content %}
     <h1>Debugging Controls</h1>
     <p>This page is for provided for debugging and/or fault finding. It should not be used during normal operation.</p>
-
-    <h2 class="uk-heading-line">Procedure</h2>
-    <div class="procedure-transitions">
-        {% for transition in procedure_transitions %}<button class="uk-button uk-button-default uk-button-small" transition="{{ transition }}" style="margin-right: 5px;">{{ transition }}</button>{% endfor %}
-    </div>
 
     <h2 class="uk-heading-line">Hardware</h2>
     <table class="uk-table uk-table-divider">
@@ -29,12 +23,12 @@
             </tr>
         </thead>
         <tbody>
-            {% for manager in hardware_managers %}
+            {% for hardware_metadata in hardware %}
                 <tr>
-                    <td>{{ manager.identifier }}</td>
-                    <td class="uk-text-capitalize">{{ manager.state }}</td>
+                    <td>{{ hardware_metadata.identifier }}</td>
+                    <td class="uk-text-capitalize">{{ hardware_metadata.state }}</td>
                     <td class="hardware-transitions">
-                        {% for transition in hardware_transitions %}<button class="uk-button uk-button-default uk-button-small" identifier="{{ manager.identifier }}" transition="{{ transition }}" style="margin-right: 5px;">{{ transition }}</button>{% endfor %}
+                        {% for transition in hardware_transitions %}<button class="uk-button uk-button-default uk-button-small" target="hardware" identifier="{{ hardware_metadata.identifier }}" transition="{{ transition }}" style="margin-right: 5px;">{{ transition }}</button>{% endfor %}
                         <br />
                     </td>
                 </tr>

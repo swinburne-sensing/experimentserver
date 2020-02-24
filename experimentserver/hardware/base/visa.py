@@ -185,7 +185,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             def wrapper(self, *args, **kwargs):
                 if self._parent._visa_rate_limit is not None and self._parent._visa_comm_timestamp is not None:
                     # Delay for minimum write interval
-                    delay = self._visa_rate_limit - (self._visa_comm_timestamp - time.time())
+                    delay = self._parent._visa_rate_limit - (self._parent._visa_comm_timestamp - time.time())
 
                     if delay > 0:
                         # self.get_logger().debug(f"Rate limited, waiting {delay} s")
@@ -328,7 +328,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         self._visa_connect_delay = visa_connect_delay
 
         # Rate limiting time stamp
-        self._visa_transaction_timestamp = None
+        self._visa_comm_timestamp = None
 
         # Instance of VISA resource
         self._visa_resource: typing.Optional[pyvisa.resources.messagebased.MessageBasedResource] = None

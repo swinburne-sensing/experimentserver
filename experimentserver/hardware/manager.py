@@ -82,7 +82,7 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
             initial_state = self._get_state()
 
             # Handle shutdown requests
-            if self._test_thread_stop():
+            if self.thread_stop_requested():
                 if initial_state.is_error():
                     self.get_logger().error('Ignoring hardware in error manager during shutdown')
                     return

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="b52b30c1-9b9a-478d-8a44-5d34391f87c9" name="HAW10011724" url="http://localhost:5001">
+        <fileTransfer port="0" mountedRoot="Z:\GasSensing\development\experimentserver" accessType="MOUNT" />
+      </webServer>
+    </option>
+  </component>
+</project>

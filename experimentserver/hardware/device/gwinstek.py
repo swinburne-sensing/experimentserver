@@ -2,7 +2,13 @@ import enum
 import typing
 
 from ..base.enum import HardwareEnum
+from ..base.scpi import SCPIHardware
 from experimentserver.data import units
+from ..base.visa import VISAHardware, TYPE_ERROR
+
+
+__author__ = 'Chris Harrison'
+__email__ = 'cjharrison@swin.edu.au'
 
 
 class LCRMeasurement(HardwareEnum):
@@ -94,56 +100,40 @@ class LCRMeasurement(HardwareEnum):
         }
 
 
-# class GWInstekLCR6000Series(SCPIHardware):
-#     """ GW INSTEK 6000-Series LCR meters. """
-#
-#     def __init__(self, *args, **kwargs):
-#         # Configure baud rate for serial link
-#         super().__init__(*args, visa_open_args={
-#             'baud_rate': 115200
-#         }, rate_limit_interval=0.05, **kwargs)
-#
-#     # Abstract methods from SCPIHardware
-#     def display_msg(self, msg: str = None):
-#         if msg is not None:
-#             if len(msg) > 30:
-#                 self.get_logger().warning("Truncating message to 30 characters (original: {})".format(msg))
-#                 msg = msg[:30]
-#
-#             msg = msg.replace(':', ' ')
-#
-#             with self.get_hardware_lock():
-#                 self.visa_write(":DISP:LINE \"{}\"".format(msg))
-#
-#     def _get_error(self) -> typing.Union[None, str, typing.Tuple[int, str]]:
-#         msg = self.visa_query(':ERR?')
-#
-#         if '*E00' in msg:
-#             return None
-#
-#         return msg
-#
-#     @staticmethod
-#     def get_hardware_description() -> str:
-#         return 'GW-INSTEK 6000 Series LRC Meter'
-#
-#     def handle_setup(self, event: EventData):
-#         pass
-#
-#     def handle_start(self, event: EventData):
-#         pass
-#
-#     def handle_pause(self, event: EventData):
-#         pass
-#
-#     def handle_resume(self, event: EventData):
-#         pass
-#
-#     def handle_stop(self, event: EventData):
-#         pass
-#
-#     def handle_cleanup(self, event: EventData):
-#         pass
-#
-#     def handle_error(self, event: EventData):
-#         pass
+class GWInstekLCR6000Series(SCPIHardware):
+    """  """
+
+    def __init__(self, *args, **kwargs):
+        """
+
+        :param args:
+        :param kwargs:
+        """
+        # Configure baud rate for serial link
+        super().__init__(*args, visa_open_args={
+            'baud_rate': 115200
+        }, visa_rate_limit=0.05, **kwargs)
+
+    @classmethod
+    def scpi_display(cls, transaction: VISAHardware._VISATransaction,
+                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+        if msg is not None:
+            if len(msg) > 30:
+                cls.get_class_logger().warning("Truncating message to 30 characters (original: {})".format(msg))
+                msg = msg[:30]
+                msg = msg.replace(':', ' ')
+
+            transaction.write(":DISP:LINE \"{}\"", msg)
+
+    @classmethod
+    def _get_visa_error(cls, transaction: VISAHardware._VISATransaction) -> typing.Optional[TYPE_ERROR]:
+        msg = transaction.query(':ERR?')
+
+        if '*E00' in msg:
+            return None
+
+        return msg
+
+    @staticmethod
+    def get_hardware_class_description() -> str:
+        return 'GW-INSTEK 6000 Series LRC Meter'

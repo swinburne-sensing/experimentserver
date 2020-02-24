@@ -11,10 +11,25 @@ import typing
 import sys
 import weakref
 
+from .logging import get_logger
+
 import experimentserver
 
 
-class IdentifierError(Exception):
+_LOGGER = get_logger(__name__)
+
+
+class InitialisationError(Exception):
+    pass
+
+
+class TrackedIdentifierError(Exception):
+    pass
+
+
+class OptionalModule(Exception):
+    """ Exception for modules imported via import_submodules, if an error occurs during initialisation then this module
+     may be skipped. """
     pass
 
 
@@ -37,7 +52,7 @@ class __TrackedMeta(type):
 
             # Save instance to class list
             if identifier in cls.__instances__:
-                raise IdentifierError(f"Identifier {identifier} already exists in tracked class {cls.__name__}")
+                raise TrackedIdentifierError(f"Identifier {identifier} already exists in tracked class {cls.__name__}")
 
             cls.__instances__[identifier] = weakref.ref(instance)
 
@@ -57,21 +72,30 @@ class Tracked(object, metaclass=__TrackedMeta):
         self._identifier = identifier
 
     def get_identifier(self):
+        """ Get th unique identifier string for this object.
+
+        :return: str
+        """
         return self._identifier
 
     @classmethod
     def get_instance(cls: typing.Type[T], identifier: str) -> T:
+        """ Get an instance of class given that objects unique identifier.
+
+        :param identifier: unique identifier string
+        :return: object
+        """
         try:
             return cls.get_all_instances()[identifier]
         except KeyError:
-            raise IdentifierError(f"Invalid identifier {identifier} for tracked class {cls.__name__}")
+            raise TrackedIdentifierError(f"Invalid identifier {identifier} for tracked class {cls.__name__}")
 
     @classmethod
     def get_all_instances(cls: typing.Type[T], include_subclass: bool = True) -> typing.Dict[str, T]:
-        """ Get all instances of
+        """ Get all instances of this class. Optionally include subclasses.
 
-        :param include_subclass:
-        :return:
+        :param include_subclass: if True then subclasses of this class will be included in the search.
+        :return: dict
         """
         instances = {}
 
@@ -136,7 +160,10 @@ def class_from_str(class_name: str, parent: typing.Any):
     :return: class type
     """
     if type(parent) is str:
-        parent = sys.modules[parent]
+        try:
+            parent = sys.modules[parent]
+        except KeyError:
+            raise KeyError(f"Module {parent} is not available")
 
     return functools.reduce(getattr, class_name.split('.'), parent)
 
@@ -151,6 +178,24 @@ def class_instance_from_str(class_name: str, parent: typing.Any, *args, **kwargs
     :return: class instance
     """
     class_type = class_from_str(class_name, parent)
+
+    # # Get init arguments and self argument
+    # init_parameters = inspect.signature(class_type.__init__).parameters.copy()
+    # init_parameters.pop('self')
+    #
+    # # Validate arguments
+    # for arg in args:
+    #     init_arg = init_parameters.popitem(last=False)
+    #
+    # for kwarg_name, kwarg_value in kwargs.items():
+    #     init_kwarg = init_parameters.pop(kwarg_name)
+    #
+    #     if typing_inspect.is_union_type(init_kwarg.annotation):
+    #         for init_kwarg_type in typing_inspect.get_args(init_kwarg.annotation):
+    #             pass
+    #     else:
+    #         # Try to cast passed argument
+    #         init_kwarg.annotation(kwarg_value)
 
     return class_type(*args, **kwargs)
 
@@ -209,9 +254,13 @@ def import_submodules(package, recursive=True):
 
     for loader, name, is_pkg in pkgutil.walk_packages(package.__path__):
         full_name = package.__name__ + '.' + name
-        results[full_name] = importlib.import_module(full_name)
-        if recursive and is_pkg:
-            results.update(import_submodules(full_name))
+
+        try:
+            results[full_name] = importlib.import_module(full_name)
+            if recursive and is_pkg:
+                results.update(import_submodules(full_name))
+        except OptionalModule as exc:
+            _LOGGER.info(f"Skipped import of optional module {full_name}", exc_info=exc)
 
     return results
 

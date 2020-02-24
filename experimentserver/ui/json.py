@@ -6,7 +6,7 @@ import transitions
 
 import experimentserver
 from .web import UserInterfaceError, WebServer
-from ..experiment.procedure_state import ProcedureTransition
+from ..experiment.control import ProcedureTransition
 from experimentserver.hardware import HardwareTransition
 from experimentserver.hardware.manager import HardwareManager
 
@@ -113,7 +113,7 @@ def register_json(ui: WebServer):
         elif transition == ProcedureTransition.STOP:
             return 'Procedure stopped and returned to setup state.'
         else:
-            return f"{identifier} transitioned to state {state}"
+            return f"{identifier} transitioned to state {state.value}"
 
     @ui.app.route('/server/event')
     @_json_response_wrapper(ui)

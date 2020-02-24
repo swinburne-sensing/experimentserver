@@ -11,6 +11,10 @@ import experimentserver
 from .thread import CallbackThread
 
 
+class ManagedStateMachineError(experimentserver.ApplicationException):
+    pass
+
+
 class ManagedState(enum.Enum):
     """  """
     pass
@@ -123,6 +127,9 @@ class ManagedStateMachine(CallbackThread):
         :param timeout:
         :param raise_exception:
         """
+        if not self.is_thread_alive():
+            raise ManagedStateMachineError('State machine thread not running')
+
         with self._state_lock:
             self.get_logger().info(f"Queueing transition {transition}")
             self._transition_pending_queue.append((transition, args, kwargs))
@@ -183,6 +190,11 @@ class ManagedStateMachine(CallbackThread):
                         except (transitions.MachineError, experimentserver.ApplicationException) as exc:
                             # Pass to handler
                             self._handle_transition_exception(state, queued_transition, exc)
+                        except Exception:
+                            # Pass to handler
+                            self._handle_transition_exception(state, queued_transition, exc)
+
+                            raise
                         finally:
                             current_state = self._get_state()
 

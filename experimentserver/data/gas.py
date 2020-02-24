@@ -1,7 +1,7 @@
 import enum
 import typing
 
-from . import Quantity, units
+from .unit import Quantity, units
 
 
 # Gas constants

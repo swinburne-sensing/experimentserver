@@ -1,0 +1,6 @@
+%YAML 1.2
+---
+class: gwinstek.GWInstekLCR6000Series
+identifier: 'lcr'
+visa_address: 'visa://127.0.0.1:3538/ASRL3::INSTR'
+...

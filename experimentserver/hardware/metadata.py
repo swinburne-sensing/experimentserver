@@ -10,16 +10,17 @@ import typing_inspect
 from .base.enum import HardwareEnum
 from .error import MeasurementError, ParameterError
 from experimentserver.util.metadata import BoundMetadataCall, OrderedMetadata
-from experimentserver.data import MeasurementGroup, Quantity
-from experimentserver.data.measurement import Measurement, TYPE_MEASUREMENT, TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT
+from experimentserver.data import Quantity
+from experimentserver.data.measurement import Measurement, TYPE_MEASUREMENT, TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT, \
+    MeasurementGroup
 
 
 class _MeasurementMetadata(OrderedMetadata):
     """ Registered Hardware measurement method. """
 
     def __init__(self, method: CALLABLE_MEASUREMENT, description: str,
-                 measurement_group: typing.Optional[MeasurementGroup], default: bool = False, force: bool = False,
-                 order: int = 50, user: bool = True, setup: typing.Optional[str] = None,
+                 measurement_group: typing.Optional[MeasurementGroup] = None, default: bool = False,
+                 force: bool = False, order: int = 50, user: bool = True, setup: typing.Optional[str] = None,
                  setup_args: typing.Optional[typing.List] = None, setup_kwargs: typing.Optional[typing.Dict] = None):
         """ Initialise _HardwareMeasurement.
 
@@ -38,7 +39,7 @@ class _MeasurementMetadata(OrderedMetadata):
 
         return_annotation = inspect.signature(method).return_annotation
 
-        if return_annotation != Measurement and return_annotation != TYPE_MEASUREMENT_LIST and \
+        if return_annotation != 'Measurement' and return_annotation != TYPE_MEASUREMENT_LIST and \
                 return_annotation != TYPE_FIELD_DICT:
             raise MeasurementError(f"Registered measurement method {method!r} must provide compatible "
                                    f"return annotation")
