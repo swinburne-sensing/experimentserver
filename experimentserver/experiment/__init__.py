@@ -39,7 +39,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         # Hardware parameters to apply on entry
         self._stage_hardware_param: typing.Dict[str, typing.Dict[int, BoundMetadataCall]] = {}
 
-        # Additional metadata for stage
+        # Additional app_metadata for stage
         self._stage_metadata = {}
 
         self._uuid = None
@@ -101,13 +101,13 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
             for parameter in sorted(parameter_map.values()):
                 manager.queue_transition(HardwareTransition.PARAMETER, parameter)
 
-        # Push metadata
+        # Push app_metadata
         Measurement.push_metadata()
 
         # Field for time since stage started
         Measurement.add_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
 
-        # Stage metadata
+        # Stage app_metadata
         Measurement.add_tag('stage_type', self.__class__.__name__)
         Measurement.add_tag('stage_uuid', self._uuid)
         Measurement.add_tag('stage_time', time.strftime('%Y-%m-%d %H:%M:%S'))
@@ -148,7 +148,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
 
         self._enter_time = None
 
-        # Restore metadata
+        # Restore app_metadata
         Measurement.pop_metadata()
 
     @abc.abstractmethod

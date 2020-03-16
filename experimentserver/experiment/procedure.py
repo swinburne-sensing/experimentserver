@@ -160,7 +160,7 @@ class Procedure(ManagedStateMachine):
         # Wait for connection and configuration
         for hardware_identifier, hardware_manager in self._hardware_active.items():
             try:
-                hardware_manager.get_error(raise_exception=True)
+                hardware_manager.get_error()
             except Exception as exc:
                 # If hardware reported error during transition then go to error state
                 ProcedureTransition.ERROR.apply(self)
@@ -173,16 +173,16 @@ class Procedure(ManagedStateMachine):
 
             self.get_logger().debug(f"{hardware_identifier} ready")
 
-        # Create metadata
+        # Create app_metadata
         self._uuid = uuid.uuid4()
         self.get_logger().info(f"Starting procedure: {self._uuid}", event=True, notify=True)
 
-        # Push metadata
+        # Push app_metadata
         Measurement.push_metadata()
 
         Measurement.add_dynamic_field('time_delta_procedure', dynamic_field_time_delta(datetime.now()))
 
-        # Add procedure metadata
+        # Add procedure app_metadata
         Measurement.add_tag('procedure_uuid', self._uuid)
         Measurement.add_tag('procedure_time', time.strftime('%Y-%m-%d %H:%M:%S'))
         Measurement.add_tag('procedure_timestamp', time.time())
@@ -201,7 +201,7 @@ class Procedure(ManagedStateMachine):
         current_stage = self.get_stage()
         current_stage.pause()
 
-        # Indicate procedure paused in metadata
+        # Indicate procedure paused in app_metadata
         Measurement.add_tag('procedure_state', 'paused')
 
     def _procedure_resume(self, _: transitions.EventData):
@@ -216,7 +216,7 @@ class Procedure(ManagedStateMachine):
             hardware_manager.queue_transition(HardwareTransition.STOP)
             hardware_manager.queue_transition(HardwareTransition.CLEANUP)
 
-        # Restore metadata
+        # Restore app_metadata
         Measurement.pop_metadata()
 
         self.get_logger().info(f"Procedure {self._uuid} completed", event=True, notify=True)
@@ -303,7 +303,7 @@ class Procedure(ManagedStateMachine):
                             current_stage = self._stages[self._stage_index]
                             current_stage.start()
 
-                            # Update metadata
+                            # Update app_metadata
                             Measurement.add_tag('procedure_stage_index', self._stage_index)
 
                             # Update next stage
