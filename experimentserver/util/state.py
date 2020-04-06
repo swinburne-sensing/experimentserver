@@ -15,6 +15,11 @@ class ManagedStateMachineError(experimentserver.ApplicationException):
     pass
 
 
+class TransitionDiscarded(ManagedStateMachineError):
+    """ Error raised when pending transition queue is emptied. """
+    pass
+
+
 class ManagedState(enum.Enum):
     """  """
     pass
@@ -96,11 +101,12 @@ class ManagedStateMachine(CallbackThread):
     def get_error(self, timeout: typing.Optional[float] = None, raise_exception: bool = True) \
             -> typing.Optional[Exception]:
         with self._state_lock:
+            # Wait while transitions are pending
             while len(self._transition_pending_queue) > 0:
                 self._state_lock.wait(timeout)
 
             if len(self._transition_error_queue) > 0:
-                # Clear exception queue then raise exception
+                # Empty exception queue then raise exception
                 exc = self._transition_error_queue.copy()
                 self._transition_error_queue.clear()
 
@@ -116,6 +122,22 @@ class ManagedStateMachine(CallbackThread):
                     return exc
 
         return None
+
+    def clear_transition(self) -> typing.NoReturn:
+        """ Clear pending transition queue.
+
+        :return:
+        """
+        with self._state_lock:
+            # Clear pending errors
+            self._transition_error_queue.clear()
+
+            # Clear pending transitions
+            while len(self._transition_pending_queue) > 0:
+                transition = self._transition_pending_queue.pop(0)
+
+                # Notify waiting threads that pending transitions were discarded
+                self._transition_error_queue.append(TransitionDiscarded(f"Transition {transition} discarded"))
 
     def queue_transition(self, transition: TYPE_TRANSITION, *args, block: bool = True,
                          timeout: typing.Optional[float] = None, raise_exception: bool = True, **kwargs) \
@@ -147,9 +169,7 @@ class ManagedStateMachine(CallbackThread):
 
     @abc.abstractmethod
     def _thread_manager(self) -> typing.NoReturn:
-        """
-
-        """
+        """ Thread code for handling machine state. No locks are held upon entry! """
         pass
 
     def _handle_transition_exception(self, initial_state: TYPE_STATE, transition: TYPE_TRANSITION, exc: Exception):
@@ -161,9 +181,9 @@ class ManagedStateMachine(CallbackThread):
             self.get_logger().warning(f"Discarding pending transition {queued_transition.value}")
 
     def _process_transition(self) -> typing.Tuple[bool, ManagedState]:
-        """
+        """ Handle pending transitions.
 
-        :return:
+        :return: tuple containing True when state has changed, false otherwise; and current state
         """
         state_change = False
 
@@ -190,7 +210,7 @@ class ManagedStateMachine(CallbackThread):
                         except (transitions.MachineError, experimentserver.ApplicationException) as exc:
                             # Pass to handler
                             self._handle_transition_exception(state, queued_transition, exc)
-                        except Exception:
+                        except Exception as exc:
                             # Pass to handler
                             self._handle_transition_exception(state, queued_transition, exc)
 

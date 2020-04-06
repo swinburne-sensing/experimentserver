@@ -14,6 +14,7 @@ class LoggingLevel(enum.IntEnum):
 
 class Message(enum.IntEnum):
     def __new__(cls, value, variant_field: typing.Optional[str] = None):
+        # noinspection PyArgumentList
         obj = int.__new__(cls, value)
         obj._value_ = value
         obj.variant_field = variant_field
@@ -446,6 +447,45 @@ class HeaterDetails(ctypes.Structure):
     ]
 
 
+class RHStatusFlags(ctypes.Structure):
+    _fields_ = [
+        ('colSel', ctypes.c_uint32, 4),
+        ('present', ctypes.c_uint32, 1),
+        ('reset', ctypes.c_uint32, 1),
+        ('started', ctypes.c_uint32, 1),
+        ('unitType', ctypes.c_uint32, 3),
+        ('dessicantDryMode', ctypes.c_uint32, 1),
+        ('rampLimitReached', ctypes.c_uint32, 1),
+        ('unused12', ctypes.c_uint32, 1),
+        ('unused13', ctypes.c_uint32, 1),
+        ('unused14', ctypes.c_uint32, 1),
+        ('unused15', ctypes.c_uint32, 1),
+        ('unused16', ctypes.c_uint32, 1),
+        ('unused17', ctypes.c_uint32, 1),
+        ('unused18', ctypes.c_uint32, 1),
+        ('unused19', ctypes.c_uint32, 1),
+        ('unused20', ctypes.c_uint32, 1),
+        ('unused21', ctypes.c_uint32, 1),
+        ('unused22', ctypes.c_uint32, 1),
+        ('unused23', ctypes.c_uint32, 1),
+        ('unused24', ctypes.c_uint32, 1),
+        ('unused25', ctypes.c_uint32, 1),
+        ('unused26', ctypes.c_uint32, 1),
+        ('unused27', ctypes.c_uint32, 1),
+        ('unused28', ctypes.c_uint32, 1),
+        ('unused29', ctypes.c_uint32, 1),
+        ('unused30', ctypes.c_uint32, 1),
+        ('unused31', ctypes.c_uint32, 1)
+    ]
+
+
+class RHStatus(ctypes.Union):
+    _fields_ = [
+        ('flags', RHStatusFlags),
+        ('value', ctypes.c_uint32)
+    ]
+
+
 class RHUnit(ctypes.Structure):
     _fields_ = [
         ('rh', ctypes.c_float),
@@ -459,7 +499,8 @@ class RHUnit(ctypes.Structure):
         ('tubeSetpoint', ctypes.c_float),
         ('waterTemp', ctypes.c_float),
         ('waterSetpoint', ctypes.c_float),
-        ('columnDryModeCountTimeSecs', ctypes.c_int32)
+        ('columnDryModeCountTimeSecs', ctypes.c_int32),
+        ('status', RHStatus)
     ]
 
 
@@ -555,6 +596,7 @@ class StageConfig(ctypes.Union):
 
 class StageValueType(enum.IntEnum):
     def __new__(cls, value, variant_field: str, unit: typing.Optional[str] = None):
+        # noinspection PyArgumentList
         obj = int.__new__(cls, value)
         obj._value_ = value
         obj.variant_field = variant_field

@@ -1,42 +1,55 @@
 %YAML 1.2
 ---
 - class: mks.GE50MassFlowController
-  identifier: mfc_testing
-  host: localhost
-  port: 8000
-  balance: air
-- class: mks.GE50MassFlowController
   identifier: mfc_air
-  host: 192.168.2.157
-  balance: air
+  host: '192.168.2.159'
+  composition:
+    air: balance
+
+- class: mks.GE50MassFlowController
+  identifier: mfc_air_humid
+  host: '192.168.2.159'
+  composition:
+    humid_air: balance
+
 - class: mks.GE50MassFlowController
   identifier: mfc_acetone
-  host: 192.168.2.155
-  balance: air
+  host: '192.168.2.155'
   composition:
     acetone: 50 ppm
+    air: balance
+
 - class: mks.GE50MassFlowController
-  identifier: mfc_methane
-  host: 192.168.2.159
-  balance: air
+  identifier: mfc_air_dry
+  host: '192.168.2.155'
   composition:
-    methane: 50 ppm
+    air: balance
+
+#- class: mks.GE50MassFlowController
+#  identifier: mfc_methane
+#  host: '192.168.2.159'
+#  composition:
+#    methane: 50 ppm
+#    air: balance
+
 - class: mks.GE50MassFlowController
   identifier: mfc_hydrogen
-  host: 192.168.2.158
-  balance: air
+  host: '192.168.2.158'
   composition:
     hydrogen: 1%
+    air: balance
+
 - class: mks.GE50MassFlowController
   identifier: mfc_ammonia
-  host: 192.168.2.160
-  balance: air
+  host: '192.168.2.160'
   composition:
     ammonia: 50 ppm
+    air: balance
+
 - class: mks.GE50MassFlowController
   identifier: mfc_nitrogendioxide
-  host: 192.168.2.156
-  balance: air
+  host: '192.168.2.156'
   composition:
     nitrogen-dioxide: 12 ppm
+    air: balance
 ...

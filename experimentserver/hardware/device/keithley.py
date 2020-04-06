@@ -1,13 +1,16 @@
 import abc
 import enum
 import re
+import time
 import typing
+from datetime import timedelta
 
 from transitions import EventData
 
-from experimentserver.data.unit import to_unit
-from experimentserver.data.measurement import TYPE_FIELD_DICT, TYPE_MEASUREMENT_LIST, MeasurementGroup
-from ..error import CommunicationError, MeasurementUnavailable
+from ...data import TYPE_FIELD_DICT, TYPE_MEASUREMENT_LIST, MeasurementGroup, to_unit, TYPE_UNIT, Quantity, units, \
+    Measurement, to_timedelta, TYPE_TIME
+from ...data.measurement import TYPE_MEASUREMENT_LIST
+from ..error import CommunicationError, ParameterError, MeasurementUnavailable, MeasurementError
 from ..base.scpi import SCPIHardware
 from ..base.visa import VISAHardware, TYPE_ERROR
 from ..base.enum import HardwareEnum
@@ -79,7 +82,7 @@ class _KeithleyInstrument(SCPIHardware, metaclass=abc.ABCMeta):
         super(_KeithleyInstrument, self).__init__(*args, **kwargs)
 
     @classmethod
-    def _get_visa_error(cls, transaction: VISAHardware._VISATransaction) -> typing.Optional[TYPE_ERROR]:
+    def _get_visa_error(cls, transaction: VISAHardware.VISATransaction) -> typing.Optional[TYPE_ERROR]:
         error = transaction.query(':SYST:ERR?')
         error_match = cls._RE_ERROR.search(error)
 
@@ -115,7 +118,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
         self._channel_scan: typing.List[int] = []
 
     @classmethod
-    def scpi_display(cls, transaction: VISAHardware._VISATransaction,
+    def scpi_display(cls, transaction: VISAHardware.VISATransaction,
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         # Clear display
         transaction.write(':DISP:CLE')
@@ -242,13 +245,13 @@ class MultimeterDAQ6510(_KeithleyInstrument):
 
 
 class Picoammeter6487(_KeithleyInstrument):
-    """  """
+    """ Hardware interface for communication with Keithley 6487 Picoammeter. """
 
-    def __init__(self, *args, use_rs232: bool = True, **kwargs):
+    def __init__(self, *args, use_rs232: bool = True, settling_time: TYPE_TIME = timedelta(), **kwargs):
         """
 
         :param args:
-        :param use_rs232:
+        :param use_rs232: if True VISA resource arguments are configured to support operation over RS232
         :param kwargs:
         """
         self._use_rs232 = use_rs232
@@ -261,8 +264,20 @@ class Picoammeter6487(_KeithleyInstrument):
         else:
             super(Picoammeter6487, self).__init__(*args, **kwargs)
 
+        # Settling time for sweep measurements
+        self._settling_time = to_timedelta(settling_time)
+
+        # Interlock enabled when source voltage is configured to over 10V
+        self._check_interlock = False
+
+        # Save mode to correctly handle returned readings
+        self._expect_ohms = False
+
+        # Used for generation of I-V sweeps
+        self._source_sweep_range: typing.Optional[typing.Sequence[Quantity]] = None
+
     @classmethod
-    def scpi_display(cls, transaction: VISAHardware._VISATransaction,
+    def scpi_display(cls, transaction: VISAHardware.VISATransaction,
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         if msg is None:
             # Disable message mode
@@ -278,19 +293,162 @@ class Picoammeter6487(_KeithleyInstrument):
             transaction.write(':DISP:TEXT:STAT ON')
 
     @staticmethod
+    def _fetch_interlock_state(transaction: VISAHardware.VISATransaction) -> bool:
+        return not (transaction.query(':SOUR:VOLT:INT:FAIL?') == '1')
+
+    @SCPIHardware.register_parameter(description='Enable resistance measurement')
+    def set_measure_ohms(self, enable: typing.Union[bool, str]):
+        if type(enable) is str:
+            enable = enable.strip().lower() in ['true', '1', 'on']
+
+        with self.visa_transaction() as transaction:
+            if enable:
+                self._expect_ohms = True
+
+                # Set ohms mode
+                transaction.write(':CONF')
+                transaction.write(':OHMS ON')
+            else:
+                self._expect_ohms = False
+
+                # Set current mode
+                transaction.write(':CONF:CURR:DC')
+                transaction.write(':OHMS OFF')
+
+    @SCPIHardware.register_parameter(description='Source current limit', order=40)
+    def set_source_current(self, current: TYPE_UNIT):
+        current = to_unit(current, 'amp', magnitude=True)
+
+        with self.visa_transaction() as transaction:
+            transaction.write(":SOUR:VOLT:ILIM {}", current)
+
+    @SCPIHardware.register_parameter(description='Source voltage')
+    def set_source_voltage(self, voltage: TYPE_UNIT):
+        voltage = to_unit(voltage, 'volt', magnitude=True)
+
+        with self.visa_transaction() as transaction:
+            # Check output range
+            if voltage <= 10:
+                transaction.write(':SOUR:VOLT:RANG 10')
+                self._check_interlock = False
+            else:
+                if not self._fetch_interlock_state(transaction):
+                    raise ParameterError("Interlock asserted")
+
+                if voltage <= 50:
+                    transaction.write(':SOUR:VOLT:RANG 50')
+                else:
+                    transaction.write(':SOUR:VOLT:RANG 500')
+
+                self._check_interlock = True
+
+            # Set output voltage
+            transaction.write(":SOUR:VOLT {}", voltage)
+
+    @SCPIHardware.register_parameter(description='Source output enable', order=60)
+    def set_source_enable(self, enable: typing.Union[bool, str]):
+        if type(enable) is str:
+            enable = enable.strip().lower() in ['true', '1', 'on']
+
+        with self.visa_transaction() as transaction:
+            transaction.write(":SOUR:VOLT:STAT {}", enable)
+
+    @SCPIHardware.register_parameter(description='Source sweep range start, step and stop', order=30)
+    def set_source_sweep(self, start: TYPE_UNIT, step: TYPE_UNIT, stop: TYPE_UNIT):
+        start = to_unit(start, 'volt')
+        step = to_unit(step, 'volt')
+        stop = to_unit(stop, 'volt')
+
+        self._source_sweep_range = []
+        voltage = start
+
+        # Generate sweep range
+        while voltage <= stop:
+            self._source_sweep_range.append(voltage)
+            voltage += step
+
+        self.get_logger().info(f"Sweep values: {', '.join(map(str, self._source_sweep_range))}")
+
+    @staticmethod
     def get_hardware_class_description() -> str:
         return 'Keithley 6487 Picoammeter'
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        super().transition_configure(event)
+    @SCPIHardware.register_measurement(description='Measure current/resistance', default=True)
+    def get_reading(self) -> Measurement:
+        # Fetch reading from instrument
+        with self.visa_transaction() as transaction:
+            reading = transaction.query(':READ?')
+            source_voltage = to_unit(transaction.query(':SOUR:VOLT?'), 'volt')
+            source_enabled = int(transaction.query(':SOUR:VOLT:STAT?'))
 
-        # Set remote operation
+        # Get reading
+        reading = reading.split(',', 1)
+        reading = reading[0]
+
+        # If ohms reading then convert case
+        if 'ohm' in reading.lower():
+            reading = reading.lower()
+
+        # Parse unit
+        reading = to_unit(reading)
+
+        if self._expect_ohms != (reading.units == units.ohm):
+            raise MeasurementError('Measurement returned wrong unit')
+
+        if abs(reading.magnitude) > pow(10, 36):
+            raise MeasurementUnavailable('Open circuit')
+
+        if self._expect_ohms:
+            field = 'resistance'
+            group = MeasurementGroup.RESISTANCE
+        else:
+            field = 'current'
+            group = MeasurementGroup.CONDUCTOMETRIC_IV
+
+        return Measurement(self, group, {
+            field: reading
+        }, tags={
+            'source_voltage': source_voltage,
+            'source_enabled': 'ON' if source_enabled else 'OFF'
+        })
+
+    @SCPIHardware.register_measurement(description='Measure current/resistance across range of source voltages')
+    def get_sweep(self) -> TYPE_MEASUREMENT_LIST:
+        measurement_list = []
+
+        settling_time = self._settling_time.total_seconds()
+
+        for voltage in self._source_sweep_range:
+            self.set_source_voltage(voltage)
+
+            # Take measurement after settling time
+            if settling_time > 0:
+                time.sleep(settling_time)
+
+            # Get reading
+            try:
+                measurement_list.append(self.get_reading())
+            except MeasurementUnavailable:
+                pass
+
+        return measurement_list
+
+    def transition_connect(self, event: typing.Optional[EventData] = None):
+        super().transition_connect(event)
+
+        # Enable remote operation
         if self._use_rs232:
             with self.visa_transaction() as transaction:
                 transaction.write(':SYST:REM')
                 transaction.write(':SYST:RWL')
 
+        # On reset unit defaults to current mode
+        self._expect_ohms = False
+
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        # Disable voltage source
+        self.set_source_enable(False)
+
         if self._use_rs232:
             with self.visa_transaction() as transaction:
                 transaction.write(':SYST:LOC')

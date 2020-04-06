@@ -11,12 +11,13 @@ from datetime import datetime, timedelta
 
 import requests
 from transitions import EventData
+import urllib3.exceptions
 
-from .. import Hardware, CommunicationError, ParameterError, MeasurementUnavailable
-from ...data import to_unit, get_gas, calc_gcf, TYPE_UNIT, TYPE_UNIT_OPTIONAL, \
-    Measurement, MeasurementGroup
-from experimentserver.util.java import remap_javascript_dict, JavaScriptParseException
-from experimentserver.util.thread import CallbackThread
+from .. import Hardware, HardwareInitError, CommunicationError, ParameterError, MeasurementUnavailable
+from ...data import Measurement, MeasurementGroup, TYPE_MEASUREMENT_LIST, TYPE_UNIT, TYPE_UNIT_OPTIONAL, to_unit, \
+    get_gas, calc_gcf
+from ...util.java import remap_javascript_dict, JavaScriptParseException
+from ...util.thread import CallbackThread
 
 
 __author__ = 'Chris Harrison'
@@ -32,26 +33,6 @@ class MFCResponseParserError(CommunicationError):
     pass
 
 
-class _MFCConstant(object):
-    # URLs for resources
-    MFC_ADDRESS = 'http://{address}:{port}'
-    MFC_ADDRESS_FLOW = MFC_ADDRESS + '/flow_setpoint_html'
-    MFC_ADDRESS_PRESSURE = MFC_ADDRESS + '/device_html_operating_pres'
-    MFC_ADDRESS_SELECT_GAS = MFC_ADDRESS + '/device_html_selected_gas'
-    MFC_ADDRESS_MODE = MFC_ADDRESS + '/digital_analog_mode'
-    MFC_ADDRESS_RUN_MODE_SETUP = MFC_ADDRESS + '/configure_html_check'
-    MFC_ADDRESS_RUN_MODE_MONITOR = MFC_ADDRESS + '/signout.html'
-    MFC_ADDRESS_JS_CONFIG_HTML = MFC_ADDRESS + '/configure_html.js'
-    MFC_ADDRESS_JS_DEVICE_HTML = MFC_ADDRESS + '/device_html.js'
-    MFC_ADDRESS_JS_DEVICE_ID = MFC_ADDRESS + '/deviceid.js'
-    MFC_ADDRESS_JS_IOBUF = MFC_ADDRESS + '/iobuf.js'
-    MFC_ADDRESS_JS_MFC = MFC_ADDRESS + '/mfc.js'
-    MFC_ADDRESS_JS_GAS_LIST = MFC_ADDRESS + '/gaslist.js'
-    MFC_ADDRESS_JS_GAS_TABLE = MFC_ADDRESS + '/gastable.js'
-    MFC_ADDRESS_XML_TRACE_SETUP = MFC_ADDRESS + '/ToolWeb/Con'
-    MFC_ADDRESS_XML_TRACE_READ = MFC_ADDRESS + '/ToolWeb/Trace'
-
-
 class GE50MassFlowController(Hardware):
     """
     Class for communication with an MKS G-Series IP-based Mass Flow Controller (MFC). This class is based on significant
@@ -61,6 +42,16 @@ class GE50MassFlowController(Hardware):
     being updated.
     """
 
+    class _EVIDValue(object):
+        def __init__(self, field: str, description: str, measurement_group: MeasurementGroup, unit: TYPE_UNIT_OPTIONAL,
+                      enabled: bool = True, apply_gcf: bool = False):
+            self.field = field
+            self.description = description
+            self.measurement_group = measurement_group
+            self.unit = unit
+            self.enabled = enabled
+            self.apply_gcf = apply_gcf
+
     # Epoch time for calibration calculation
     _CALIBRATION_EPOCH = datetime(1970, 1, 1)
 
@@ -69,15 +60,32 @@ class GE50MassFlowController(Hardware):
 
     # Map of EVIDs to field names
     _EVID_MAP = {
-        'EVID_0': (True, 'flow_actual', 'Actual flow rate', 'sccm'),
-        'EVID_1': (True, 'flow_target', 'Target flow rate', 'sccm'),
-        'EVID_2': (True, 'current_valve', 'Valve current', 'mA'),
-        'EVID_3': (True, 'temperature_valve', 'Valve temperature', 'degC'),
-        'EVID_4': (False, 'current_valve_minimum', 'Minimum valve current (?)', 'mA'),  # Always zero?
-        'EVID_5': (False, 'evid5', 'Unknown 5', None),  # Something proportional to flow rate
-        'EVID_6': (False, 'evid6', 'Unknown 6', None),  # Constant setting for each MFC?
-        'EVID_7': (False, 'evid7', 'Unknown 7', None),  # Always zero
-        'EVID_8': (False, 'evid8', 'Counter (?)', None)  # Counts to 100 then resets back to zero
+        # Measured flow
+        'EVID_0': _EVIDValue('flow_actual', 'Actual flow rate', MeasurementGroup.MFC, 'sccm', apply_gcf=True),
+
+        # Flow setpoint
+        'EVID_1': _EVIDValue('flow_target', 'Target flow rate', MeasurementGroup.MFC, 'sccm', apply_gcf=True),
+
+        # Valve current
+        'EVID_2': _EVIDValue('current_valve', 'Valve current', MeasurementGroup.DEBUG, 'mA'),
+
+        # Valve temperature
+        'EVID_3': _EVIDValue('temperature_valve', 'Valve temperature', MeasurementGroup.TEMPERATURE, 'degC'),
+
+        # Always zero?
+        'EVID_4': _EVIDValue('current_valve_minimum', 'Minimum valve current (?)', MeasurementGroup.DEBUG, 'mA', False),
+
+        # Something proportional to flow rate
+        'EVID_5': _EVIDValue('evid5', 'Unknown 5', MeasurementGroup.DEBUG, None, False),
+
+        # Constant setting for each MFC?
+        'EVID_6': _EVIDValue('evid6', 'Unknown 6', MeasurementGroup.DEBUG, None, False),
+
+        # Always zero
+        'EVID_7': _EVIDValue('evid7', 'Unknown 7', MeasurementGroup.DEBUG, None, False),
+
+        # Counts to 100 then resets back to zero
+        'EVID_8': _EVIDValue('evid8', 'Counter (?)', MeasurementGroup.DEBUG, None, False)
     }
 
     # MFCs are not accurate below 2% of rated flow
@@ -105,48 +113,69 @@ class GE50MassFlowController(Hardware):
     # Trace name (seems to be ignored)
     _TRACE_NAME = 'XXX'
 
-    def __init__(self, identifier: str, host: str, port: int = 80, balance: str = 'nitrogen',
-                 composition: typing.Optional[typing.Dict[str, str]] = None, pressure: TYPE_UNIT_OPTIONAL = None,
-                 sample_period: float = 0.1, **kwargs):
+    def __init__(self, identifier: str, host: str, composition: typing.Dict[str, str], port: int = 80,
+                 pressure: TYPE_UNIT_OPTIONAL = None, sample_period: float = 0.1, **kwargs):
         """
 
         :param identifier: passed to parent
         :param host: HTTP host
         :param port: HTTP port
-        :param balance: balance gas
         :param composition: gas composition dict, gas names as keys, concentrations as values
         :param pressure: default working pressure
         """
         super(GE50MassFlowController, self).__init__(identifier, **kwargs)
 
+        # HTTP properties
         self._host = host
         self._port = port
+        self._sample_period = sample_period
 
         # Gas properties
-        self._balance = get_gas(balance)
         self._pressure = to_unit(pressure, 'psi')
-        self._sample_period = sample_period
         self._max_flow = None
         self._min_flow = None
 
         # Gas composition
-        composition = composition or {}
+        self._composition = {}
 
-        self._composition = {
-            get_gas(gas): to_unit(concentration, 'dimensionless', allow_none=False) for gas, concentration
-            in composition.items()
-        }
+        balance_gas = None
+        overall_concentration = 1
 
-        self._gcf = calc_gcf(list(self._composition.keys()), list(self._composition.values()), self._balance)
+        for gas, concentration in composition.items():
+            # Parse gas
+            gas = get_gas(gas)
+
+            # Parse concentration
+            if concentration.lower() == 'balance' or concentration is None:
+                if balance_gas is not None:
+                    raise HardwareInitError('Multiple balance gases specified')
+
+                balance_gas = gas
+            else:
+                concentration = to_unit(concentration, 'dimensionless', allow_none=False)
+
+                # Check if gas is possible
+                overall_concentration -= concentration
+
+                if overall_concentration < 0:
+                    raise HardwareInitError('Gas composition concentrations exceed 100%')
+
+                self._composition[gas] = concentration
+
+        # Fill remaining concentration with balance gas
+        if balance_gas is not None and overall_concentration > 0:
+            self._composition[balance_gas] = to_unit(overall_concentration, 'dimensionless')
+
+        self._gcf = calc_gcf(list(self._composition.keys()), list(self._composition.values()))
 
         # Lock to prevent multiple access
         self._http_lock = threading.RLock()
 
         # Consumer thread for trace data
         self._trace_buffer = queue.Queue(maxsize=1)
-        self._thread_trace_consumer = CallbackThread(self.get_hardware_identifier(True),
-                                                     self._thread_trace_consumer_callback, run_final=False)
+        self._thread_trace_consumer: typing.Optional[CallbackThread] = None
 
+    # Utility methods
     def _get_url(self, path: str):
         return f"http://{self._host}:{self._port}/{path}"
 
@@ -190,6 +219,10 @@ class GE50MassFlowController(Hardware):
         except KeyError as exc:
             raise MFCResponseParserError(f"Key not found in response from MFC: {js_code.text!r}") from exc
 
+    def get_composition(self):
+        return self._composition
+
+    # Fetching methods
     def get_config_control(self) -> typing.Dict[str, typing.Any]:
         """ Get MFC control status.
 
@@ -249,13 +282,14 @@ class GE50MassFlowController(Hardware):
             'firmware_version': ('configure_html', 'version')
         })
 
-    @Hardware.register_measurement(description='', force=True)
-    def get_trace_data(self) -> Measurement:
+    @Hardware.register_measurement(description='Flow measurements', force=True)
+    def get_trace_data(self) -> TYPE_MEASUREMENT_LIST:
         try:
             return self._trace_buffer.get(timeout=1)
         except queue.Empty:
             raise MeasurementUnavailable()
 
+    # Configuration methods
     def set_config_control(self, digital: bool) -> typing.NoReturn:
         """ Enable or disable digital operation.
 
@@ -263,6 +297,7 @@ class GE50MassFlowController(Hardware):
         """
         self._fetch_url('digital_analog_mode', data={'mfc.sp_adc_enable': 0 if digital else 1})
 
+    # Helper for parameters
     @contextlib.contextmanager
     def _setup_lock(self):
         with self._http_lock:
@@ -275,12 +310,20 @@ class GE50MassFlowController(Hardware):
             # Return to MONITOR mode
             self._fetch_url('signout.html')
 
+    # Parameters
     @Hardware.register_parameter(description='Target gas flow rate')
-    def set_flow_rate(self, flow_rate: TYPE_UNIT):
-        flow_rate = to_unit(flow_rate, self._max_flow.units)
+    def set_flow_rate(self, flow_rate_raw: TYPE_UNIT):
+        # Enable digital control
+        self.set_config_control(True)
 
-        if flow_rate <= 0:
-            raise ParameterError(self, f"Requested flow rate {flow_rate} is outside valid range")
+        flow_rate_raw = to_unit(flow_rate_raw, self._max_flow.units)
+
+        # Apply gas correction factor
+        flow_rate = flow_rate_raw / self._gcf
+
+        if flow_rate < 0:
+            raise ParameterError(self, f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) is outside valid "
+                                       f"range")
 
         # Force really low flow rates to be zero
         if flow_rate < to_unit('0.1 sccm'):
@@ -288,12 +331,15 @@ class GE50MassFlowController(Hardware):
 
         # Throw warnings if flow is outside recommended limits
         if flow_rate > self._max_flow:
-            self.get_logger().warning(f"Requested flow rate {flow_rate} exceeds maximum flow ({self._max_flow})")
-        elif flow_rate < self._min_flow:
-            self.get_logger().warning(f"Requested flow rate {flow_rate} below recommended minimum flow "
-                                      f"({self._min_flow})", notify=True)
+            self.get_logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) exceeds maximum "
+                                      f"flow ({self._max_flow})")
+        elif flow_rate != 0 and flow_rate < self._min_flow:
+            self.get_logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) below recommended "
+                                      f"minimum flow of {self._min_flow}", notify=True)
 
-        self._fetch_url('flow_setpoint_html', data={'iobuf.gcf': flow_rate.magnitude})
+        self.get_logger().info(f"Setting flow rate: {flow_rate_raw} (adjusted: {flow_rate})")
+
+        self._fetch_url('flow_setpoint_html', data={'iobuf.setpoint_unit': flow_rate.magnitude})
 
     @Hardware.register_parameter(description='Working pressure')
     def set_pressure(self, pressure: TYPE_UNIT):
@@ -305,38 +351,28 @@ class GE50MassFlowController(Hardware):
         with self._setup_lock():
             self._fetch_url('device_html_operating_pres', data={'iobuf.pres_up': pressure})
 
-    @Hardware.register_parameter(description='Gas correction factor')
-    def set_gas_correction_factor(self, gcf: float) -> typing.NoReturn:
-        if gcf <= 0:
-            raise ParameterError(self, f"Requested operating pressure {gcf} is outside valid range")
+    # Not sure if CGF is implemented in controller correctly, so for now GCF is applied when setting and reading flow
+    # @Hardware.register_parameter(description='Gas correction factor')
+    # def set_gas_correction_factor(self, gcf: float) -> typing.NoReturn:
+    #     if gcf <= 0:
+    #         raise ParameterError(self, f"Requested operating pressure {gcf} is outside valid range")
+    #
+    #     with self._setup_lock():
+    #         self._fetch_url('flow_setpoint_html', {'iobuf.gcf': gcf})
 
-        with self._setup_lock():
-            self._fetch_url('flow_setpoint_html', {'iobuf.gcf': gcf})
-
+    # User interface methods
     @staticmethod
     def get_hardware_class_description() -> str:
         return 'MKS GE50A Mass Flow Controller'
 
+    def get_gas_mix_label(self) -> str:
+        return ', '.join([gas.get_concentration_label(concentration) for gas, concentration in self._composition.items()])
+
     def get_hardware_instance_description(self) -> str:
-        mix = []
-        units = ('pct', 'ppm', 'ppb')
+        return f"{self.get_gas_mix_label()} via {self.get_hardware_class_description()} " \
+               f"({self.get_hardware_identifier()} at {self._host}:{self._port})"
 
-        for gas, concentration in self._composition.items():
-            for unit in units:
-                # Find largest concentration range that makes sense
-                if concentration.to(unit).magnitude > 1:
-                    concentration = concentration.to(unit)
-                    break
-
-            mix.append(f"{concentration} {gas.label}")
-
-        if len(mix) > 0:
-            return f"{', '.join(mix)} in {self._balance.label} via {self.get_hardware_class_description()} " \
-                   f"({self.get_hardware_identifier()} at {self._host}:{self._port})"
-        else:
-            return f"{self._balance.label} via {self.get_hardware_class_description()} " \
-                   f"({self.get_hardware_identifier()} at {self._host}:{self._port})"
-
+    # Event handlers
     def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         super(GE50MassFlowController, self).transition_connect(event)
 
@@ -368,7 +404,7 @@ class GE50MassFlowController(Hardware):
         # Define EVIDs
         xml_trace_evids = ElementTree.SubElement(xml_trace, 'EVIDS')
 
-        for evid in [evid for evid, prop in self._EVID_MAP.items() if prop[0]]:
+        for evid in [evid for evid, prop in self._EVID_MAP.items() if prop.enabled]:
             ElementTree.SubElement(xml_trace_evids, 'V', {'Name': evid})
 
         # Export XML as a string to include as a payload
@@ -378,6 +414,9 @@ class GE50MassFlowController(Hardware):
         self._fetch_url('ToolWeb/Con', xml_trace_define_str, self._HTTP_HEADER_SETUP)
 
         # Setup data consumer
+        self._thread_trace_consumer = CallbackThread(f"{self.get_hardware_identifier(True)}Trace",
+                                                     self._thread_trace_consumer_callback)
+
         self._thread_trace_consumer.thread_start()
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
@@ -385,6 +424,9 @@ class GE50MassFlowController(Hardware):
 
         # Stop data consumer
         self._thread_trace_consumer.thread_stop()
+        self._thread_trace_consumer.thread_join()
+
+        self._thread_trace_consumer = None
 
         super(GE50MassFlowController, self).transition_disconnect(event)
 
@@ -393,17 +435,24 @@ class GE50MassFlowController(Hardware):
         if self._pressure is not None:
             self.set_pressure(self._pressure)
 
-        self.set_gas_correction_factor(self._gcf)
-
         super(GE50MassFlowController, self).transition_configure(event)
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        # Zero flow rate
+        self.set_flow_rate(0)
+
         super(GE50MassFlowController, self).transition_cleanup(event)
 
     def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         super(GE50MassFlowController, self).transition_error(event)
 
     def _thread_trace_consumer_callback(self):
+        # Generate tags for payloads
+        data_tags = {
+            'gas_mixture': self.get_gas_mix_label(),
+            'source_ip': f"{self._host}:{self._port}"
+        }
+
         # Open read connection
         request_read = requests.post(self._get_url('ToolWeb/Trace'), headers=self._HTTP_HEADER_READ, stream=True,
                                      timeout=self._HTTP_TIMEOUT)
@@ -415,45 +464,57 @@ class GE50MassFlowController(Hardware):
         except IOError as exc:
             raise MFCHTTPError('IO error occurred while communicating with MFC') from exc
 
-        for payload in request_read.raw.read_chunked():
-            payload_timestamp = datetime.now()
+        try:
+            for payload in request_read.raw.read_chunked():
+                payload_timestamp = datetime.now()
 
-            # Check exit flag
-            if self._thread_trace_consumer.thread_stop_requested():
-                return
+                # Check exit flag
+                if self._thread_trace_consumer.thread_stop_requested():
+                    return
 
-            # Decode XML response
-            xml_payload = ElementTree.fromstring(payload.decode())
+                # Decode XML response
+                xml_payload = ElementTree.fromstring(payload.decode())
 
-            # Check for valid root node
-            if xml_payload is None or xml_payload.tag != 'Data':
-                raise MFCResponseParserError(f"Invalid Data node in payload {payload!r}")
+                # Check for valid root node
+                if xml_payload is None or xml_payload.tag != 'Data':
+                    raise MFCResponseParserError(f"Invalid Data node in payload {payload!r}")
 
-            # Fetch root node
-            xml_payload = xml_payload[0]
+                # Fetch root node
+                xml_payload = xml_payload[0]
 
-            if xml_payload.tag != 'BulkTrace' or len(xml_payload) != 2:
-                raise MFCResponseParserError(f"Invalid BulkTrace node in payload {payload!r}")
+                if xml_payload.tag != 'BulkTrace' or len(xml_payload) != 2:
+                    raise MFCResponseParserError(f"Invalid BulkTrace node in payload {payload!r}")
 
-            # Fetch BulkTrace node
-            xml_header = xml_payload[0]
-            xml_data = xml_payload[1]
+                # Fetch BulkTrace node
+                xml_header = xml_payload[0]
+                xml_data = xml_payload[1]
 
-            xml_field = [v_node.attrib['name'] for v_node in xml_header]
-            xml_field_names = [self._EVID_MAP[v_node][1] for v_node in xml_field]
-            xml_field_unit = [self._EVID_MAP[v_node][3] for v_node in xml_field]
+                xml_field = [v_node.attrib['name'] for v_node in xml_header]
 
-            xml_field_value = [struct.unpack('!f', bytes.fromhex(v_node.text[2:]))[0] for v_node in xml_data]
+                xml_field_prop = [(self._EVID_MAP[v_node].field, self._EVID_MAP[v_node].measurement_group,
+                                   self._EVID_MAP[v_node].unit, self._gcf if self._EVID_MAP[v_node].apply_gcf else 1)
+                                  for v_node in xml_field]
 
-            # Construct payload dict
-            data_payload = {}
+                xml_field_value = [struct.unpack('!f', bytes.fromhex(v_node.text[2:]))[0] for v_node in xml_data]
 
-            for n in range(len(xml_field)):
-                data_payload[xml_field_names[n]] = to_unit(xml_field_value[n], xml_field_unit[n])
+                data_payload = []
 
-            # Make space in the buffer
-            while self._trace_buffer.full():
-                self._trace_buffer.get_nowait()
+                for n in range(len(xml_field)):
+                    fields = {
+                        xml_field_prop[n][0]: to_unit(xml_field_value[n], xml_field_prop[n][2]) * xml_field_prop[n][3]
+                    }
 
-            # Save data to buffer
-            self._trace_buffer.put(Measurement(self, MeasurementGroup.MFC, data_payload, payload_timestamp))
+                    if xml_field_prop[n][3] != 1:
+                        fields[xml_field_prop[n][0] + '_raw'] = to_unit(xml_field_value[n], xml_field_prop[n][2])
+
+                    data_payload.append(Measurement(self, xml_field_prop[n][1], fields, payload_timestamp, data_tags))
+
+                # Make space in the buffer
+                while self._trace_buffer.full():
+                    self._trace_buffer.get_nowait()
+
+                # Save data to buffer
+                self._trace_buffer.put(data_payload)
+        except (ConnectionError, OSError, urllib3.exceptions.HTTPError) as exc:
+            # Break out and restart
+            raise CommunicationError('Error communicating with MFC') from exc

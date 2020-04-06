@@ -43,4 +43,10 @@
             </button>
         </div>
     </div>
+
+    {% if 'grafana_url' in metadata %}
+    <div class="uk-display-inline-block">
+        <a href="{{ metadata.grafana_url }}">View results in Grafana</a>
+    </div>
+    {% endif %}
 </div>

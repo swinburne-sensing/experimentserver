@@ -17,12 +17,15 @@ class Observer(LoggerObject):
         self._process = multiprocessing.Process(target=self._process_observer,
                                                 args=(os.getpid(), threading.get_ident(), self._process_stop_flag))
 
+    def is_alive(self) -> bool:
+        return self._process.is_alive()
+
     def start(self):
         self._process.start()
         self.get_logger().info('Observer process started')
 
     def stop(self):
-        if not self._process.is_alive():
+        if not self.is_alive():
             self.get_logger().error('Observer process not running')
 
         self._process_stop_flag.set()
@@ -33,9 +36,7 @@ class Observer(LoggerObject):
 
     @staticmethod
     def _process_observer(parent_pid: int, parent_tid: int, stop_flag: multiprocessing.Event):
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', handlers=[
-            logging.FileHandler('observer.log')
-        ])
+        logging.basicConfig(filename='observer.log', format='%(asctime)s %(message)s', level=logging.INFO)
 
         process_logger = get_logger('observer')
 

@@ -1,4 +1,6 @@
-from experimentserver.util.state import ManagedState, ManagedTransition
+import typing
+
+from ..util.state import ManagedState, ManagedTransition
 
 
 class HardwareState(ManagedState):
@@ -72,11 +74,11 @@ class HardwareTransition(ManagedTransition):
     # Reset from error manager (and possibly resume operation)
     RESET = 'reset'
 
-    # Process parameters (contains metadata)
+    # Process parameters
     PARAMETER = 'parameter'
 
     @classmethod
-    def get_transitions(cls):
+    def get_transitions(cls) -> typing.List[typing.Dict[str, str]]:
         return [
             # Connect
             {

@@ -1,5 +1,6 @@
 import enum
 import re
+import time
 import typing
 
 from transitions import EventData
@@ -71,7 +72,7 @@ class DP832PowerSupply(SCPIHardware):
         self._output_failsafe = output_failsafe
 
     @classmethod
-    def scpi_display(cls, transaction: VISAHardware._VISATransaction,
+    def scpi_display(cls, transaction: VISAHardware.VISATransaction,
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         if msg is not None:
             if len(msg) > 45:
@@ -83,7 +84,7 @@ class DP832PowerSupply(SCPIHardware):
             transaction.write(':DISP:TEXT:CLE')
 
     @classmethod
-    def _get_visa_error(cls, transaction: VISAHardware._VISATransaction) -> typing.Optional[TYPE_ERROR]:
+    def _get_visa_error(cls, transaction: VISAHardware.VISATransaction) -> typing.Optional[TYPE_ERROR]:
         error = transaction.query(':SYST:ERR?')
 
         error_match = cls._RE_ERROR.search(error)
@@ -127,11 +128,14 @@ class DP832PowerSupply(SCPIHardware):
             raise RigolError(f"Unexpected response to OVP alarm query: {alarm!r}")
 
     @SCPIHardware.register_parameter(description='Enable/disable output channel', order=90, primary_key=['channel'])
-    def set_output(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], enable: bool):
+    def set_output(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], enable: typing.Union[bool, str]):
         channel = PowerSupplyChannel.from_input(channel)
 
+        if type(enable) is str:
+            enable = enable.strip().lower() in ['true', '1', 'on']
+
         with self.visa_transaction() as transaction:
-            transaction.write(':OUTP {},{}', 'ON' if enable else 'OFF')
+            transaction.write(':OUTP {},{}', channel, enable)
 
     @SCPIHardware.register_parameter(description='Set output current limit', order=40, primary_key=['channel'])
     def set_ocp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: TYPE_UNIT_OPTIONAL = None):
@@ -176,6 +180,9 @@ class DP832PowerSupply(SCPIHardware):
     @SCPIHardware.register_measurement(description='Output manager, voltage and current',
                                        measurement_group=MeasurementGroup.SUPPLY, force=True)
     def get_supply_state(self) -> typing.Sequence[Measurement]:
+        # Delay slightly to allow for new data
+        time.sleep(0.1)
+
         status = []
 
         for channel in PowerSupplyChannel:

@@ -3,7 +3,7 @@
 <head>
     {% block head %}
         <meta charset="UTF-8">
-        <title>{{ metadata.server_name }}</title>
+        <title>{{ metadata.app_name }}</title>
         {% block styles %}
             <link rel="stylesheet" href="{{ url_for('static', filename='uikit/css/uikit.css') }}" />
             <link rel="stylesheet" href="{{ url_for('static', filename='experimentserver.css') }}" />
@@ -11,6 +11,7 @@
         {% endblock %}
         {% block scripts %}
             <script src="{{ url_for('static', filename='jquery-3.4.1.min.js') }}"></script>
+            <!--<script src="{{ url_for('static', filename='js-yaml.js') }}"></script>-->
             <script src="{{ url_for('static', filename='timeago.min.js') }}"></script>
             <script src="{{ url_for('static', filename='uikit/js/uikit.js') }}"></script>
             <script src="{{ url_for('static', filename='uikit/js/uikit-icons.js') }}"></script>
@@ -27,9 +28,6 @@
 
     <!-- Navigation -->
     {% include 'global_navbar.html' %}
-
-    <!-- Controls -->
-    {% include 'global_control.html' %}
 
     <div id="content">
         <div id="body">

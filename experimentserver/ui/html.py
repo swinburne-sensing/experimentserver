@@ -1,10 +1,23 @@
+import typing
+
 import flask
 
 from .web import WebServer
-from ..experiment.control import ProcedureTransition
-from experimentserver.hardware import Hardware, HardwareTransition
-from experimentserver.hardware.manager import HardwareManager
-from experimentserver.util.module import get_all_subclasses
+from ..hardware import Hardware, HardwareTransition
+from ..hardware.manager import HardwareManager
+from ..util.module import get_all_subclasses
+
+
+def _render_list(items: typing.List[typing.Any]) -> str:
+    html = ''
+
+    for item in items:
+        if type(item) in (list, tuple):
+            html += _render_list(item)
+        else:
+            html += f"<li>{item!s}</li>"
+
+    return f"<ul class=\"uk-list uk-list-bullet\">{html}</ul>"
 
 
 def _render_html(ui: WebServer, page: str, **kwargs):
@@ -33,10 +46,9 @@ def _render_html(ui: WebServer, page: str, **kwargs):
         except NotImplementedError:
             continue
 
-    hardware_list = []
-    active_hardware = ui.get_procedure().get_active_hardware()
-
     # Generate list of hardware
+    hardware_list = []
+
     for identifier, manager in HardwareManager.get_all_instances().items():
         hardware = manager.get_hardware()
 
@@ -51,7 +63,6 @@ def _render_html(ui: WebServer, page: str, **kwargs):
         measurement_list = hardware.get_hardware_measurement_metadata()
 
         hardware_list.append({
-            'active': identifier in active_hardware,
             'class': class_fqn,
             'author': hardware.get_author(),
             'identifier': identifier,
@@ -63,13 +74,19 @@ def _render_html(ui: WebServer, page: str, **kwargs):
         })
 
     return flask.render_template(page, metadata=ui.get_metadata(), hardware=hardware_list,
-                                 hardware_class=hardware_class_list, **kwargs)
+                                 hardware_class=hardware_class_list,
+                                 procedure=ui.get_procedure().get_procedure_summary(),
+                                 stages=ui.get_procedure().get_stages_summary(), render_list=_render_list, **kwargs)
 
 
 def register_html(ui: WebServer):
     @ui.app.route('/')
     def page_index():
         return _render_html(ui, 'index.html')
+
+    @ui.app.route('/edit')
+    def page_edit():
+        return _render_html(ui, 'edit.html')
 
     @ui.app.route('/debug')
     def page_debug():

@@ -7,36 +7,43 @@ url:
 
 database:
   default:
-    # host: research.etoast.net
-    # port: 443
-    # ssl: True
-    # path: /influxdb
-    host: localhost
-    username: !env INFLUXDB_SHARED_USERNAME
-    password: !env INFLUXDB_SHARED_PASSWORD
-    database: !env INFLUXDB_SHARED_DATABASE
-  private:
-    # host: research.etoast.net
-    # port: 443
-    # ssl: True
-    # path: /influxdb
-    host: localhost
-    username: !env INFLUXDB_USER_USERNAME
-    password: !env INFLUXDB_USER_PASSWORD
+    url: !env INFLUXDB_URL
+    username: !envopt INFLUXDB_USERNAME
+    password: !envopt INFLUXDB_PASSWORD
     database: !env INFLUXDB_USER_DATABASE
+    buffer_interval: 1
+  shared:
+    url: !env INFLUXDB_URL
+    username: !envopt INFLUXDB_USERNAME
+    password: !envopt INFLUXDB_PASSWORD
+    database: !env INFLUXDB_SHARED_DATABASE
+    buffer_interval: 1
 
-hardware:
-  - !include hardware_lcr.yaml
-  - !include hardware_linkam.yaml
-  - !include hardware_mfc.yaml
-  - !include hardware_multimeter.yaml
-  - !include hardware_picoammeter.yaml
-  - !include hardware_psu.yaml
+hardware: !include '{config_path}/hardware.yaml'
 
 remap:
-  multimeter: private
-  powersupply: private
+  event: shared
+  linkam: shared
+  mfc_*: shared
+  server: shared
 
-server: !include server.yaml
+procedure:
+  pulse:
+    # Default flow rate
+    flow: '200 sccm'
+
+    # Default gas balance
+    normal:
+      air: balance
+
+pushover:
+  title: !format '{app_name} {system_hostname}'
+  api_token: !envopt PUSHOVER_API_KEY
+  user_key: !envopt PUSHOVER_USER_KEY
+  user_device: !envopt PUSHOVER_USER_DEVICE
+
+server:
+  host: !envopt EXPERIMENTSERVER_HOST 0.0.0.0
+  port: !envopt EXPERIMENTSERVER_PORT 5000
 
 ...

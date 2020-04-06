@@ -3,7 +3,7 @@ import typing
 
 from ..base.enum import HardwareEnum
 from ..base.scpi import SCPIHardware
-from experimentserver.data import units
+from experimentserver.data import TYPE_UNIT, units, to_unit
 from ..base.visa import VISAHardware, TYPE_ERROR
 
 
@@ -114,8 +114,25 @@ class GWInstekLCR6000Series(SCPIHardware):
             'baud_rate': 115200
         }, visa_rate_limit=0.05, **kwargs)
 
+    @SCPIHardware.register_parameter(description='Source voltage')
+    def set_source_voltage(self, voltage: TYPE_UNIT) -> typing.NoReturn:
+        """
+
+        :param voltage:
+        :return:
+        """
+        if type(voltage) is str and voltage.upper() == 'MAX':
+            voltage = 'MAX'
+        elif type(voltage) is str and voltage.upper() == 'MIN':
+            voltage = 'MIN'
+        else:
+            voltage = to_unit(voltage, 'volt', magnitude=True)
+
+        with self.visa_transaction() as transaction:
+            transaction.write(":BISA {}", voltage)
+
     @classmethod
-    def scpi_display(cls, transaction: VISAHardware._VISATransaction,
+    def scpi_display(cls, transaction: VISAHardware.VISATransaction,
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         if msg is not None:
             if len(msg) > 30:
@@ -126,7 +143,7 @@ class GWInstekLCR6000Series(SCPIHardware):
             transaction.write(":DISP:LINE \"{}\"", msg)
 
     @classmethod
-    def _get_visa_error(cls, transaction: VISAHardware._VISATransaction) -> typing.Optional[TYPE_ERROR]:
+    def _get_visa_error(cls, transaction: VISAHardware.VISATransaction) -> typing.Optional[TYPE_ERROR]:
         msg = transaction.query(':ERR?')
 
         if '*E00' in msg:

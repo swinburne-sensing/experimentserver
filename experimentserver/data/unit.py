@@ -111,7 +111,13 @@ def to_unit(x: TYPE_VALUE, default_unit: typing.Optional[typing.Union[str, units
         return x
 
 
-def to_timedelta(x: TYPE_VALUE):
-    x = to_unit(x, 'sec', magnitude=True, allow_none=False)
+def to_timedelta(x: TYPE_VALUE, allow_none: bool = False) -> typing.Optional[timedelta]:
+    x = to_unit(x, 'sec', magnitude=True, allow_none=allow_none)
+
+    if x is None:
+        return None
+
+    if type(x) is timedelta:
+        return x
 
     return timedelta(seconds=x)

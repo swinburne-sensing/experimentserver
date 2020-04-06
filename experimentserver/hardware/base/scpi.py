@@ -29,7 +29,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     # Display handling
     @classmethod
     @abc.abstractmethod
-    def scpi_display(cls, transaction: VISAHardware._VISATransaction,
+    def scpi_display(cls, transaction: VISAHardware.VISATransaction,
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         """
 
@@ -41,7 +41,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
 
     # SCPI commands
     @staticmethod
-    def scpi_reset(transaction: typing.Optional[VISAHardware._VISATransaction] = None) -> typing.NoReturn:
+    def scpi_reset(transaction: typing.Optional[VISAHardware.VISATransaction] = None) -> typing.NoReturn:
         """ Issue SCPI instrument reset command. Should return instrument to power-up defaults.
 
         :param transaction:
@@ -49,7 +49,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write('*RST')
 
     @staticmethod
-    def scpi_clear(transaction: VISAHardware._VISATransaction) -> typing.NoReturn:
+    def scpi_clear(transaction: VISAHardware.VISATransaction) -> typing.NoReturn:
         """ Issue SCPI instrument clear status command. Clears event registers and error queue.
 
         :param transaction:
@@ -57,7 +57,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write('*CLS')
 
     @staticmethod
-    def scpi_get_event_status_enable(transaction: VISAHardware._VISATransaction) -> int:
+    def scpi_get_event_status_enable(transaction: VISAHardware.VISATransaction) -> int:
         """ Query SCPI event status enable register.
 
         :param transaction:
@@ -66,7 +66,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return int(transaction.query('*ESE?'))
 
     @staticmethod
-    def scpi_get_event_status_opc(transaction: VISAHardware._VISATransaction) -> bool:
+    def scpi_get_event_status_opc(transaction: VISAHardware.VISATransaction) -> bool:
         """ Query SCPI operation complete status.
 
         :param transaction:
@@ -75,7 +75,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return bool(transaction.query('*OPC?'))
 
     @staticmethod
-    def scpi_get_service_request(transaction: VISAHardware._VISATransaction) -> int:
+    def scpi_get_service_request(transaction: VISAHardware.VISATransaction) -> int:
         """ Query SCPI service request enable register.
 
         :param transaction:
@@ -84,7 +84,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return int(transaction.query('*SRE?'))
 
     @staticmethod
-    def scpi_get_status(transaction: VISAHardware._VISATransaction) -> int:
+    def scpi_get_status(transaction: VISAHardware.VISATransaction) -> int:
         """ Query SCPI status byte.
 
         :param transaction:
@@ -93,7 +93,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return int(transaction.query('*STB?'))
 
     @staticmethod
-    def scpi_get_event_status(transaction: VISAHardware._VISATransaction) -> int:
+    def scpi_get_event_status(transaction: VISAHardware.VISATransaction) -> int:
         """
 
         :param transaction:
@@ -102,7 +102,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return int(transaction.query('*ESR?'))
 
     @staticmethod
-    def scpi_get_identifier(transaction: VISAHardware._VISATransaction) -> str:
+    def scpi_get_identifier(transaction: VISAHardware.VISATransaction) -> str:
         """ Query SCPI instrument identification.
 
         Typically returns manufacturer, model number, serial number, firmware version and/or software revision.
@@ -113,7 +113,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return transaction.query('*IDN?')
 
     @staticmethod
-    def scpi_get_options(transaction: VISAHardware._VISATransaction) -> str:
+    def scpi_get_options(transaction: VISAHardware.VISATransaction) -> str:
         """
 
         :param transaction:
@@ -122,7 +122,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return transaction.query('*OPT?')
 
     @staticmethod
-    def scpi_set_event_status_enable(transaction: VISAHardware._VISATransaction, mask) -> typing.NoReturn:
+    def scpi_set_event_status_enable(transaction: VISAHardware.VISATransaction, mask) -> typing.NoReturn:
         """
 
         :param transaction:
@@ -132,7 +132,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write(f"*ESE {mask}")
 
     @staticmethod
-    def scpi_set_service_request_enable(transaction: VISAHardware._VISATransaction, mask) -> typing.NoReturn:
+    def scpi_set_service_request_enable(transaction: VISAHardware.VISATransaction, mask) -> typing.NoReturn:
         """
 
         :param transaction:
@@ -142,7 +142,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write(f"*SRE {mask}")
 
     @staticmethod
-    def scpi_set_event_status_opc(transaction: VISAHardware._VISATransaction):
+    def scpi_set_event_status_opc(transaction: VISAHardware.VISATransaction):
         """ TODO
 
         :param transaction:
@@ -151,7 +151,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write('*OPC')
 
     @staticmethod
-    def scpi_trigger(transaction: VISAHardware._VISATransaction) -> typing.NoReturn:
+    def scpi_trigger(transaction: VISAHardware.VISATransaction) -> typing.NoReturn:
         """ TODO
 
         :param transaction:
@@ -160,7 +160,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write('*TRG')
 
     @staticmethod
-    def scpi_wait(transaction: VISAHardware._VISATransaction) -> typing.NoReturn:
+    def scpi_wait(transaction: VISAHardware.VISATransaction) -> typing.NoReturn:
         """ Wait for pending commands to complete.
 
         Notes: from experience this command usually has mixed results. Behaviour is often defines by the status event

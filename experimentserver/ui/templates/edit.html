@@ -1,0 +1,89 @@
+{% extends "global_template.html" %}
+
+{% block head %}
+    {{ super() }}
+    <script>
+
+    </script>
+{% endblock %}
+
+{% block content %}
+    <div>
+        <h1>Procedure Editor</h1>
+
+        <h2>1. Metadata</h2>
+        <p class=".uk-text-muted">This information is appended to experiments in the database, making sorting and organisation simpler. Consider adding tags for sample composition and experimental conditions.</p>
+
+        <table id="metadata" class="uk-table uk-table-divider">
+            <thead>
+                <tr>
+                    <th>Tag</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody id="procedure-stage">
+                <tr>
+                    <td><input class="uk-input" type="text" placeholder="tag"></td>
+                    <td><input class="uk-input" type="text" placeholder="value"></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>2. Hardware</h2>
+        <p class=".uk-text-muted">Hardware utilised in this procedure. Include <b>all</b> hardware used for control or measurements.</p>
+
+        <ul>
+            {% for hardware_metadata in hardware %}
+                <li class="uk-active es-hardware-identifier"><input class="uk-checkbox procedure-edit hardware-enable" type="checkbox"{% if hardware_metadata.active %} checked{% endif %} identifier="{{ hardware_metadata.identifier }}"> {{ hardware_metadata.identifier }}</li>
+                <li class="es-hardware-description">{{ hardware_metadata.description }}</li>
+            {% endfor %}
+        </ul>
+
+        <h2>3. Procedure</h2>
+        <p class=".uk-text-muted">Specify the stages of this experiment.</p>
+        <div id="control-edit" class="uk-display-inline-block">
+            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Add time delay; pos: bottom" id="procedure-delay"><span uk-icon="icon: future"></span> Add Delay</button>
+            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Add analyte exposure; pos: bottom" id="procedure-pulse"><span uk-icon="icon: sign-in"></span> Add Pulse</button>
+        </div>
+
+        <table id="procedure" class="uk-table uk-table-divider">
+            <thead>
+                <tr>
+                    <th class="uk-table-shrink">Stage</th>
+                    <th class="uk-table-shrink">Type</th>
+                    <th class="uk-table-shrink">Duration</th>
+                    <th>Configuration</th>
+                    <th class="uk-table-shrink"></th>
+                </tr>
+            </thead>
+            <tbody id="procedure-stage">
+                <tr>
+                    <td>1</td>
+                    <td>1:00:00</td>
+                    <td>1</td>
+                    <td>1</td>
+                    <td><a href="" class="uk-icon-button" uk-icon="close" uk-tooltip="title: Delete this stage; pos: bottom"></a></td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>1:00:00</td>
+                    <td>2</td>
+                    <td>2</td>
+                    <td><a href="" class="uk-icon-button" uk-icon="close"></a></td>
+                </tr>
+                <tr>
+                    <td>1</td>
+                    <td>1</td>
+                    <td>3</td>
+                    <td>1:00:00</td>
+                    <td><a href="" class="uk-icon-button" uk-icon="close"></a></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>4. Export</h2>
+        <p class=".uk-text-muted">Export the completed procedure to a file.</p>
+        <button class="uk-button uk-button-default uk-button-small" uk-tooltip="title: Export procedure to a file; pos: bottom" id="procedure-export"><span uk-icon="icon: download"></span> Export</button>
+
+    </div>
+{% endblock %}

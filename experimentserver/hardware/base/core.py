@@ -10,7 +10,7 @@ from transitions import EventData
 
 import experimentserver.util.metadata as metadata
 from ..error import MeasurementError, MeasurementUnavailable, ParameterError, NoResetHandler
-from ..metadata import TYPE_PARAMETER_DICT, _MeasurementMetadata, _ParameterMetadata
+from ..metadata import TYPE_PARAMETER_DICT, TYPE_PARAMETER_COMMAND, _MeasurementMetadata, _ParameterMetadata
 from experimentserver.data.measurement import MeasurementSource, Measurement, MeasurementTarget
 from experimentserver.util.logging import LoggerObject
 from experimentserver.util.metadata import BoundMetadataCall
@@ -273,20 +273,19 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
                             # Indicate a measurement was produced
                             measurement_flag = True
-                    except MeasurementUnavailable as exc:
+                    except MeasurementUnavailable:
                         # Ignore unavailable measurements
                         pass
 
         return measurement_flag
 
-    def bind_parameter(self, parameter_command: typing.Union[None, TYPE_PARAMETER_DICT,
-                                                             typing.List[TYPE_PARAMETER_DICT]]) \
+    def bind_parameter(self, parameter_command: TYPE_PARAMETER_COMMAND) \
             -> typing.List[metadata.BoundMetadataCall]:
         """
 
         :param parameter_command:
         :return:
-        :raises: ParameterException on invalid parameters or parameter arguments
+        :raises ParameterError: on invalid parameters or parameter arguments
         """
         # Ignore empty lists
         if parameter_command is None:
@@ -332,11 +331,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
         return parameter_bound
 
-    def _handle_parameter(self, event: EventData) -> typing.NoReturn:
-        """ Handle application of parameters from a normal (non-error) state.
-
-        :param event:
-        """
+    def _parse_parameter_event(self, event: EventData) -> typing.Optional[typing.List[BoundMetadataCall]]:
         if len(event.args) == 0:
             raise ParameterError('Missing arguments to parameter handler')
         elif len(event.args) > 1:
@@ -346,37 +341,51 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
         parameter_command = event.args[0]
 
         # If not bound then do that now
-        if type(parameter_command) is not list and not all([type(x) is BoundMetadataCall for x in parameter_command]):
+        if type(parameter_command) is not list or not all([type(x) is BoundMetadataCall for x in parameter_command]):
+            self.get_logger().debug('Parameters bound inside state transition')
             parameter_command = self.bind_parameter(parameter_command)
 
         # Ignore empty lists
         if len(parameter_command) == 0:
-            return
+            return None
 
-        with self._parameter_lock:
-            with self.hardware_lock():
-                # Sort parameters based on order before calling the appropriate method
-                for parameter_call in sorted(parameter_command):
-                    # Call bound method
-                    parameter_call()
+        return parameter_command
 
-                    # Buffer parameter after successful execution
-                    self._parameter_buffer[hash(parameter_call)] = parameter_call
+    def _handle_parameter(self, event: EventData) -> typing.NoReturn:
+        """ Handle application of parameters from a normal (non-error) state.
+
+        :param event:
+        """
+        # Get parameter arguments
+        parameter_command = self._parse_parameter_event(event)
+
+        if parameter_command is not None:
+            with self._parameter_lock:
+                with self.hardware_lock():
+                    # Sort parameters based on order before calling the appropriate method
+                    for parameter_call in sorted(parameter_command):
+                        # Call bound method
+                        parameter_call()
+
+                        # Buffer parameter after successful execution
+                        self._parameter_buffer[hash(parameter_call)] = parameter_call
 
     def _buffer_parameters(self, event: EventData) -> typing.NoReturn:
-        """ Handling buffering of parameters from an error state.
+        """ Handling buffering of parameters inside an error state.
 
         :param event:
         :return:
         """
-        bound_parameters = self.bind_parameter(*event.args, **event.kwargs)
+        # Get parameter arguments
+        parameter_command = self._parse_parameter_event(event)
 
-        # Sort parameters based on order before calling the appropriate method
-        with self._parameter_lock:
-            with self.hardware_lock():
-                for parameter_call in sorted(bound_parameters):
-                    # Buffer parameter
-                    self._parameter_buffer[hash(parameter_call)] = parameter_call
+        if parameter_command is not None:
+            with self._parameter_lock:
+                with self.hardware_lock():
+                    # Sort parameters based on order before calling the appropriate method
+                    for parameter_call in sorted(parameter_command):
+                        # Buffer parameter after successful execution
+                        self._parameter_buffer[hash(parameter_call)] = parameter_call
 
     # State transition handling
     @abc.abstractmethod
@@ -480,14 +489,14 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
         :param event: transition metadata
         """
-        self.get_logger().error(f"Hardware {self.get_hardware_identifier()} has entered an error manager", event=True,
-                                notify=True)
+        self.get_logger().error(f"Hardware {self.get_hardware_identifier()} has entered an error state")
 
     def transition_reset(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        """ Optionally called when resetting from an error manager. Note that reset will transition the hardware to the
-        manager prior to the occurrence of the error.
+        """ Optionally called when resetting from an error state.
 
-        Note that errors raised during this call will return the hardware to an error manager.
+        Note that reset will transition the hardware to the state saved prior to the occurrence of the error.
+
+        Note that errors raised during this call will return the hardware to an error state.
 
         :param event: transition metadata
         :raises HardwareCommunicationError: when communication errors occur during reset

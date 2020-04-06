@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 import threading
 
 import experimentserver
@@ -35,6 +36,13 @@ class LinkamSDK(LoggerObject):
 
             self._parent = parent
             self._handle = handle
+
+        def __del__(self):
+            if hasattr(self, '_handle') and self._handle is not None:
+                self.close()
+
+        def close(self) -> typing.NoReturn:
+            self._parent._sdk_process_message(Message.CLOSE_COMMS, comm_handle=self._handle)
 
         def enable_heater(self, enabled: bool) -> bool:
             """ Enable/disable the temperature controller.
@@ -81,7 +89,8 @@ class LinkamSDK(LoggerObject):
             return self._parent._sdk_process_message_str(Message.GET_HUMIDITY_CONTROLLER_SENSOR_NAME, 26, self._handle)
 
         def get_humidity_controller_sensor_serial(self) -> str:
-            return self._parent._sdk_process_message_str(Message.GET_HUMIDITY_CONTROLLER_SENSOR_SERIAL, 18, self._handle)
+            return self._parent._sdk_process_message_str(Message.GET_HUMIDITY_CONTROLLER_SENSOR_SERIAL, 18,
+                                                         self._handle)
 
         def get_humidity_controller_sensor_hardware_version(self) -> str:
             return self._parent._sdk_process_message_str(Message.GET_HUMIDITY_CONTROLLER_SENSOR_HARDWARE_VERSION, 7,
@@ -166,11 +175,14 @@ class LinkamSDK(LoggerObject):
                                                      (value_type.variant_field, n),
                                                      comm_handle=self._handle)
 
-    def __init__(self, log_path: typing.Optional[str] = None, license_path: typing.Optional[str] = None):
+    def __init__(self, log_path: typing.Optional[str] = None, license_path: typing.Optional[str] = None,
+                 debug: bool = False):
         self._sdk = None
         self._sdk_lock = threading.RLock()
 
         super(LinkamSDK, self).__init__()
+
+        release = 'debug' if debug else 'release'
 
         if log_path is None:
             log_path = os.path.join(_SDK_PATH, 'Linkam.log')
@@ -185,14 +197,36 @@ class LinkamSDK(LoggerObject):
             with open(license_path, 'wb') as license_file:
                 generate_license(license_file)
 
+        # This might be a little crazy, but the Linkam SDK crashes occasionally (maybe 1 out of every 100 loads) and
+        # it looks like it's because the library attempts to open the license file before it's written. This delay
+        # makes that... less likely
+        time.sleep(0.2)
+
         self._license_path = license_path
         license_path = license_path.encode()
 
         # Load SDK DLL
-        self._sdk = ctypes.WinDLL('LinkamSDK.dll')
+        self._sdk = ctypes.WinDLL(f"LinkamSDK_{release}.dll")
+
+        # Provide type hints/restrictions
+        self._sdk.linkamInitialiseSDK.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_bool)
+        self._sdk.linkamInitialiseSDK.restype = ctypes.c_bool
+
+        self._sdk.linkamExitSDK.argtypes = ()
+        self._sdk.linkamExitSDK.restype = None
+
+        self._sdk.linkamInitialiseUSBCommsInfo.argtypes = (ctypes.POINTER(CommsInfo), ctypes.c_char_p)
+        self._sdk.linkamInitialiseUSBCommsInfo.restype = None
+
+        self._sdk.linkamGetVersion.argtypes = (ctypes.c_char_p, ctypes.c_uint64)
+        self._sdk.linkamGetVersion.restype = ctypes.c_bool
+
+        self._sdk.linkamProcessMessage.argtypes = (ctypes.c_int32, CommsHandle, ctypes.POINTER(Variant), Variant,
+                                                   Variant, Variant)
+        self._sdk.linkamProcessMessage.restype = ctypes.c_bool
 
         # Initialise SDK
-        if not self._sdk.linkamInitialiseSDK(log_path, license_path, True):
+        if not self._sdk.linkamInitialiseSDK(log_path, license_path, False):
             raise LinkamSDKError('Failed to initialize Linkam SDK')
 
         self.get_logger().info(f"Initialized Linkam SDK {self.get_version()}")
@@ -202,7 +236,7 @@ class LinkamSDK(LoggerObject):
 
     def __del__(self):
         # Release SDK
-        if self._sdk is not None:
+        if hasattr(self, '_sdk') and self._sdk is not None:
             self._sdk.linkamExitSDK()
 
         self._sdk = None
@@ -233,6 +267,10 @@ class LinkamSDK(LoggerObject):
             setattr(var_arg, arg_type, arg_value)
 
             variant_args.append(var_arg)
+
+        # Pad optional arguments
+        for _ in range(3 - len(variant_args)):
+            variant_args.append(Variant())
 
         result = Variant()
 

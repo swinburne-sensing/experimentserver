@@ -1,0 +1,66 @@
+<h3>Metadata</h3>
+<p>The following metadata will be appended to any points collected during this procedure.</p>
+{% if procedure.metadata|length > 0 %}
+    <table id="metadata" class="uk-table uk-table-striped uk-table-small">
+    <thead>
+        <tr>
+            <th class="uk-width-small">Tag</th>
+            <th>Value</th>
+        </tr>
+    </thead>
+    <tbody id="procedure-stage">
+        {% for metadata_field, metadata_content in procedure.metadata.items() %}
+            <tr>
+                <td>{{ metadata_field }}</td>
+                <td>{{ metadata_content }}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+    </table>
+{% endif %}
+
+<h3>Hardware</h3>
+<p>The following devices will be utilised in this procedure.</p>
+{% if procedure.hardware|length > 0 %}
+    <ul class="uk-list uk-list-striped">
+    {% for hardware_identifier in procedure.hardware %}
+        <li><span class="uk-label es-hardware-state" identifier="{{ hardware_identifier }}">Loading</span> {{ hardware_identifier }}</li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <p class="uk-text-bold">No hardware selected.</p>
+{% endif %}
+
+<h3>Stages</h3>
+<table id="procedure" class="uk-table uk-table-striped">
+<thead>
+    <tr>
+        <th class="uk-table-shrink">Stage</th>
+        <th class="uk-table-shrink">Type</th>
+        <th class="uk-table-shrink">Duration</th>
+        <th class="uk-table-shrink">Remaining</th>
+        <th>Summary</th>
+    </tr>
+</thead>
+<tbody id="procedure-stage">
+    {% if stages|length > 0 %}
+        {% for stage in stages %}
+            <tr class="es-stage" stage_index="{{ stage.index }}">
+                <td class="es-stage-index">{{ stage.index + 1 }}</td>
+                <td class="es-stage-class">{{ stage.class }}</td>
+                <td class="es-stage-duration">{{ stage.duration }}</td>
+                <td class="es-stage-duration-remaining">{{ stage.duration_remaining }}</td>
+                <td class="es-stage-summary">{{ render_list(stage.summary)|safe }}</td>
+            </tr>
+        {% endfor %}
+    {% else %}
+        <tr>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>Empty procedure.</td>
+        </tr>
+    {% endif %}
+</tbody>
+</table>

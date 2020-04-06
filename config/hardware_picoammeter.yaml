@@ -1,6 +1,8 @@
 %YAML 1.2
 ---
 class: keithley.Picoammeter6487
-identifier: 'picoammeter'
-visa_address: 'visa://127.0.0.1:3538/ASRL4::INSTR'
+identifier: picoammeter
+visa_address: 'ASRL4::INSTR'
+parameters:
+  set_measure_ohms: False
 ...

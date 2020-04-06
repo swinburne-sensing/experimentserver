@@ -1,6 +1,7 @@
 import logging
 import sys
 import threading
+import traceback
 import typing
 from datetime import datetime
 
@@ -41,8 +42,29 @@ class DatabaseEventHandler(logging.Handler, MeasurementSource):
                 print(f"Database client not available, discarding record: {record}", file=sys.stderr)
                 return
 
+        msg_lines = [record.msg]
+
+        if record.exc_info:
+            trace_lines = traceback.format_exception(record.exc_info[0], record.exc_info[1], record.exc_info[2])
+            exception_line = trace_lines.pop()
+
+            msg_lines.extend(['', f"Exception: {exception_line}", ''])
+
+            for trace in trace_lines:
+                trace = trace.strip()
+
+                # Ignore lines not beginning containing file information
+                if not trace.startswith('File'):
+                    continue
+
+                (trace_file, trace_content) = trace.strip().split('\n')
+                (trace_filename, trace_line, trace_function) = (x.strip() for x in trace_file.split(','))
+                trace_line = trace_line.split(' ')[1]
+
+                msg_lines.append(f"Trace {trace_filename} line {trace_line} {trace_function}: {trace_content}")
+
         record_payload = {
-            'message': record.msg
+            'message': '\n'.join(msg_lines)
         }
 
         record_tags = {

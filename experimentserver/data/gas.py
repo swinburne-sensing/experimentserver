@@ -1,7 +1,7 @@
 import enum
 import typing
 
-from .unit import Quantity, units
+from .unit import Quantity, units, TYPE_UNIT_OPTIONAL
 
 
 # Gas constants
@@ -15,6 +15,7 @@ class MolecularStructure(enum.Enum):
 
 class GasConstant(object):
     """ Structure for gas constant definition. """
+
     def __init__(self, label: str, molecular_structure: MolecularStructure, specific_heat: float, density: float,
                  correction_factor: float):
         self.label = label
@@ -22,6 +23,40 @@ class GasConstant(object):
         self.specific_heat = specific_heat
         self.density = density
         self.correction_factor = correction_factor
+
+    @staticmethod
+    def get_concentration_str(concentration: Quantity) -> str:
+        for unit in ('pct', 'ppm', 'ppb'):
+            concentration_str = str(concentration.to(unit))
+
+            # Break if unit makes sense
+            if concentration.to(unit).magnitude >= 1:
+                break
+
+        if 'pct' in concentration_str:
+            concentration_str = concentration_str.replace(' pct', '%')
+
+        return concentration_str
+
+    def get_concentration_label(self, concentration: Quantity) -> str:
+        concentration_str = self.get_concentration_str(concentration)
+
+        return f"{concentration_str} {self!s}"
+
+    def __str__(self):
+        return self.label
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}('{self.label}', {self.molecular_structure}, {self.specific_heat}, " \
+               f"{self.density}, {self.correction_factor})"
+
+
+class GasMixture(object):
+    def __init__(self, composition: typing.Sequence[typing.Tuple[GasConstant, TYPE_UNIT_OPTIONAL]]):
+        pass
+
+    def __str__(self):
+        pass
 
 
 # Sources
@@ -83,11 +118,16 @@ _GAS_CONSTANTS = {
     # 'silicon-tetrachloride': GasConstant('', MolecularStructure.POLYATOMIC, 0.127, 7.58, 0.28),
     # 'silicon-tetrafluoride': GasConstant('', MolecularStructure.POLYATOMIC, 0.1691, 4.643, 0.35),
     # 'sulfur-dioxide': GasConstant('', MolecularStructure.TRIATOMIC, 0.1488, 2.858, 0.69),
-    'sulfur-hexafluoride': GasConstant('Sulfur Hexaflouride (SF_6)', MolecularStructure.POLYATOMIC, 0.1592, 6.516, 0.26),
+    'sulfur-hexafluoride': GasConstant('Sulfur Hexaflouride (SF_6)', MolecularStructure.POLYATOMIC, 0.1592, 6.516,
+                                       0.26),
     # 'trichlorofluoromethane': GasConstant('', MolecularStructure.POLYATOMIC, 0.1357, 6.129, 0.33),
     # 'trichlorosilane': GasConstant('', MolecularStructure.POLYATOMIC, 0.138, 6.043, 0.33),
     # 'tungsten-hexafluoride': GasConstant('', MolecularStructure.POLYATOMIC, 0.081, 13.28, 0.25),
-    'xenon': GasConstant('Xenon (Xe)', MolecularStructure.MONOTOMIC, 0.0378, 5.858, 1.32)
+    'xenon': GasConstant('Xenon (Xe)', MolecularStructure.MONOTOMIC, 0.0378, 5.858, 1.32),
+
+    # special case or humidity
+    'humid_air': GasConstant('Humid Air', MolecularStructure.DIATOMIC, 0.24, 1.293, 1),
+    'humid_nitrogen': GasConstant('Humid Nitrogen (N_2)', MolecularStructure.DIATOMIC, 0.2485, 1.25, 1)
 }
 
 

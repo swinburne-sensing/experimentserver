@@ -22,6 +22,7 @@ class BoundMetadataCall(object):
         
         self.parent = parent
         self.kwargs = kwargs
+        # noinspection PyUnresolvedReferences
         self.partial = functools.partial(self.parent.method.__get__(target, target.__class__), **kwargs)
 
     def __call__(self, **kwargs):
@@ -45,6 +46,11 @@ class BoundMetadataCall(object):
     def __lt__(self, other):
         # Sort calls by parent
         return self.parent < other.parent
+
+    def __str__(self) -> str:
+        kwargs = [f"{arg}={value!s}" for arg, value in self.kwargs.items()]
+
+        return f"{self.parent.description}: {', '.join(kwargs)}"
 
 
 class Metadata(metaclass=abc.ABCMeta):
@@ -125,6 +131,7 @@ def get_metadata(target: typing.Any, class_filter: typing.Optional[typing.Type[T
 
     # If ordered metadata then return ordered dict
     if all((issubclass(x.__class__, OrderedMetadata) for x in metadata_list.values())):
+        # noinspection PyTypeChecker
         return collections.OrderedDict(sorted(metadata_list.items(), key=lambda x: x[1]))
 
     return metadata_list

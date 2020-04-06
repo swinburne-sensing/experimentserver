@@ -3,110 +3,85 @@
 {% block head %}
     {{ super() }}
     <script>
-    let stages = [];
+        $(document).ready(function() {
+            $('#procedure-import-file').on('change', function () {
+                let file = this.files[0];
 
-    function updateStages() {
-        // Clear table
-        $('#procedure-stage').empty();
+                let extension = file.name.toLowerCase().split('.').pop();
 
-        let index = 0;
+                if (extension !== 'yaml' && extension !== 'yml') {
+                    notifyError('Upload Error', 'File must have .yaml or .yml extension');
+                    $(this).val(null);
+                }
+            });
 
-        stages.forEach(function (item) {
-            $('#procedure-stage').append(
-                '<tr>' +
-                    '<td>' + (item.index + 1) + '</td>' +
-                    '<td>' + item.type + '</td>' +
-                    '<td>' + item.duration + '</td>' +
-                    '<td>Cake</td>' +
-                    '<td><a href="#" class="uk-icon-button procedure-edit stage-delete" uk-icon="close" stage-index="' + index + '" uk-tooltip="title: Delete this stage; pos: bottom"></a></td>' +
-                '</tr>'
-            );
+            $('#procedure-import').click(function () {
+                let parent = $(this);
 
-            index++;
+                let payload = new FormData();
+
+                payload.append('file', $('#procedure-import-file')[0].files[0]);
+
+                $.ajax({
+                    url: '/procedure/import',
+                    data: payload,
+                    type: 'POST',
+                    contentType: false,
+                    processData: false,
+                    success: function (result) {
+                        parent.prop('disabled', false);
+
+                        if (result.success) {
+                            if ('message' in result) {
+                                // Display message to user
+                                notifySuccess('Upload Accepted', result.message);
+                            }
+
+                            // Reload page
+                            location.reload();
+                        } else {
+                            notifyWarning('Upload Error', result.message);
+                        }
+                    },
+                    error: function () {
+                        parent.prop('disabled', false);
+
+                        notifyError('Server Error', 'Error occurred while connecting to server.');
+                    },
+                    timeout: 5000
+                });
+            });
+
+            registerAjax('#procedure-export', '/procedure/export', function (result) {
+                let link = document.createElement('a');
+
+                link.download = result.data.filename;
+                link.href = 'data:' + result.data.content_type + ';base64,' + btoa(result.data.content);
+                link.click();
+            }, undefined, 'Procedure export failed, check application logs.');
         });
-
-        $('.stage-delete').click(function () {
-            let index = $(this).attr('stage-index');
-
-            stages.splice(index, 1);
-
-            updateStages();
-        });
-    }
-
-    $(document).ready(function() {
-        const revertAjax = registerAjax('#procedure-revert', '/procedure/stage', function (response) {
-            // Update local stages
-            stages = response.data;
-
-            updateStages();
-        }, undefined, 'Unable to retrieve stages from server.');
-        revertAjax();
-    });
     </script>
 {% endblock %}
 
 {% block content %}
     <div>
-        <h2>Settings</h2>
+        <h1>Experimental Procedure</h1>
 
-        <p>This is a test.</p>
-
-        <h2>Procedure</h2>
-
+        <h2 class="uk-heading-bullet">Import/Export</h2>
+        <p>Upload new procedure or download the currently loaded procedure. Procedures are stored in <a href="https://yaml.org/">YAML files</a> that can be altered in any text editor. Users should familiarise themselves with the file format to facilitate editing and error checking.</p>
+        <p>Remember that indenting is important. Files should use spaces, not tabs.</p>
         <div id="control-edit" class="uk-display-inline-block">
-            <div class="uk-inline">
-                <button class="uk-button uk-button-default uk-button-small" uk-tooltip="title: Add and remove hardware from experiment; pos: bottom" type="button"><span uk-icon="icon: cog"></span> Hardware</button>
-                <div class="es-hardware" uk-dropdown="mode: click">
-                    <ul class="uk-nav uk-dropdown-nav">
-                        {% for hardware_metadata in hardware %}
-                            <li class="uk-active es-hardware-identifier"><input class="uk-checkbox procedure-edit hardware-enable" type="checkbox"{% if hardware_metadata.active %} checked{% endif %} identifier="{{ hardware_metadata.identifier }}"> {{ hardware_metadata.identifier }}</li>
-                            <li class="es-hardware-description">{{ hardware_metadata.description }}</li>
-                        {% endfor %}
-                    </ul>
-                </div>
+            <div uk-form-custom="target: true">
+                <input type="file" id="procedure-import-file" accept="application/x-yaml,.yml,.yaml">
+                <input class="uk-input uk-form-width-medium uk-form-small" type="text" placeholder="Select file" disabled>
             </div>
-
-            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Add time delay; pos: bottom" id="procedure-delay"><span uk-icon="icon: future"></span> Add Delay</button>
-            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Add analyte exposure; pos: bottom" id="procedure-pulse"><span uk-icon="icon: sign-in"></span> Add Pulse</button>
-            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Save changes to procedure; pos: bottom" id="procedure-save"><span uk-icon="icon: push"></span> Save</button>
-            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Reset changes to procedure; pos: bottom" id="procedure-revert"><span uk-icon="icon: pull"></span> Revert</button>
+            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Import procedure from a file; pos: bottom" id="procedure-import"><span uk-icon="icon: upload"></span> Import</button>
             <button class="uk-button uk-button-default uk-button-small" uk-tooltip="title: Export procedure to a file; pos: bottom" id="procedure-export"><span uk-icon="icon: download"></span> Export</button>
         </div>
 
-        <table id="procedure" class="uk-table uk-table-divider">
-        <thead>
-            <tr>
-                <th class="uk-table-shrink">Stage</th>
-                <th class="uk-table-shrink">Type</th>
-                <th class="uk-table-shrink">Duration</th>
-                <th>Configuration</th>
-                <th class="uk-table-shrink"></th>
-            </tr>
-        </thead>
-        <tbody id="procedure-stage">
-            <tr>
-                <td>1</td>
-                <td>1:00:00</td>
-                <td>1</td>
-                <td>1</td>
-                <td><a href="" class="uk-icon-button" uk-icon="close" uk-tooltip="title: Delete this stage; pos: bottom"></a></td>
-            </tr>
-            <tr>
-                <td>2</td>
-                <td>1:00:00</td>
-                <td>2</td>
-                <td>2</td>
-                <td><a href="" class="uk-icon-button" uk-icon="close"></a></td>
-            </tr>
-            <tr>
-                <td>1</td>
-                <td>1</td>
-                <td>3</td>
-                <td>1:00:00</td>
-                <td><a href="" class="uk-icon-button" uk-icon="close"></a></td>
-            </tr>
-        </tbody>
-        </table>
+        <h2 class="uk-heading-bullet">Loaded Procedure</h2>
+        <p>The currently loaded procedure is shown below.</p>
+
+        {% include 'procedure.html' %}
     </div>
 {% endblock %}

@@ -62,7 +62,7 @@ class __TrackedMeta(type):
 __AbstractTrackedMeta = type('__AbstractTrackedMeta', (abc.ABCMeta, __TrackedMeta), {})
 
 
-T = typing.TypeVar('T', bound='Tracked')
+TTracked = typing.TypeVar('TTracked', bound='Tracked')
 
 
 class Tracked(object, metaclass=__TrackedMeta):
@@ -79,7 +79,7 @@ class Tracked(object, metaclass=__TrackedMeta):
         return self._identifier
 
     @classmethod
-    def get_instance(cls: typing.Type[T], identifier: str) -> T:
+    def get_instance(cls: typing.Type[TTracked], identifier: str) -> TTracked:
         """ Get an instance of class given that objects unique identifier.
 
         :param identifier: unique identifier string
@@ -91,7 +91,7 @@ class Tracked(object, metaclass=__TrackedMeta):
             raise TrackedIdentifierError(f"Invalid identifier {identifier} for tracked class {cls.__name__}")
 
     @classmethod
-    def get_all_instances(cls: typing.Type[T], include_subclass: bool = True) -> typing.Dict[str, T]:
+    def get_all_instances(cls: typing.Type[TTracked], include_subclass: bool = True) -> typing.Dict[str, TTracked]:
         """ Get all instances of this class. Optionally include subclasses.
 
         :param include_subclass: if True then subclasses of this class will be included in the search.
@@ -280,10 +280,10 @@ def __recurse_subclasses(subclass_list):
     return return_list
 
 
-T = typing.TypeVar('T', bound=object)
+TClass = typing.TypeVar('TClass', bound=object)
 
 
-def get_all_subclasses(class_root: typing.Type[T]) -> typing.List[typing.Type[T]]:
+def get_all_subclasses(class_root: typing.Type[TClass]) -> typing.List[typing.Type[TClass]]:
     """ Get a list of subclasses for a given parent class.
 
     :param class_root: parent class type

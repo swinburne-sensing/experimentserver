@@ -1,0 +1,6 @@
+%YAML 1.2
+---
+class: custom.AccelMonitor
+identifier: accelemonitor
+port: COM6
+...

@@ -91,3 +91,12 @@ li.es-hardware-identifier {
 header a span {
     padding-right: 5px !important;
 }
+
+.es-stage-current {
+    background: #F99 !important;
+    font-weight: bold;
+}
+
+.es-stage-next {
+    background: #FEE !important;
+}

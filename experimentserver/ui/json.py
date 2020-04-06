@@ -6,9 +6,9 @@ import transitions
 
 import experimentserver
 from .web import UserInterfaceError, WebServer
-from ..experiment.control import ProcedureTransition
-from experimentserver.hardware import HardwareTransition
-from experimentserver.hardware.manager import HardwareManager
+from ..hardware import HardwareManager, HardwareTransition
+from ..protocol import Procedure, ProcedureTransition, dump_yaml
+from ..util.constant import FORMAT_TIMESTAMP_FILENAME
 
 
 class ServerJSONException(experimentserver.ApplicationException):
@@ -30,7 +30,7 @@ def _json_response_wrapper(ui: WebServer):
                         'message': value
                     })
                 elif type(value) in (list, dict, tuple):
-                    ui.get_logger().debug(f"JSON payload {value!r}")
+                    # ui.get_logger().debug(f"JSON payload {value!r}")
 
                     return flask.jsonify({
                         'success': True,
@@ -47,7 +47,7 @@ def _json_response_wrapper(ui: WebServer):
                     'message': exc.get_user_str('<hr>')
                 })
             except transitions.MachineError as exc:
-                ui.get_logger().warning(str(exc), notify=False, event=False, exc_info=exc)
+                ui.get_logger().warning(str(exc), event=False, exc_info=exc)
 
                 return flask.jsonify({
                     'success': False,
@@ -70,11 +70,11 @@ def register_json(ui: WebServer):
     @_json_response_wrapper(ui)
     def server_state():
         return {
-            'state': ui.get_procedure().get_state().value,
-            'hardware_active': ui.get_procedure().get_active_hardware(),
             'hardware_state': {identifier: manager.get_state().value for identifier, manager in
                                HardwareManager.get_all_instances().items()},
-            'status': ui.get_procedure().get_status()
+            'procedure': ui.get_procedure().get_procedure_summary(),
+            'stages':  ui.get_procedure().get_stages_summary(True),
+            'state': ui.get_procedure().get_state().value
         }
 
     @ui.app.route('/server/state/queue', methods=['GET', 'POST'])
@@ -155,38 +155,41 @@ def register_json(ui: WebServer):
 
         return 'Shutting down, this page may now be closed.'
 
-    @ui.app.route('/procedure/hardware', methods=['GET', 'POST'])
+    @ui.app.route('/procedure')
     @_json_response_wrapper(ui)
-    def procedure_hardware():
-        enabled = flask.request.args.get('enabled', type=str).lower() == 'true'
-        identifier = flask.request.args.get('identifier')
+    def procedure_dump():
+        return ui.get_procedure().get_procedure_summary()
 
-        if identifier is None:
-            raise UserInterfaceError('Missing hardware identifier')
-
-        if enabled:
-            ui.get_procedure().add_hardware(identifier)
-            return f"Added {identifier} to procedure"
-        else:
-            ui.get_procedure().remove_hardware(identifier)
-            return f"Removed {identifier} from procedure"
-
-    @ui.app.route('/procedure/stage', methods=['GET', 'POST'])
+    @ui.app.route('/procedure/stages')
     @_json_response_wrapper(ui)
-    def procedure_stage():
-        response = []
-        index = 0
+    def stages_dump():
+        return ui.get_procedure().get_stages_summary()
 
-        for stage in ui.get_procedure().get_stages():
-            stage_config = stage.get_config_html()
+    @ui.app.route('/procedure/export', methods=['GET', 'POST'])
+    @_json_response_wrapper(ui)
+    def procedure_export():
+        return {
+            'filename': f"procedure-{ui.get_procedure().get_uid()}-"
+                        f"{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml",
+            'content_type': 'application/x-yaml',
+            'content': dump_yaml(ui.get_procedure().procedure_export())
+        }
 
-            response.append({
-                'index': index,
-                'type': stage.get_stage_type(),
-                'config': stage_config,
-                'duration': str(stage.get_duration())
-            })
+    @ui.app.route('/procedure/import', methods=['POST'])
+    @_json_response_wrapper(ui)
+    def procedure_import():
+        if len(flask.request.files) != 1 or 'file' not in flask.request.files:
+            raise UserInterfaceError('Missing procedure file')
 
-            index += 1
+        with flask.request.files['file'].stream as procedure_file:
+            procedure_file_content = procedure_file.read()
 
-        return response
+        ui.get_logger().info(f"Uploaded content:\n{procedure_file_content}")
+
+        procedure = Procedure.procedure_import(procedure_file_content.decode())
+
+        ui.get_logger().info(f"Read procedure:\n{procedure.procedure_export(True)}")
+
+        ui.set_procedure(procedure)
+
+        return 'Procedure uploaded!'

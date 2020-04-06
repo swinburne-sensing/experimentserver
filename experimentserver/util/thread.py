@@ -168,8 +168,9 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
         """
         self.get_logger().debug('Requesting stop')
 
-    def join(self, timeout: typing.Optional[float] = None):
-        self._thread.join(timeout)
+    def thread_join(self, timeout: typing.Optional[float] = None):
+        if self.is_thread_alive():
+            self._thread.join(timeout)
 
     @abc.abstractmethod
     def thread_stop_requested(self) -> bool:
@@ -233,20 +234,27 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
 
                 try:
                     self._thread_target(*self._thread_target_args, **self._thread_target_kwargs)
-                except Exception as exc:
+                except experimentserver.ApplicationException as exc:
+                    # Raise fatal exceptions
+                    if exc.fatal:
+                        # Disable final run
+                        self._run_final = False
+
+                        raise
+
                     self._handle_thread_exception(exc)
 
                     if self._exception_threshold is not None:
                         # Handle exception threshold
                         exception_count += 1
 
-                        self.get_logger().exception(f"Unhandled exception in thread ({exception_count} of "
+                        self.get_logger().exception(f"Unhandled application exception in thread ({exception_count} of "
                                                     f"{self._exception_threshold} allowed)")
 
                         exception_time = time.time() + self._exception_timeout
 
                         if exception_count >= self._exception_threshold:
-                            self.get_logger().error(f"Number of exceptions exceeds configured threshold "
+                            self.get_logger().error(f"Number of application exceptions exceeds configured threshold "
                                                     f"({self._exception_threshold}), interrupting main thread")
 
                             _thread.interrupt_main()
@@ -255,10 +263,17 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
 
                             return
                     else:
-                        self.get_logger().exception('Unhandled exception in thread')
+                        self.get_logger().exception('Unhandled application exception in thread')
+                except Exception:
+                    # Disable final run
+                    self._run_final = False
+
+                    self.get_logger().exception('Unhandled base exception in thread')
+                    raise
         finally:
             # Final call to target function (allows for cleanup)
             if self._run_final:
+                # noinspection PyBroadException
                 try:
                     self._thread_target(*self._thread_target_args, **self._thread_target_kwargs)
                 except Exception:
@@ -381,6 +396,7 @@ class QueueThread(ManagedThread):
                     self.get_logger().info('Delayed stop requested')
 
                     # Send empty call to callback to finalise process
+                    # noinspection PyBroadException
                     try:
                         self._event_callback(None, *self._event_callback_args, **self._event_callback_kwargs)
                     except Exception:

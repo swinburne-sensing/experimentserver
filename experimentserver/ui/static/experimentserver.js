@@ -8,6 +8,30 @@ function escapeHtml(unsafe) {
         .replace(/'/g, "&#039;");
 }
 
+function readableSeconds(seconds) {
+    seconds = Math.round(seconds);
+
+    if (seconds == 1) {
+        return '1 second';
+    } else {
+        if (seconds <= 60) {
+            return seconds.toString() + ' seconds';
+        } else {
+            let minutes = Math.floor(seconds / 60);
+            seconds = seconds % 60;
+
+            if (minutes <= 60) {
+                return minutes.toString() + ':' + seconds.toString().padStart(2, "0");
+            } else {
+                let hours = Math.floor(minutes / 60)    ;
+                minutes = minutes % 60;
+
+                return hours.toString() + ':' + minutes.toString().padStart(2, "0") + ':' + seconds.toString().padStart(2, "0");
+            }
+        }
+    }
+}
+
 // Notifications
 function notifySuccess(title, message) {
     UIkit.notification({message: "<span class=\"uk-label uk-label-success\">" + title + "</span><hr>"+ message, pos: 'bottom-right'});
@@ -24,15 +48,15 @@ function notifyError(title, message) {
 // Attach AJAX method to specified component
 function registerAjax(parent, url, success_callback = null, data = null, error_message = null, disable_control = true) {
     function ajaxCall() {
-        let parent = $(this)
-        let payload = {}
+        let parent = $(this);
+        let payload = {};
 
         // Disable button
         if (disable_control)
             parent.prop('disabled', true);
 
         // Append any extra attributes to the payload
-        if (parent.is('input') && parent.attr('type') == 'checkbox') {
+        if (parent.is('input') && parent.attr('type') === 'checkbox') {
             payload['enabled'] = parent.is(':checked');
         }
 
@@ -100,9 +124,14 @@ function updateStatus() {
     const dom_next = $("#procedure-next");
     const dom_finish = $("#procedure-finish");
 
+    // Hardware state elements
     const dom_hardware_state = $(".es-hardware-state");
 
+    // Editor controls
     const dom_procedure_edit = $(".procedure-edit");
+
+    // Stage elements
+    const dom_stage = $(".es-stage");
 
     if (updating)
         console.log('Update already running');
@@ -129,7 +158,13 @@ function updateStatus() {
             $("#control button").prop('disabled', true);
             dom_procedure_edit.prop('disabled', true);
 
-            let state = result.data.state;
+            // Clear stage display
+            dom_stage.removeClass('es-stage-current');
+            dom_stage.removeClass('es-stage-next');
+
+            const state = result.data.state;
+            const stage_current = result.data.procedure.stage_current;
+            const stage_next = result.data.procedure.stage_next;
 
             switch (state) {
                 case 'setup':
@@ -175,6 +210,29 @@ function updateStatus() {
                     break;
             }
 
+            // Update stage
+            const stages_data = result.data.stages;
+
+            if (state == 'ready' || state === 'running' || state === 'paused') {
+                dom_stage.each(function (index) {
+                    let stage_index = $(this).attr('stage_index');
+                    let stage_duration = $(this).find('.es-stage-duration-remaining');
+
+                    if (stage_index == stage_current) {
+                        $(this).addClass('es-stage-current');
+
+                        // Update remaining time
+                        let stage_data = stages_data[parseInt(stage_index)];
+                        let stage_duration_remaining = stage_data.duration_remaining;
+
+                        if (!isNaN(stage_data.duration_remaining))
+                            stage_duration.html(readableSeconds(stage_data.duration_remaining));
+                    } else if (stage_index == stage_next) {
+                        $(this).addClass('es-stage-next');
+                    }
+                });
+            }
+
             UIkit.modal('#comm-error-dialog').hide();
         },
         error: function () {
@@ -195,21 +253,17 @@ function autoUpdateStatus() {
 
 $(document).ready(function() {
     // Shutdown
-    registerAjax('#shutdown-button', '/server/shutdown', function (result) {
-        $("#shutdown-result").show();
-        $("#shutdown-result h3").html("Shutting down...");
-        $("#shutdown-control").hide();
-    }, undefined, 'Failed to process shutdown request, server may already have shut down.', false);
+    registerAjax('#shutdown-button', '/server/shutdown', undefined, undefined, 'Failed to process shutdown request, server may already have shut down.', false);
 
     // Event log
     registerAjax('#event-dialog-open', '/server/event', function (result) {
         // Clear existing event entries
-        $("#event-dialog-container").empty()
+        $("#event-dialog-container").empty();
 
         // Add new rows
         result.data.forEach(function (item) {
             $("#event-dialog-container").append('<tr><td><time datetime="' + item.time + '"></time></td><td>' + item.level + '</td><td>' + item.thread + '</td><td>' + item.message + '</td></tr>')
-        })
+        });
 
         // Render time _tags
         timeago.render(document.querySelectorAll('#event-dialog-container time'), 'en_US', {minInterval: 5});

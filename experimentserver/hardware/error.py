@@ -6,6 +6,11 @@ class HardwareError(experimentserver.ApplicationException):
     pass
 
 
+class HardwareInitError(HardwareError):
+    """ Exception thrown during initialisation. """
+    pass
+
+
 class CommandError(HardwareError):
     """ Base exception for errors caused by setting parameters or taking measurements.
 

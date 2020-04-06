@@ -4,9 +4,17 @@ from experimentserver.util.state import ManagedState, ManagedTransition
 
 
 class ProcedureState(ManagedState):
+    """ Procedure state machine state. """
+    # Unverified procedure
     SETUP = 'setup'
+
+    # Ready verified procedure
     READY = 'ready'
+
+    # Running procedure
     RUNNING = 'running'
+
+    # Paused procedure
     PAUSED = 'paused'
 
     def is_valid(self):
@@ -17,6 +25,7 @@ class ProcedureState(ManagedState):
 
 
 class ProcedureTransition(ManagedTransition):
+    """ Procedure state machine state transitions. """
     VALIDATE = 'validate'
     START = 'start'
     PAUSE = 'pause'

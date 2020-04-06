@@ -1,11 +1,14 @@
 import logging
 
-from experimentserver.linkam.sdk import LinkamSDK
+from experimentserver.interface.linkam import LinkamSDK
 
 logging.basicConfig(level=logging.DEBUG)
 
 
-sdk = LinkamSDK()
-sdk.connect_usb()
+n = 0
 
-print(1)
+while True:
+    print(n)
+    sdk = LinkamSDK()
+    del sdk
+    n += 1

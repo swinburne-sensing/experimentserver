@@ -33,7 +33,7 @@ class EventFormatter(logging.Formatter):
         msg_lines = [record.msg.strip(), '', f"Thread: {record.threadName}"]
 
         if record.exc_info:
-            trace_lines = traceback.format_exception(record.exc_info[0], record.exc_info[1], record.exc_info[2], None)
+            trace_lines = traceback.format_exception(record.exc_info[0], record.exc_info[1], record.exc_info[2])
             exception_line = trace_lines.pop()
 
             if len(exception_line) > self._MSG_CHAR_LIMIT:
@@ -53,10 +53,10 @@ class EventFormatter(logging.Formatter):
                 (trace_filename, trace_line, trace_function) = (x.strip() for x in trace_file.split(','))
                 trace_line = trace_line.split(' ')[1]
 
-                if experimentserver.ROOT_PATH in trace:
+                if experimentserver.APP_PATH in trace:
                     # Make path relative
                     trace_filename = trace_filename[trace_filename.find('"') + 1:-1]
-                    trace_filename = os.path.relpath(trace_filename, experimentserver.ROOT_PATH)
+                    trace_filename = os.path.relpath(trace_filename, experimentserver.APP_PATH)
 
                     msg_lines.append(f"Trace {trace_filename} line {trace_line} {trace_function}: {trace_content}")
                 else:

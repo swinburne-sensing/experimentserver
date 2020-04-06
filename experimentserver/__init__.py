@@ -1,9 +1,17 @@
 # -*- coding: utf-8 -*-
+
+"""
+experimentserver is a tool to facilitate the running of gas sensing (among other) experiments. It is comprised of
+several key modules for data handling (data), hardware interaction (hardware), interfacing to external libraries
+(interface), experimental protocol (protocol), and user interface (ui).
+"""
+
 import os.path
 import typing
 
+
 __app_name__ = 'experimentserver'
-__version__ = '0.2.4'
+__version__ = '0.2.8'
 
 __author__ = 'Chris Harrison'
 __credits__ = ['Chris Harrison']
@@ -15,10 +23,15 @@ __status__ = 'Development'
 
 
 # Application root path
-ROOT_PATH = os.path.dirname(os.path.abspath(__file__))
+APP_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
 class ApplicationException(Exception):
+    def __init__(self, *args, fatal: bool = False):
+        super(ApplicationException, self).__init__(*args)
+
+        self.fatal = fatal
+
     """ Base exception for all custom application exceptions that occur during runtime. """
     def get_user_str(self, separator: str = '\n') -> str:
         exc = self
@@ -31,7 +44,7 @@ class ApplicationException(Exception):
         return separator.join(exc_str)
 
 
-class MultipleException(Exception):
+class MultipleException(ApplicationException):
     """ Base exception wrapper for multiple exceptions thrown in critical section. """
 
     def __init__(self, msg: str, exception_list: typing.Sequence[Exception]):

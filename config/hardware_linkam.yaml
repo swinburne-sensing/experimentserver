@@ -1,7 +1,6 @@
 %YAML 1.2
 ---
-class: linkam.T96ControllerTemperature
+class: linkam.T96Controller
 identifier: linkam
-parameters:
-  - enable_hardware_measurement: measure_humidity
+humidity_room_temp: 20
 ...

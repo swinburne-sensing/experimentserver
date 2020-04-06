@@ -10,9 +10,8 @@ import typing_inspect
 from .base.enum import HardwareEnum
 from .error import MeasurementError, ParameterError
 from experimentserver.util.metadata import BoundMetadataCall, OrderedMetadata
-from experimentserver.data import Quantity
-from experimentserver.data.measurement import Measurement, TYPE_MEASUREMENT, TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT, \
-    MeasurementGroup
+from experimentserver.data import Quantity, Measurement, MeasurementGroup, TYPE_MEASUREMENT, TYPE_MEASUREMENT_LIST, \
+    TYPE_FIELD_DICT
 
 
 class _MeasurementMetadata(OrderedMetadata):
@@ -39,7 +38,8 @@ class _MeasurementMetadata(OrderedMetadata):
 
         return_annotation = inspect.signature(method).return_annotation
 
-        if return_annotation != 'Measurement' and return_annotation != TYPE_MEASUREMENT_LIST and \
+        if return_annotation != 'Measurement' and return_annotation != Measurement and \
+                return_annotation != TYPE_MEASUREMENT_LIST and return_annotation != 'TYPE_MEASUREMENT_LIST' and \
                 return_annotation != TYPE_FIELD_DICT:
             raise MeasurementError(f"Registered measurement method {method!r} must provide compatible "
                                    f"return annotation")
@@ -83,6 +83,7 @@ class _ParameterMetadata(OrderedMetadata):
             for kwarg_name, kwarg_value in kwargs.items():
                 if kwarg_name in self.validation:
                     # Bind method to parent
+                    # noinspection PyUnresolvedReferences
                     validation = self.validation[kwarg_name].__get__(target, target.__class__)
 
                     if not validation(kwarg_value):
@@ -139,5 +140,6 @@ CALLABLE_PARAMETER = typing.Callable[..., typing.NoReturn]
 
 # Measurement methods may return a dict, a single measurement, or a sequence of measurements
 CALLABLE_MEASUREMENT = typing.Callable[[], TYPE_MEASUREMENT]
-TYPE_PARAMETER_DICT = typing.MutableMapping[str, typing.Any]
+TYPE_PARAMETER_DICT = typing.MutableMapping[str, typing.Dict[str, typing.Any]]
+TYPE_PARAMETER_COMMAND = typing.Union[None, TYPE_PARAMETER_DICT, typing.List[TYPE_PARAMETER_DICT]]
 TYPE_PARAMETER_VALID_DICT = typing.MutableMapping[_ParameterMetadata, functools.partial]
