@@ -1,31 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" serverName="sciencepi" exclude=".svn;.cvs;.idea;.DS_Store;.git;.hg;*.hprof;*.pyc;*.log;*.lsk">
-    <serverData>
-      <paths name="GasSensor">
-        <serverdata>
-          <mappings>
-            <mapping deploy="\" local="$PROJECT_DIR$" web="/" />
-          </mappings>
-          <excludedPaths>
-            <excludedPath local="true" path="$PROJECT_DIR$/log" />
-          </excludedPaths>
-        </serverdata>
-      </paths>
-      <paths name="HAW10011724">
-        <serverdata>
-          <mappings>
-            <mapping deploy="\" local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="sciencepi">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/experimentserver" local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-    </serverData>
-  </component>
+  <component name="PublishConfigData" exclude=".svn;.cvs;.idea;.DS_Store;.git;.hg;*.hprof;*.pyc;*.log;*.lsk" />
 </project>
