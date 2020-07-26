@@ -7,34 +7,41 @@ url:
 
 database:
   default:
-    url: !env INFLUXDB_URL
+    url: !envopt INFLUXDB_URL http://localhost:8086/
     username: !envopt INFLUXDB_USERNAME
     password: !envopt INFLUXDB_PASSWORD
-    database: !env INFLUXDB_USER_DATABASE
+    database: !envopt INFLUXDB_USER_DATABASE experiment
     buffer_interval: 1
   shared:
-    url: !env INFLUXDB_URL
+    url: !envopt INFLUXDB_URL http://localhost:8086/
     username: !envopt INFLUXDB_USERNAME
     password: !envopt INFLUXDB_PASSWORD
-    database: !env INFLUXDB_SHARED_DATABASE
+    database: !envopt INFLUXDB_SHARED_DATABASE experiment
+    buffer_interval: 1
+  log:
+    url: !envopt INFLUXDB_URL http://localhost:8086/
+    username: !envopt INFLUXDB_USERNAME
+    password: !envopt INFLUXDB_PASSWORD
+    database: experiment_log
     buffer_interval: 1
 
-hardware: !include '{config_path}/hardware.yaml'
+hardware: !include '{config_path}/hardware.yaml;C:/GasSensing/config/hardware.yaml'
 
 remap:
-  event: shared
+  # Remapping of measurements to databases based upon source name
+  event: log
+  server: log
   linkam: shared
   mfc_*: shared
-  server: shared
+  valve_*: shared
+  ledsupply: shared
+  powersupply: shared
 
 procedure:
+  # Default configuration for procedures
   pulse:
-    # Default flow rate
-    flow: '200 sccm'
-
-    # Default gas balance
-    normal:
-      air: balance
+    balance: air
+    flow: 200 sccm
 
 pushover:
   title: !format '{app_name} {system_hostname}'

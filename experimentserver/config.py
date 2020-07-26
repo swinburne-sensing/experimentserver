@@ -193,17 +193,19 @@ class YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
         LoggerObject.__init__(self)
 
     @classmethod
-    def _format_node(cls, node):
+    def _format_node(cls, node, parse_str=None):
+        if parse_str is None:
+            parse_str = node.value
+
         fields = get_system_metadata()
 
         # Find home directory
         user_path = os.path.expanduser('~')
-        config_path = os.path.join(user_path, f".{experimentserver.__app_name__}")
 
         # Add custom fields
         fields.update({
             'app_path': experimentserver.APP_PATH,
-            'config_path': config_path,
+            'config_path': experimentserver.CONFIG_PATH,
             'user_path': user_path,
             'root_path': os.path.abspath(os.path.join(experimentserver.APP_PATH, '..')),
             'temp_path': tempfile.gettempdir(),
@@ -216,7 +218,7 @@ class YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
             fields['env_' + env_var.lower()] = env_val
 
         try:
-            return node.value.format(**fields)
+            return parse_str.format(**fields)
         except IndexError:
             raise ConfigurationError(f"Configuration error in node \"{node.tag} {node.value}\" from "
                                      f"{node.start_mark.name} line {node.start_mark.line}: invalid field format")
@@ -232,13 +234,18 @@ class YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
         if self._root is None:
             raise ConfigurationError('Cannot include files when loading from string')
 
-        # From http://stackoverflow.com/questions/528281/how-can-i-include-an-yaml-file-inside-another
-        filename = self._format_node(node)
+        for include_path in node.value.split(';'):
+            # From http://stackoverflow.com/questions/528281/how-can-i-include-an-yaml-file-inside-another
+            filename = self._format_node(node, include_path)
 
-        filename_abs = os.path.join(self._root, filename)
-        filename_abs = os.path.abspath(filename_abs)
+            filename_abs = os.path.join(self._root, filename)
+            filename_abs = os.path.abspath(filename_abs)
 
-        self.get_logger().debug(f"Include {filename_abs}")
+            if os.path.isfile(filename_abs):
+                self.get_logger().info(f"Include {filename_abs}")
+                break
+            else:
+                self.get_logger().info(f"Include not found {filename_abs}")
 
         with open(filename_abs) as f:
             include_data = yaml.load(f, YAMLShortcutLoader)
