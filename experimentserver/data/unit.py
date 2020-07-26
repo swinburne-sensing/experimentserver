@@ -43,7 +43,7 @@ def is_unit(obj: typing.Any) -> bool:
 
 
 def to_unit(x: TYPE_VALUE, default_unit: typing.Optional[typing.Union[str, units.Unit]] = None,
-            magnitude: bool = False, allow_none: bool = True) -> Quantity:
+            magnitude: bool = False, allow_none: bool = True, apply_round: typing.Optional[int] = None) -> Quantity:
     """ Create a data from arbitrary input.
 
     If input is already a Quantity then it is returned in preferred units. If a number or a string then a new Quantity
@@ -54,6 +54,7 @@ def to_unit(x: TYPE_VALUE, default_unit: typing.Optional[typing.Union[str, units
         input will be cast to this unit
     :param magnitude: if True return the magnitude of the unit (nomalised to base unit)
     :param allow_none: if False then exception is thrown if input is None or empty
+    :param apply_round:
     :return:
     """
     # Ignore empty inputs
@@ -92,6 +93,10 @@ def to_unit(x: TYPE_VALUE, default_unit: typing.Optional[typing.Union[str, units
 
     # Convert string to a data
     x = Quantity(x)
+
+    # Apply rounding
+    if apply_round is not None:
+        x = Quantity(round(x.magnitude, apply_round), x.units)
 
     # Remove unitless units (percent, ppm, etc)
     if x.dimensionless:

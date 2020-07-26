@@ -97,6 +97,9 @@ class HardwareEnum(enum.Enum):
         if issubclass(type(x), HardwareEnum):
             return x
 
+        if type(x) is bytes:
+            x = x.decode()
+
         if allow_direct:
             try:
                 return cls[x]

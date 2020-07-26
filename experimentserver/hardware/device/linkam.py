@@ -16,6 +16,8 @@ __email__ = 'cjharrison@swin.edu.au'
 class T96Controller(Hardware):
     """ Linkam stage controller. Can interface with humidity generator and LN cooler. """
 
+    _REFRESH_PERIOD = 0.1
+
     def __init__(self, *args, humidity_room_temp: TYPE_UNIT_OPTIONAL = None, sdk_debug: bool = False,
                  sdk_log_path: typing.Optional[str] = None, sdk_license_path: typing.Optional[str] = None, **kwargs):
         """ Create new instance.
@@ -45,8 +47,8 @@ class T96Controller(Hardware):
     def measure(self) -> TYPE_MEASUREMENT_LIST:
         assert self._handle is not None
 
-        # Delay since Linkam only produced measurements evert ~0.1s
-        time.sleep(0.1)
+        # Delay since Linkam only produces measurements data every ~0.1s
+        time.sleep(self._REFRESH_PERIOD)
 
         payload = []
 

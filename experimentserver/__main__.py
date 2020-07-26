@@ -255,7 +255,8 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
             # If URL is available then provide it now
             url = None
 
-            if 'url.grafana' in app_config:
+            if 'url.grafana' in app_config and app_config['url.grafana'] is not None and \
+                    len(app_config['url.grafana']) > 0:
                 url = app_config.get('url.grafana').format(int(1000 * time_startup.timestamp()), 'now')
                 root_logger.info(f"Runtime Grafana URL {url}", notify=True)
 

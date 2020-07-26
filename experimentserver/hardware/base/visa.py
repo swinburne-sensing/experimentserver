@@ -359,7 +359,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             if cls.__resource_manager is None:
                 cls.__resource_manager = pyvisa.ResourceManager()
 
-                time.sleep(1)
+                # time.sleep(1)
 
                 cls.get_class_logger().info(f"VISA library: {cls.__resource_manager.visalib}")
 

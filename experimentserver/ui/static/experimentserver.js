@@ -242,7 +242,7 @@ function updateStatus() {
         complete: function () {
             updating = false;
         },
-        timeout: 5000
+        timeout: 10000
     })
 }
 

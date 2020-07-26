@@ -6,7 +6,7 @@ import experimentserver
 from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget, TYPE_TAG_DICT, \
     MeasurementGroup
 from experimentserver.config import ConfigManager
-from experimentserver.hardware.manager import HardwareManager
+from experimentserver.hardware.manager import HardwareError, HardwareManager
 from experimentserver.protocol import Delay, Procedure, ProcedureConfigurationError, ProcedureTransition, Setup
 from experimentserver.util.thread import CallbackThread
 from experimentserver.util.logging import LoggerObject, get_logger, INFO
@@ -122,7 +122,9 @@ class WebServer(LoggerObject, MeasurementSource):
             run = True
 
             for manager in HardwareManager.get_all_instances().values():
-                if not manager.is_thread_alive():
+                try:
+                    manager.check_watchdog()
+                except HardwareError:
                     self.get_logger().error(
                         f"Hardware manager for {manager.get_hardware().get_hardware_identifier()} crashed")
 
