@@ -1,6 +1,0 @@
-%YAML 1.2
----
-class: gwinstek.GWInstekLCR6000Series
-identifier: lcr
-visa_address: 'ASRL3::INSTR'
-...

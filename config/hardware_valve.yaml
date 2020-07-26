@@ -1,6 +1,0 @@
-%YAML 1.2
----
-class: custom.ValveController
-identifier: valve_humid
-port: COM3
-...
