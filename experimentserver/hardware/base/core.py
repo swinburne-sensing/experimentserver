@@ -514,3 +514,6 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
     # Convert decorators to static methods
     register_measurement = staticmethod(register_measurement)
     register_parameter = staticmethod(register_parameter)
+
+
+TYPE_HARDWARE = typing.TypeVar('TYPE_HARDWARE', bound=Hardware)

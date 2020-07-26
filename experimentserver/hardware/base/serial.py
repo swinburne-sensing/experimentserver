@@ -12,7 +12,7 @@ from .core import Hardware
 from ..error import CommunicationError
 from ..metadata import TYPE_PARAMETER_DICT
 from ...data import Measurement, MeasurementTarget
-from ...util.thread import CallbackThread, QueueThread
+from ...util.thread import CallbackThread, ThreadLock, QueueThread
 
 
 class SerialHardware(Hardware, metaclass=abc.ABCMeta):
@@ -38,13 +38,13 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
         self._serial_args = serial_args
 
         # Serial port connection information
-        self._serial_lock = threading.RLock()
+        self._serial_lock = ThreadLock(f"{self.get_hardware_identifier(True)}SerialLock", 5)
         self._serial_port: typing.Optional[serial.SerialBase] = None
 
     def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         super(SerialHardware, self).transition_connect(event)
 
-        with self._serial_lock:
+        with self._serial_lock.lock():
             # Open serial port
             try:
                 self.get_logger().debug(f"Opening serial port using args: {self._serial_args}")
@@ -53,7 +53,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
                 raise CommunicationError(f"Unable to open serial port {self._serial_args['port']}") from exc
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        with self._serial_lock:
+        with self._serial_lock.lock():
             # Close serial port
             self._serial_port.close()
 
@@ -90,9 +90,9 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
         super().transition_connect(event)
 
         # Start serial thread
-        self._thread_serial_consumer = CallbackThread(f"{self.get_hardware_identifier(True)}Serial",
+        self._thread_serial_consumer = CallbackThread(f"{self.get_hardware_identifier(True)}SerialConsumer",
                                                       self._thread_serial_consumer_callback)
-        self._thread_payload_consumer = QueueThread(f"{self.get_hardware_identifier(True)}Payload",
+        self._thread_payload_consumer = QueueThread(f"{self.get_hardware_identifier(True)}PayloadConsumer",
                                                     self._thread_payload_consumer_event)
 
         self._thread_serial_consumer.thread_start()
@@ -126,8 +126,14 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
 
         while not self._thread_serial_consumer.thread_stop_requested():
             try:
-                with self._serial_lock:
+                with self._serial_lock.lock():
+                    # Break upon disconnection
+                    if self._serial_port is None:
+                        return
+
                     if self._serial_port.in_waiting > 0:
+                        self.get_logger().debug(f"Read {self._serial_port.in_waiting} bytes")
+
                         # Read and append to buffer
                         serial_buffer.extend(filter(lambda x: x != ord('\r'), self._serial_port.read(self._BLOCK_SIZE)))
             except serial.SerialException as exc:
@@ -141,8 +147,12 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
             eol_index = serial_buffer.find(b'\n')
 
             while eol_index >= 0:
+                payload = bytes(serial_buffer[:eol_index]), datetime.now()
+
+                self.get_logger().debug(f"Payload found: {payload!r}")
+
                 # Save payload
-                self._thread_payload_consumer.append((bytes(serial_buffer[:eol_index]), datetime.now()))
+                self._thread_payload_consumer.append(payload)
                 serial_buffer = serial_buffer[eol_index + 1:]
 
                 eol_index = serial_buffer.find(b'\n')

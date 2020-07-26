@@ -72,6 +72,9 @@ class ManagedStateMachine(CallbackThread):
         # State lock
         self._state_lock = threading.Condition()
 
+        # Flag to inhibit queued transitions
+        self._state_hold = False
+
         # Queue for pending transitions
         self._transition_pending_queue: typing.List[typing.Tuple[TYPE_TRANSITION, typing.Sequence, typing.Mapping]] = []
 
@@ -139,6 +142,13 @@ class ManagedStateMachine(CallbackThread):
                 # Notify waiting threads that pending transitions were discarded
                 self._transition_error_queue.append(TransitionDiscarded(f"Transition {transition} discarded"))
 
+            # Clear hold
+            self._state_hold = False
+
+    def set_queue_transition_hold(self, flag: bool):
+        with self._state_lock:
+            self._state_hold = flag
+
     def queue_transition(self, transition: TYPE_TRANSITION, *args, block: bool = True,
                          timeout: typing.Optional[float] = None, raise_exception: bool = True, **kwargs) \
             -> typing.Optional[TYPE_STATE]:
@@ -153,7 +163,7 @@ class ManagedStateMachine(CallbackThread):
             raise ManagedStateMachineError('State machine thread not running')
 
         with self._state_lock:
-            self.get_logger().info(f"Queueing transition {transition}")
+            self.get_logger().info(f"Queueing transition {transition} ({'blocking' if block else 'non-blocking'})")
             self._transition_pending_queue.append((transition, args, kwargs))
 
             if block:
@@ -188,8 +198,12 @@ class ManagedStateMachine(CallbackThread):
         state_change = False
 
         with self._state_lock:
-            # Fetch current manager
+            # Fetch current state
             state = self._get_state()
+
+            # If state queue is on hold then do nothing
+            if self._state_hold:
+                return False, state
 
             if len(self._transition_pending_queue) > 0:
                 try:
@@ -199,10 +213,12 @@ class ManagedStateMachine(CallbackThread):
                         # Get pending transition
                         (queued_transition, queued_args, queued_kwargs) = self._transition_pending_queue.pop(0)
                         queued_args = queued_args or []
+                        queued_args_str = ', '.join(map(str, queued_args))
                         queued_kwargs = queued_kwargs or {}
+                        queued_kwargs_str = ', '.join((f"{k}={v}" for k, v in queued_kwargs.items()))
 
                         self.get_logger().info(f"Performing transition {queued_transition.value} from {state.value} "
-                                               f"(args: {queued_args}, kwargs: {queued_kwargs})")
+                                               f"(args: {queued_args_str}, kwargs: {queued_kwargs_str})")
 
                         # Attempt to apply requested transition
                         try:

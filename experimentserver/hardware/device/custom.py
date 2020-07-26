@@ -113,7 +113,7 @@ class ValveController(SerialHardware):
     def set_position(self, position: typing.Union[TYPE_ENUM_CAST, ValvePosition]):
         channel = ValvePosition.from_input(position)
 
-        with self._serial_lock:
+        with self._serial_lock.lock():
             # Send command
             self._serial_port.write(channel.get_command().encode())
 
@@ -129,7 +129,7 @@ class ValveController(SerialHardware):
         # Slow down sample rate
         time.sleep(0.5)
 
-        with self._serial_lock:
+        with self._serial_lock.lock():
             self._serial_port.write('?'.encode())
             response = self._serial_port.read_until()
             response = response.strip()

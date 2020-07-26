@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 import typing
 from datetime import datetime
 
@@ -8,7 +9,7 @@ import transitions
 import wrapt
 
 from . import CommandError, Hardware, HardwareError, CommunicationError, ExternalError, NoResetHandler, HardwareState,\
-    HardwareTransition
+    HardwareTransition, TYPE_HARDWARE
 from experimentserver.util.state import ManagedStateMachine, TYPE_STATE, TYPE_TRANSITION
 from experimentserver.util.thread import LockTimeout
 from experimentserver.util.module import AbstractTracked, TTracked
@@ -44,6 +45,8 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
     # Timeout for Hardware reset after errors occur
     _TIMEOUT_RESET = 30
 
+    _WATCHDOG_RESET = 10
+
     # Internal list of manager instances
     _manager_instances: typing.Mapping[str, HardwareManager] = {}
 
@@ -64,8 +67,35 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
         self._reset_time = None
         self._reset_state = HardwareState.DISCONNECTED
 
+        # Watchdog
+        self._watchdog = threading.Event()
+
     def get_hardware(self) -> Hardware:
         return self._hardware.__wrapped__
+
+    def check_watchdog(self):
+        if not self.is_thread_alive():
+            raise HardwareError('Thread stopped')
+
+        # Check watchdog flag is getting set
+        self._watchdog.clear()
+
+        if not self._watchdog.wait(self._WATCHDOG_RESET):
+            raise HardwareError('Watchdog timeout')
+
+    @classmethod
+    def get_all_hardware_instances(cls: typing.Type[TTracked], hardware_class: typing.Type[TYPE_HARDWARE],
+                                   filter_connected: bool = True) -> typing.Dict[str, TTracked]:
+        """
+
+        :param hardware_class:
+        :param filter_connected:
+        :return:
+        """
+        instances = super(HardwareManager, cls).get_all_hardware_instances(True)
+
+        return {k: v for k, v in instances.items() if issubclass(v.__class__, hardware_class) and
+                (not filter_connected or v.get_state().is_connected())}
 
     def force_disconnect(self) -> typing.NoReturn:
         """ Force hardware to disconnected state regardless of current state. """
@@ -229,6 +259,9 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
 
                     # Bump to main thread
                     raise
+
+        # Kick watchdog
+        self._watchdog.set()
 
         # If no operations occurred then limit rate process is run
         if not activity_flag:
