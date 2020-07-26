@@ -31,13 +31,15 @@ class DAQChannelFunction(HardwareEnum):
     TEMPERATURE = enum.auto()
     FREQUENCY = enum.auto()
     PERIOD = enum.auto()
+    DISTANCE = enum.auto()
 
     @classmethod
     def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
         return {
             cls.VOLTAGE_DC: ['v', 'volt', 'volts', 'voltage'],
             cls.CURRENT_DC: ['a', 'i', 'amp', 'amps', 'amperage'],
-            cls.RESISTANCE_2WIRE: ['r', 'ohm', 'res', 'resistance']
+            cls.RESISTANCE_2WIRE: ['r', 'ohm', 'res', 'resistance'],
+            cls.DISTANCE: ['m', 'um', 'length', 'distance']
         }
 
     @classmethod
@@ -53,7 +55,8 @@ class DAQChannelFunction(HardwareEnum):
             cls.CAPACITANCE: 'Capacitance',
             cls.TEMPERATURE: 'Temperature',
             cls.FREQUENCY: 'Frequency',
-            cls.PERIOD: 'Period'
+            cls.PERIOD: 'Period',
+            cls.DISTANCE: 'Distance (via Keyence amp.)'
         }
 
     @classmethod
@@ -69,7 +72,8 @@ class DAQChannelFunction(HardwareEnum):
             cls.CAPACITANCE: '\"CAP\"',
             cls.TEMPERATURE: '\"TEMP\"',
             cls.FREQUENCY: '\"FREQ\"',
-            cls.PERIOD: '\"PER\"'
+            cls.PERIOD: '\"PER\"',
+            cls.DISTANCE: '\"VOLT\"'
         }
 
 
@@ -242,6 +246,22 @@ class MultimeterDAQ6510(_KeithleyInstrument):
     @SCPIHardware.register_measurement(description='Multi-channel scan (rear terminals)')
     def get_channel_scan(self) -> TYPE_MEASUREMENT_LIST:
         pass
+
+    @SCPIHardware.register_measurement(description='Displacement via Keyence Laser Displacment',
+                                       measurement_group=MeasurementGroup.POSITION)
+    def get_distance(self) -> TYPE_FIELD_DICT:
+        # Get DC volts and convert
+        with self.visa_transaction(timeout=6) as transaction:
+            voltage = to_unit(transaction.query(':MEAS:VOLT?'), 'volt')
+
+        distance = to_unit(voltage.magnitude, 'mm')
+
+        if distance.magnitude > 5.5:
+            raise MeasurementUnavailable('Outside measurement range')
+
+        return {
+            'distance': distance
+        }
 
 
 class Picoammeter6487(_KeithleyInstrument):
@@ -417,6 +437,9 @@ class Picoammeter6487(_KeithleyInstrument):
         measurement_list = []
 
         settling_time = self._settling_time.total_seconds()
+
+        if self._source_sweep_range is None:
+            raise MeasurementUnavailable('Sweep range not configured')
 
         for voltage in self._source_sweep_range:
             self.set_source_voltage(voltage)
