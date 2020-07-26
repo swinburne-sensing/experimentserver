@@ -43,12 +43,13 @@ class GE50MassFlowController(Hardware):
     """
 
     class _EVIDValue(object):
-        def __init__(self, field: str, description: str, measurement_group: MeasurementGroup, unit: TYPE_UNIT_OPTIONAL,
-                      enabled: bool = True, apply_gcf: bool = False):
+        def __init__(self, field: str, description: str, measurement_group: MeasurementGroup,
+                     unit_kwargs: typing.Optional[typing.Dict[str, typing.Any]], enabled: bool = True,
+                     apply_gcf: bool = False):
             self.field = field
             self.description = description
             self.measurement_group = measurement_group
-            self.unit = unit
+            self.unit_kwargs = unit_kwargs
             self.enabled = enabled
             self.apply_gcf = apply_gcf
 
@@ -61,19 +62,23 @@ class GE50MassFlowController(Hardware):
     # Map of EVIDs to field names
     _EVID_MAP = {
         # Measured flow
-        'EVID_0': _EVIDValue('flow_actual', 'Actual flow rate', MeasurementGroup.MFC, 'sccm', apply_gcf=True),
+        'EVID_0': _EVIDValue('flow_actual', 'Actual flow rate', MeasurementGroup.MFC,
+                             {'default_unit': 'sccm', 'apply_round': 2}, apply_gcf=True),
 
         # Flow setpoint
-        'EVID_1': _EVIDValue('flow_target', 'Target flow rate', MeasurementGroup.MFC, 'sccm', apply_gcf=True),
+        'EVID_1': _EVIDValue('flow_target', 'Target flow rate', MeasurementGroup.MFC,
+                             {'default_unit': 'sccm', 'apply_round': 1}, apply_gcf=True),
 
         # Valve current
-        'EVID_2': _EVIDValue('current_valve', 'Valve current', MeasurementGroup.DEBUG, 'mA'),
+        'EVID_2': _EVIDValue('current_valve', 'Valve current', MeasurementGroup.DEBUG, {'default_unit': 'mA'}, False),
 
         # Valve temperature
-        'EVID_3': _EVIDValue('temperature_valve', 'Valve temperature', MeasurementGroup.TEMPERATURE, 'degC'),
+        'EVID_3': _EVIDValue('temperature_valve', 'Valve temperature', MeasurementGroup.TEMPERATURE,
+                             {'default_unit': 'degC', 'apply_round': 2}),
 
         # Always zero?
-        'EVID_4': _EVIDValue('current_valve_minimum', 'Minimum valve current (?)', MeasurementGroup.DEBUG, 'mA', False),
+        'EVID_4': _EVIDValue('current_valve_minimum', 'Minimum valve current (?)', MeasurementGroup.DEBUG,
+                             {'default_unit': 'mA'}, False),
 
         # Something proportional to flow rate
         'EVID_5': _EVIDValue('evid5', 'Unknown 5', MeasurementGroup.DEBUG, None, False),
@@ -179,7 +184,7 @@ class GE50MassFlowController(Hardware):
     def _get_url(self, path: str):
         return f"http://{self._host}:{self._port}/{path}"
 
-    def _fetch_url(self, path: str, data: typing.Union[None, str, typing.Dict[str, typing.Any]] = None,
+    def _fetch_url(self, path: str, data: typing.Union[None, bytes, str, typing.Dict[str, typing.Any]] = None,
                    headers: typing.Optional[typing.Dict[str, typing.Any]] = None) -> requests.Response:
         """ Communicate with MFC over HTTP. Can optionally deliver a data payload as a POST request.
 
@@ -310,6 +315,12 @@ class GE50MassFlowController(Hardware):
             # Return to MONITOR mode
             self._fetch_url('signout.html')
 
+    def auto_zero(self):
+        with self._setup_lock():
+            self._fetch_url('configure_html_zero', {'SUBMIT_FLOW': 'Zero Flow'})
+
+        self.get_logger().info('Auto zero complete')
+
     # Parameters
     @Hardware.register_parameter(description='Target gas flow rate')
     def set_flow_rate(self, flow_rate_raw: TYPE_UNIT):
@@ -435,6 +446,12 @@ class GE50MassFlowController(Hardware):
         if self._pressure is not None:
             self.set_pressure(self._pressure)
 
+        # Zero flow rate
+        self.set_flow_rate(0)
+
+        # Auto zero
+        self.auto_zero()
+
         super(GE50MassFlowController, self).transition_configure(event)
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
@@ -492,7 +509,7 @@ class GE50MassFlowController(Hardware):
                 xml_field = [v_node.attrib['name'] for v_node in xml_header]
 
                 xml_field_prop = [(self._EVID_MAP[v_node].field, self._EVID_MAP[v_node].measurement_group,
-                                   self._EVID_MAP[v_node].unit, self._gcf if self._EVID_MAP[v_node].apply_gcf else 1)
+                                   self._EVID_MAP[v_node].unit_kwargs, self._gcf if self._EVID_MAP[v_node].apply_gcf else 1)
                                   for v_node in xml_field]
 
                 xml_field_value = [struct.unpack('!f', bytes.fromhex(v_node.text[2:]))[0] for v_node in xml_data]
@@ -501,11 +518,11 @@ class GE50MassFlowController(Hardware):
 
                 for n in range(len(xml_field)):
                     fields = {
-                        xml_field_prop[n][0]: to_unit(xml_field_value[n], xml_field_prop[n][2]) * xml_field_prop[n][3]
+                        xml_field_prop[n][0]: to_unit(xml_field_value[n], **xml_field_prop[n][2]) * xml_field_prop[n][3]
                     }
 
                     if xml_field_prop[n][3] != 1:
-                        fields[xml_field_prop[n][0] + '_raw'] = to_unit(xml_field_value[n], xml_field_prop[n][2])
+                        fields[xml_field_prop[n][0] + '_raw'] = to_unit(xml_field_value[n], **xml_field_prop[n][2])
 
                     data_payload.append(Measurement(self, xml_field_prop[n][1], fields, payload_timestamp, data_tags))
 
