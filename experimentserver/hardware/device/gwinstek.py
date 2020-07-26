@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import enum
 import typing
+from datetime import datetime
 
-from ..base.enum import HardwareEnum
+from .. import MeasurementError
+from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
 from ..base.scpi import SCPIHardware
-from experimentserver.data import TYPE_UNIT, units, to_unit
+from experimentserver.data import TYPE_UNIT, units, to_unit, Measurement, MeasurementGroup, TYPE_MEASUREMENT_LIST
 from ..base.visa import VISAHardware, TYPE_ERROR
 
 
@@ -29,6 +33,27 @@ class LCRMeasurement(HardwareEnum):
     IMPEDANCE_DISSIPATION = enum.auto()
     IMPEDANCE_QUALITY = enum.auto()
     DCRES = enum.auto()
+
+    @classmethod
+    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
+        return {
+            cls.CAP_SERIES_RES_SERIES: ['csrs'],
+            cls.CAP_SERIES_DISSIPATION: ['csd'],
+            cls.CAP_PARALLEL_RES_PARALLEL: ['cprp'],
+            cls.CAP_PARALLEL_DISSIPATION: ['cpd'],
+            cls.IND_PARALLEL_RES_PARALLEL: ['iprp', 'lprp'],
+            cls.IND_PARALLEL_QUALITY: ['ipq', 'lpq'],
+            cls.IND_SERIES_RES_SERIES: ['isrs', 'lsrs'],
+            cls.IND_SERIES_QUALITY: ['isq', 'lqd'],
+            cls.RES_SERIES_QUALITY: ['rsq'],
+            cls.RES_PARALLEL_QUALITY: ['rpq'],
+            cls.RES_REACTANCE: ['rr'],
+            cls.IMPEDANCE_PHASE_RAD: ['zpr'],
+            cls.IMPEDANCE_PHASE_DEG: ['zpd'],
+            cls.IMPEDANCE_DISSIPATION: ['zd'],
+            cls.IMPEDANCE_QUALITY: ['zq'],
+            cls.DCRES: ['r', 'ohm', 'res', 'resistance'],
+        }
 
     @classmethod
     def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
@@ -73,31 +98,43 @@ class LCRMeasurement(HardwareEnum):
         }
 
     @classmethod
-    def get_reading_map(cls):
-        return {
-            cls.CAP_SERIES_RES_SERIES: (('capacitance_series', units.farad), ('resistance_series', units.ohm)),
-            cls.CAP_SERIES_DISSIPATION: (('capacitance_series', units.farad),
-                                         ('dissipation_factor', units.dimensionless)),
-            cls.CAP_PARALLEL_RES_PARALLEL: (('capacitance_parallel', units.farad),
-                                            ('resistance_parallel', units.ohm)),
-            cls.CAP_PARALLEL_DISSIPATION: (('capacitance_parallel', units.farad),
-                                           ('dissipation_factor', units.dimensionless)),
-            cls.IND_PARALLEL_RES_PARALLEL: (('inductance_parallel', units.henry),
-                                            ('resistance_parallel', units.ohm)),
-            cls.IND_PARALLEL_QUALITY: (('inductance_parallel', units.henry),
-                                       ('quality_factor', units.dimensionless)),
-            cls.IND_SERIES_RES_SERIES: (('inductance_series', units.henry), ('resistance_series', units.ohm)),
-            cls.IND_SERIES_QUALITY: (('inductance_series', units.henry), ('quality_factor', units.dimensionless)),
-            cls.RES_SERIES_QUALITY: (('resistance_series', units.ohm), ('quality_factor', units.dimensionless)),
-            cls.RES_PARALLEL_QUALITY: (('resistance_parallel', units.ohm),
-                                       ('quality_factor', units.dimensionless)),
-            cls.RES_REACTANCE: (('resistance', units.ohm), ('reactance', units.ohm)),
-            cls.IMPEDANCE_PHASE_RAD: (('impedance_mag', units.ohm), ('impedance_phase_rad', units.rad)),
-            cls.IMPEDANCE_PHASE_DEG: (('impedance_mag', units.ohm), ('impedance_phase_deg', units.deg)),
-            cls.IMPEDANCE_DISSIPATION: (('impedance', units.ohm), ('dissipation_factor', units.dimensionless)),
-            cls.IMPEDANCE_QUALITY: (('impedance', units.ohm), ('quality_factor', units.dimensionless)),
-            cls.DCRES: (('resistance', units.ohm),)
-        }
+    def get_reading_map(cls, measure: typing.Optional[LCRMeasurement] = None):
+        if measure is not None:
+            return cls.get_reading_map()[measure]
+        else:
+            return {
+                cls.CAP_SERIES_RES_SERIES: ((MeasurementGroup.CAPACITANCE, 'series', units.farad),
+                                            (MeasurementGroup.RESISTANCE, 'series', units.ohm)),
+                cls.CAP_SERIES_DISSIPATION: ((MeasurementGroup.CAPACITANCE, 'series', units.farad),
+                                             (MeasurementGroup.DISSIPATION, 'factor', units.dimensionless)),
+                cls.CAP_PARALLEL_RES_PARALLEL: ((MeasurementGroup.CAPACITANCE, 'parallel', units.farad),
+                                                (MeasurementGroup.RESISTANCE, 'parallel', units.ohm)),
+                cls.CAP_PARALLEL_DISSIPATION: ((MeasurementGroup.CAPACITANCE, 'parallel', units.farad),
+                                               (MeasurementGroup.DISSIPATION, 'factor', units.dimensionless)),
+                cls.IND_PARALLEL_RES_PARALLEL: ((MeasurementGroup.INDUCTANCE, 'parallel', units.henry),
+                                                (MeasurementGroup.RESISTANCE, 'parallel', units.ohm)),
+                cls.IND_PARALLEL_QUALITY: ((MeasurementGroup.INDUCTANCE, 'parallel', units.henry),
+                                           (MeasurementGroup.QUALITY, 'factor', units.dimensionless)),
+                cls.IND_SERIES_RES_SERIES: ((MeasurementGroup.INDUCTANCE, 'series', units.henry),
+                                            (MeasurementGroup.RESISTANCE, 'series', units.ohm)),
+                cls.IND_SERIES_QUALITY: ((MeasurementGroup.INDUCTANCE, 'series', units.henry),
+                                         (MeasurementGroup.QUALITY, 'factor', units.dimensionless)),
+                cls.RES_SERIES_QUALITY: ((MeasurementGroup.RESISTANCE, 'series', units.ohm),
+                                         (MeasurementGroup.QUALITY, 'factor', units.dimensionless)),
+                cls.RES_PARALLEL_QUALITY: ((MeasurementGroup.RESISTANCE, 'parallel', units.ohm),
+                                           (MeasurementGroup.QUALITY, 'factor', units.dimensionless)),
+                cls.RES_REACTANCE: ((MeasurementGroup.RESISTANCE, 'resistance', units.ohm),
+                                    (MeasurementGroup.RESISTANCE, 'reactance', units.ohm)),
+                cls.IMPEDANCE_PHASE_RAD: ((MeasurementGroup.IMPEDANCE, 'mag', units.ohm),
+                                          (MeasurementGroup.IMPEDANCE, 'phase_rad', units.rad)),
+                cls.IMPEDANCE_PHASE_DEG: ((MeasurementGroup.IMPEDANCE, 'mag', units.ohm),
+                                          (MeasurementGroup.IMPEDANCE, 'phase_deg', units.deg)),
+                cls.IMPEDANCE_DISSIPATION: ((MeasurementGroup.RESISTANCE, 'impedance', units.ohm),
+                                            (MeasurementGroup.DISSIPATION, 'factor', units.dimensionless)),
+                cls.IMPEDANCE_QUALITY: ((MeasurementGroup.RESISTANCE, 'impedance', units.ohm),
+                                        (MeasurementGroup.QUALITY, 'factor', units.dimensionless)),
+                cls.DCRES: ((MeasurementGroup.RESISTANCE, 'resistance', units.ohm),)
+            }
 
 
 class GWInstekLCR6000Series(SCPIHardware):
@@ -112,10 +149,17 @@ class GWInstekLCR6000Series(SCPIHardware):
         # Configure baud rate for serial link
         super().__init__(*args, visa_open_args={
             'baud_rate': 115200
-        }, visa_rate_limit=0.05, **kwargs)
+        }, visa_rate_limit=0.1, **kwargs)
 
-    @SCPIHardware.register_parameter(description='Source voltage')
-    def set_source_voltage(self, voltage: TYPE_UNIT) -> typing.NoReturn:
+    @SCPIHardware.register_parameter(description='Set measurement mode')
+    def set_mode(self, mode: typing.Union[TYPE_ENUM_CAST, LCRMeasurement]):
+        mode = LCRMeasurement.from_input(mode)
+
+        with self.visa_transaction() as transaction:
+            transaction.write(':FUNC {}', mode)
+
+    @SCPIHardware.register_parameter(description='Source output DC bias')
+    def set_source_bias(self, voltage: TYPE_UNIT):
         """
 
         :param voltage:
@@ -130,6 +174,88 @@ class GWInstekLCR6000Series(SCPIHardware):
 
         with self.visa_transaction() as transaction:
             transaction.write(":BISA {}", voltage)
+
+    @SCPIHardware.register_parameter(description='Source output frequency')
+    def set_source_frequency(self, frequency: TYPE_UNIT):
+        if type(frequency) is str and frequency.upper() == 'MAX':
+            frequency = 'MAX'
+        elif type(frequency) is str and frequency.upper() == 'MIN':
+            frequency = 'MIN'
+        else:
+            frequency = to_unit(frequency, 'Hz', magnitude=True)
+
+        with self.visa_transaction() as transaction:
+            transaction.write(':FREQ {}', frequency)
+
+    @SCPIHardware.register_parameter(description='Source output voltage')
+    def set_source_voltage(self, voltage: TYPE_UNIT):
+        """
+
+        :param voltage:
+        :return:
+        """
+        if type(voltage) is str and voltage.upper() == 'MAX':
+            voltage = 'MAX'
+        elif type(voltage) is str and voltage.upper() == 'MIN':
+            voltage = 'MIN'
+        else:
+            voltage = to_unit(voltage, 'volt', magnitude=True)
+
+        if voltage == 0:
+            voltage = 'OFF'
+
+        with self.visa_transaction() as transaction:
+            transaction.write(":LEV:VOLT {}", voltage)
+
+    @SCPIHardware.register_measurement(description='Take measurement in configured mode', default=True)
+    def get_reading(self) -> TYPE_MEASUREMENT_LIST:
+        with self.visa_transaction() as transaction:
+            # Determine measurement mode
+            measure_function_str = transaction.query(':FUNC?')
+
+            # Measurement settings
+            measure_bias = transaction.query(':BIAS?')
+            measure_freq = transaction.query(':FREQ?')
+            measure_voltage = transaction.query(':LEV:VOLT?')
+
+            # Get reading
+            measure_fields = transaction.query(':FETC:MAIN?')
+
+        # Parse config
+        if measure_bias.lower() == 'off':
+            measure_bias = 0
+
+        measure_bias = to_unit(measure_bias, 'V')
+        measure_freq = to_unit(measure_freq, 'Hz')
+        measure_voltage = to_unit(measure_voltage, 'V')
+
+        # Parse reading and determine measurement mode
+        measure_function = LCRMeasurement.from_input(measure_function_str)
+        measure_fields = measure_fields.split(',')
+
+        # Get measurement mode metadata
+        measure_meta = LCRMeasurement.get_reading_map(measure_function)
+
+        # Validate number of fields
+        if len(measure_fields) != len(measure_meta):
+            raise MeasurementError(f"Expected {len(measure_meta)} field(s) but got {len(measure_fields)} in: {measure_fields!r}")
+
+        measurements = []
+        measure_timestamp = datetime.now()
+
+        for field, field_meta in zip(measure_fields, measure_meta):
+            # Parse value
+            field = to_unit(field, field_meta[2])
+
+            measurements.append(Measurement(self, field_meta[0], {
+                field_meta[1]: field
+            }, measure_timestamp, {
+                'source_bias': measure_bias,
+                'source_frequency': measure_freq,
+                'source_voltage': measure_voltage
+            }))
+
+        return measurements
 
     @classmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
