@@ -8,7 +8,7 @@ import experimentserver
 from .web import UserInterfaceError, WebServer
 from ..hardware import HardwareManager, HardwareTransition
 from ..protocol import Procedure, ProcedureTransition, dump_yaml
-from ..util.constant import FORMAT_TIMESTAMP_FILENAME
+from ..util.constant import FORMAT_TIMESTAMP, FORMAT_TIMESTAMP_FILENAME
 
 
 class ServerJSONException(experimentserver.ApplicationException):
@@ -107,9 +107,13 @@ def register_json(ui: WebServer):
         state = manager.queue_transition(transition)
 
         if transition == ProcedureTransition.VALIDATE:
-            return 'Procedure valid and ready to start.'
+            duration = ui.get_procedure().get_procedure_duration()
+
+            return f"Procedure valid and ready to start, estimated runtime: {duration!s}"
         elif transition == ProcedureTransition.START:
-            return 'Procedure running.'
+            completion = datetime.now() + ui.get_procedure().get_procedure_duration()
+
+            return f"Procedure running, estimated completion {completion.strftime(FORMAT_TIMESTAMP)}"
         elif transition == ProcedureTransition.STOP:
             return 'Procedure stopped and returned to setup state.'
         else:

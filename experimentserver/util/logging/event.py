@@ -57,11 +57,21 @@ class DatabaseEventHandler(logging.Handler, MeasurementSource):
                 if not trace.startswith('File'):
                     continue
 
-                (trace_file, trace_content) = trace.strip().split('\n')
-                (trace_filename, trace_line, trace_function) = (x.strip() for x in trace_file.split(','))
-                trace_line = trace_line.split(' ')[1]
+                trace_split = trace.strip().split('\n')
 
-                msg_lines.append(f"Trace {trace_filename} line {trace_line} {trace_function}: {trace_content}")
+                trace_filename = 'Unknown'
+                trace_line = 'Unknown'
+                trace_function = 'Unknown'
+
+                if len(trace_split) == 2:
+                    (trace_file, trace_content) = trace_split
+                    (trace_filename, trace_line, trace_function) = (x.strip() for x in trace_file.split(','))
+
+                    trace_line = trace_line.split(' ')[1]
+
+                    msg_lines.append(f"Trace {trace_filename} line {trace_line} {trace_function}: {trace_content}")
+                else:
+                    msg_lines.append(f"Trace unknown: {trace_split[0]}")
 
         record_payload = {
             'message': '\n'.join(msg_lines)

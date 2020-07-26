@@ -11,7 +11,7 @@ import typing
 
 
 __app_name__ = 'experimentserver'
-__version__ = '0.2.8'
+__version__ = '0.2.9'
 
 __author__ = 'Chris Harrison'
 __credits__ = ['Chris Harrison']
@@ -24,6 +24,7 @@ __status__ = 'Development'
 
 # Application root path
 APP_PATH = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(os.path.expanduser('~'), f".{__app_name__}")
 
 
 class ApplicationException(Exception):
