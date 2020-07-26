@@ -60,7 +60,11 @@ class YAMLProcedureLoader(yaml.SafeLoader):
 
         return {
             'class': 'flow.Pulse',
-            'version': BaseStage.EXPORT_VERSION
+            'version': BaseStage.EXPORT_VERSION,
+            'exposure': config['expose'],
+            'recovery': config['recover'],
+            'setup': config['setup'] if 'setup' in config else None,
+
         }
 
     def loader_delay(self, node):
@@ -68,6 +72,16 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             'class': 'core.Delay',
             'version': BaseStage.EXPORT_VERSION,
             'interval': self.construct_scalar(node)
+        }
+
+    def loader_delay_tag(self, node):
+        config = self.construct_scalar(node).split(',')
+
+        return {
+            'class': 'core.Delay',
+            'version': BaseStage.EXPORT_VERSION,
+            'interval': config[0],
+            'metadata': {k.strip().lower(): v.strip() for k, v in [x.split('=') for x in config[1:]]}
         }
 
     def loader_pause(self, node):
@@ -109,11 +123,20 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         }
 
+    def loader_notify(self, node):
+        return {
+            'class': 'core.Notify',
+            'version': BaseStage.EXPORT_VERSION,
+            'message': self.construct_scalar(node)
+        }
+
 
 YAMLProcedureLoader.add_constructor('!delay', YAMLProcedureLoader.loader_delay)
+YAMLProcedureLoader.add_constructor('!delay_tag', YAMLProcedureLoader.loader_delay_tag)
 YAMLProcedureLoader.add_constructor('!humidity', YAMLProcedureLoader.loader_humidity)
 YAMLProcedureLoader.add_constructor('!pause', YAMLProcedureLoader.loader_pause)
 YAMLProcedureLoader.add_constructor('!pulse', YAMLProcedureLoader.loader_pulse)
 YAMLProcedureLoader.add_constructor('!setup', YAMLProcedureLoader.loader_setup)
 YAMLProcedureLoader.add_constructor('!temperature', YAMLProcedureLoader.loader_temperature)
 YAMLProcedureLoader.add_constructor('!valve', YAMLProcedureLoader.loader_valve)
+YAMLProcedureLoader.add_constructor('!notify', YAMLProcedureLoader.loader_notify)

@@ -104,6 +104,11 @@ class Pause(BaseStage):
                  metadata: typing.Optional[TYPE_TAG_DICT] = None):
         super(Pause, self).__init__(config, uid, None, metadata)
 
+    def stage_enter(self) -> typing.NoReturn:
+        super().stage_enter()
+
+        self.get_logger().info('Reached pause in procedure', notify=True)
+
     def get_stage_duration(self) -> typing.Optional[timedelta]:
         return None
 
@@ -131,3 +136,17 @@ class Setup(BaseStage):
 
     def stage_export(self) -> typing.Dict[str, typing.Any]:
         return super(Setup, self).stage_export()
+
+
+class Notify(Setup):
+    def __init__(self, config: ConfigManager, message: str = 'Ping', uid: typing.Optional[str] = None):
+        super(Notify, self).__init__(config, uid)
+
+        self._message = message
+
+    def stage_enter(self) -> typing.NoReturn:
+        super().stage_enter()
+
+        self.get_logger().info(self._message, notify=True)
+
+

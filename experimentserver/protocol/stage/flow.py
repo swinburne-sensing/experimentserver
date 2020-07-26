@@ -6,6 +6,7 @@ from .core import BaseStage
 from ...config import ConfigManager
 from ...data import Quantity, TYPE_TIME, to_timedelta, to_unit
 from ...data.gas import GasConstant
+from ...hardware.manager import HardwareManager
 from ...hardware.device.mks import GE50MassFlowController
 
 
@@ -81,11 +82,34 @@ class Pulse(BaseStage):
     def __init__(self, config: ConfigManager, composition: typing.Dict[str, str], exposure: TYPE_TIME,
                  recovery: TYPE_TIME, uid: typing.Optional[str] = None, setup: typing.Optional[TYPE_TIME] = None,
                  idle: typing.Optional[typing.Dict[str, str]] = None):
-        super(Pulse, self).__init__(config, uid)
-
         self._pulse_setup = to_timedelta(setup, True)
         self._pulse_exposure = to_timedelta(exposure)
         self._pulse_recovery = to_timedelta(recovery)
+
+        self._idle_composition = {}
+        self._pulse_composition = {}
+
+        valid_mfc = HardwareManager.get_all_hardware_instances(GE50MassFlowController)
+
+        for hardware, flow in idle.items():
+            pass
+
+        for hardware, flow in composition.items():
+            pass
+
+        metadata = {
+            'pulse_setup': self._pulse_setup.total_seconds(),
+            'pulse_exposure': self._pulse_exposure.total_seconds(),
+            'pulse_recovery': self._pulse_recovery.total_seconds()
+        }
+
+        super(Pulse, self).__init__(config, uid, metadata)
+
+    @staticmethod
+    def get_config_dependencies() -> typing.Optional[typing.Sequence[str]]:
+        return [
+            'pulse_idle'
+        ]
 
     def get_stage_duration(self) -> typing.Optional[timedelta]:
         if self._pulse_setup is None:
@@ -93,8 +117,22 @@ class Pulse(BaseStage):
         else:
             return self._pulse_setup + self._pulse_exposure + self._pulse_recovery
 
+    def stage_validate(self) -> typing.NoReturn:
+        return super().stage_validate()
+
+    def stage_enter(self) -> typing.NoReturn:
+        super().stage_enter()
+
+        # Zero unused MFCs
+        HardwareManager.get_all_instances()
+
     def stage_run(self) -> bool:
         pass
+
+    def stage_exit(self) -> typing.NoReturn:
+        # Return to idle flow
+
+        super().stage_exit()
 
     def stage_export(self) -> typing.Dict[str, typing.Any]:
         stage = super(Pulse, self).stage_export()

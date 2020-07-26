@@ -272,32 +272,46 @@ class Procedure(ManagedStateMachine):
         Measurement.add_tag('procedure_state', 'ready')
 
     def _procedure_start(self, _: transitions.EventData):
-        # Connect and configure required hardware
+        # Connect required hardware
         for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            self.get_logger().debug(f"Setting up {hardware_identifier}")
+            self.get_logger().info(f"Connecting {hardware_identifier}")
 
             # Check current state
             hardware_state = hardware_manager.get_state()
 
             if hardware_state.is_error():
-                raise ProcedureRuntimeError(f"Hardware {hardware_identifier} is in an error state, cannot start")
+                raise ProcedureRuntimeError(f"Hardware {hardware_identifier} is in an error state, cannot start "
+                                            f"(during connect)")
 
             if hardware_state == HardwareState.DISCONNECTED:
                 hardware_manager.queue_transition(HardwareTransition.CONNECT, block=False, raise_exception=False)
 
-            if hardware_state == HardwareState.DISCONNECTED or hardware_state == HardwareState.CONNECTED:
+        # Configure
+        for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
+            self.get_logger().info(f"Configuring {hardware_identifier}")
+
+            # Check current state
+            hardware_state = hardware_manager.get_state()
+
+            if hardware_state.is_error():
+                raise ProcedureRuntimeError(f"Hardware {hardware_identifier} is in an error state, cannot start "
+                                            f"(during configure)")
+
+            if hardware_state == HardwareState.CONNECTED:
                 hardware_manager.queue_transition(HardwareTransition.CONFIGURE, block=False, raise_exception=False)
 
-            if hardware_state == HardwareState.DISCONNECTED or hardware_state == HardwareState.CONNECTED or \
-                    hardware_state == HardwareState.CONFIGURE:
-                hardware_manager.queue_transition(HardwareTransition.START, block=False, raise_exception=False)
+        for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
+            self.get_logger().info(f"Starting {hardware_identifier}")
 
-        # Add procedure metadata
-        Measurement.add_tags({
-            'procedure_time': time.strftime(FORMAT_TIMESTAMP),
-            'procedure_timestamp': time.time(),
-            'procedure_state': 'setup'
-        })
+            # Check current state
+            hardware_state = hardware_manager.get_state()
+
+            if hardware_state.is_error():
+                raise ProcedureRuntimeError(f"Hardware {hardware_identifier} is in an error state, cannot start "
+                                            f"(during start)")
+
+            if hardware_state == HardwareState.CONFIGURED:
+                hardware_manager.queue_transition(HardwareTransition.START, block=False, raise_exception=False)
 
         # Wait for connection and configuration to complete
         for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
@@ -316,6 +330,13 @@ class Procedure(ManagedStateMachine):
                 raise ProcedureRuntimeError(f"{hardware_identifier} failed to start")
 
             self.get_logger().debug(f"{hardware_identifier} ready")
+
+        # Add procedure metadata
+        Measurement.add_tags({
+            'procedure_time': time.strftime(FORMAT_TIMESTAMP),
+            'procedure_timestamp': time.time(),
+            'procedure_state': 'setup'
+        })
 
         # Notify for start
         completion_datetime = datetime.now() + self.get_procedure_duration()
@@ -439,7 +460,10 @@ class Procedure(ManagedStateMachine):
                                               f"{cls.__name__}")
 
         procedure_config = ConfigManager()
-        procedure_config.update(data.pop('config'))
+
+        if 'config' in data:
+            procedure_config.update(data.pop('config'))
+
         target_stages = data.pop('stages')
         procedure_stages = []
 
