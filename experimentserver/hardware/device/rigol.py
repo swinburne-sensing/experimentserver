@@ -181,7 +181,7 @@ class DP832PowerSupply(SCPIHardware):
                                        measurement_group=MeasurementGroup.SUPPLY, force=True)
     def get_supply_state(self) -> typing.Sequence[Measurement]:
         # Delay slightly to allow for new data
-        time.sleep(0.1)
+        time.sleep(0.5)
 
         status = []
 
@@ -219,13 +219,13 @@ class DP832PowerSupply(SCPIHardware):
                 self,
                 MeasurementGroup.SUPPLY,
                 {
-                    'voltage': to_unit(channel_status_split[0], 'volt'),
-                    'voltage_setpoint': to_unit(channel_setting_split[1], 'volt'),
-                    'voltage_limit': to_unit(channel_ovp, 'volt'),
-                    'current': to_unit(channel_status_split[1], 'amp'),
-                    'current_setpoint': to_unit(channel_setting_split[2], 'amp'),
-                    'current_limit': to_unit(channel_ocp, 'volt'),
-                    'power': to_unit(channel_status_split[2], 'watt'),
+                    'voltage': to_unit(channel_status_split[0], 'volt', apply_round=3),
+                    'voltage_setpoint': to_unit(channel_setting_split[1], 'volt', apply_round=3),
+                    'voltage_limit': to_unit(channel_ovp, 'volt', apply_round=3),
+                    'current': to_unit(channel_status_split[1], 'amp', apply_round=3),
+                    'current_setpoint': to_unit(channel_setting_split[2], 'amp', apply_round=3),
+                    'current_limit': to_unit(channel_ocp, 'volt', apply_round=3),
+                    'power': to_unit(channel_status_split[2], 'watt', apply_round=3),
                     'mode': channel_mode
                 },
                 tags={

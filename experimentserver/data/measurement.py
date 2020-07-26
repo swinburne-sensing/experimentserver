@@ -94,14 +94,11 @@ class Measurement(LoggerClass):
         for key in fields.keys():
             if not quantity_support:
                 if is_unit(fields[key]):
-                    fields[key] = fields[key].magnitude
+                    fields[key] = float(fields[key].magnitude)
 
             if timedelta_support:
                 if type(fields[key]) is timedelta:
                     fields[key] = fields[key].total_seconds()
-
-            if type(fields[key]) is int:
-                fields[key] = float(fields[key])
 
         return fields
 
@@ -378,6 +375,7 @@ class MeasurementGroup(enum.Enum):
     VOLTAGE = 'voltage'
     CURRENT = 'current'
     RESISTANCE = 'resistance'
+    IMPEDANCE = 'impedance'
 
     # LCR
     CAPACITANCE = 'capacitance'
