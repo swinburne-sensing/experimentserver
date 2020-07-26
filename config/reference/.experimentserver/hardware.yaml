@@ -1,0 +1,15 @@
+%YAML 1.2
+---
+- class: custom.AccelMonitor
+  identifier: accelemonitor
+  port: 'COM8'
+- class: keithley.MultimeterDAQ6510
+  identifier: multimeter
+  visa_address: 'USB0::0x05E6::0x6510::04444866::INSTR'
+- class: rigol.DP832PowerSupply
+  identifier: powersupply
+  visa_address: 'TCPIP0::192.168.6.148::inst0::INSTR'
+- class: siglent.SDGWaveformGenerator
+  identifier: arbwave
+  visa_address: 'TCPIP0::192.168.6.153::inst0::INSTR'
+...
