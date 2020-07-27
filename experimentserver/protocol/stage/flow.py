@@ -103,7 +103,7 @@ class Pulse(BaseStage):
             'pulse_recovery': self._pulse_recovery.total_seconds()
         }
 
-        super(Pulse, self).__init__(config, uid, metadata)
+        super(Pulse, self).__init__(config, uid, metadata=metadata)
 
     @staticmethod
     def get_config_dependencies() -> typing.Optional[typing.Sequence[str]]:

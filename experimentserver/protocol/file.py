@@ -84,6 +84,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             'metadata': {k.strip().lower(): v.strip() for k, v in [x.split('=') for x in config[1:]]}
         }
 
+    # noinspection PyMethodMayBeStatic
     def loader_pause(self, node):
         return {
             'class': 'core.Pause',

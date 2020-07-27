@@ -102,7 +102,7 @@ class Delay(BaseStage):
 class Pause(BaseStage):
     def __init__(self, config: ConfigManager, uid: typing.Optional[str] = None,
                  metadata: typing.Optional[TYPE_TAG_DICT] = None):
-        super(Pause, self).__init__(config, uid, None, metadata)
+        super(Pause, self).__init__(config, uid, metadata=metadata)
 
     def stage_enter(self) -> typing.NoReturn:
         super().stage_enter()

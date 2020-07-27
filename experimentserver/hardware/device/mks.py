@@ -377,7 +377,8 @@ class GE50MassFlowController(Hardware):
         return 'MKS GE50A Mass Flow Controller'
 
     def get_gas_mix_label(self) -> str:
-        return ', '.join([gas.get_concentration_label(concentration) for gas, concentration in self._composition.items()])
+        return ', '.join([gas.get_concentration_label(concentration) for gas, concentration in
+                          self._composition.items()])
 
     def get_hardware_instance_description(self) -> str:
         return f"{self.get_gas_mix_label()} via {self.get_hardware_class_description()} " \
@@ -509,7 +510,8 @@ class GE50MassFlowController(Hardware):
                 xml_field = [v_node.attrib['name'] for v_node in xml_header]
 
                 xml_field_prop = [(self._EVID_MAP[v_node].field, self._EVID_MAP[v_node].measurement_group,
-                                   self._EVID_MAP[v_node].unit_kwargs, self._gcf if self._EVID_MAP[v_node].apply_gcf else 1)
+                                   self._EVID_MAP[v_node].unit_kwargs,
+                                   self._gcf if self._EVID_MAP[v_node].apply_gcf else 1)
                                   for v_node in xml_field]
 
                 xml_field_value = [struct.unpack('!f', bytes.fromhex(v_node.text[2:]))[0] for v_node in xml_data]

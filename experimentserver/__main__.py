@@ -55,6 +55,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
     """ Launch the experimentserver application.
 
     :param debug: if True application will launch in debug mode
+    :param enable_pushover: if True pushover notifications will be sent
     :param config_paths: path(s) to configuration file(s)
     :param cli_tags: dict containing additional metadata tags
     """

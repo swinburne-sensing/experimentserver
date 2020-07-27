@@ -4,6 +4,8 @@ import typing
 
 
 # Shortcuts
+from typing import Tuple, Optional
+
 NOTSET = logging.NOTSET
 DEBUG_LOCK = logging.DEBUG - 2
 DEBUG_TRANS = logging.DEBUG - 1
@@ -20,7 +22,7 @@ logging.addLevelName(DEBUG_TRANS, 'TRANS')
 
 class _ModifiedLogger(logging.Logger):
     # Fixes bug where base logger considers the wrapper class as the base for all function calls
-    def findCaller(self, stack_info=False):
+    def findCaller(self, stack_info: bool = ..., stacklevel: int = ...) -> Tuple[str, int, str, Optional[str]]:
         # Fetch frame and code
         # noinspection PyProtectedMember
         f = sys._getframe(4)

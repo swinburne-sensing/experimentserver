@@ -238,7 +238,8 @@ class GWInstekLCR6000Series(SCPIHardware):
 
         # Validate number of fields
         if len(measure_fields) != len(measure_meta):
-            raise MeasurementError(f"Expected {len(measure_meta)} field(s) but got {len(measure_fields)} in: {measure_fields!r}")
+            raise MeasurementError(f"Expected {len(measure_meta)} field(s) but got {len(measure_fields)} in: "
+                                   f"{measure_fields!r}")
 
         measurements = []
         measure_timestamp = datetime.now()

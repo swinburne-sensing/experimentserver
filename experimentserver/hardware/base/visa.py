@@ -295,7 +295,8 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 if len(visa_kwargs) == 0:
                     self.get_logger().debug(f"VISA transaction {self._number} query: {command!r}")
                 else:
-                    self.get_logger().debug(f"VISA transaction {self._number} query: {command!r} (args: {visa_kwargs!r})")
+                    self.get_logger().debug(f"VISA transaction {self._number} query: {command!r} "
+                                            f"(args: {visa_kwargs!r})")
 
                 if not binary:
                     response = self._parent._visa_resource.query(command, **visa_kwargs).strip()
