@@ -119,7 +119,7 @@ class GE50MassFlowController(Hardware):
     _TRACE_NAME = 'XXX'
 
     def __init__(self, identifier: str, host: str, composition: typing.Dict[str, str], port: int = 80,
-                 pressure: TYPE_UNIT_OPTIONAL = None, sample_period: float = 0.1, **kwargs):
+                 pressure: TYPE_UNIT_OPTIONAL = None, sample_period: float = 0.5, **kwargs):
         """
 
         :param identifier: passed to parent

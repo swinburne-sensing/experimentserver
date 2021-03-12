@@ -5,7 +5,7 @@ from transitions import EventData
 
 from ..base.core import Hardware, ParameterError
 from ...data import Measurement, MeasurementGroup, TYPE_UNIT, TYPE_UNIT_OPTIONAL, TYPE_MEASUREMENT_LIST, to_unit
-from ...data.humidity import abs_to_rel, rel_to_abs, rel_to_dew
+from ...data.humidity import abs_to_rel, rel_to_abs, rel_to_dew, UNIT_ABS_HUMID
 from ...interface.linkam import LinkamSDK, StageValueType
 
 
@@ -96,19 +96,27 @@ class T96Controller(Hardware):
             humidity_tags = None
 
             # Calculate absolute humidity
-            humidity_fields['stage_abs'] = rel_to_abs(humidity_fields['stage_rh_temperature'],
-                                                      humidity_fields['stage_rh'])
+            try:
+                if humidity_fields['stage_rh'] > 0:
+                    humidity_fields['stage_abs'] = rel_to_abs(humidity_fields['stage_rh_temperature'],
+                                                              humidity_fields['stage_rh'])
 
-            humidity_fields['stage_dew'] = rel_to_dew(humidity_fields['stage_rh_temperature'],
-                                                      humidity_fields['stage_rh'])
+                    humidity_fields['stage_dew'] = rel_to_dew(humidity_fields['stage_rh_temperature'],
+                                                              humidity_fields['stage_rh'])
+                else:
+                    self.get_logger().debug("Zero relative humidity")
+                    humidity_fields['stage_abs'] = to_unit(0, UNIT_ABS_HUMID)
+                                                          
+                # RH at room temperature
+                if self._humidity_room_temp is not None:
+                    humidity_fields['stage_room_rh'] = abs_to_rel(self._humidity_room_temp, humidity_fields['stage_abs'])
 
-            # RH at room temperature
-            if self._humidity_room_temp is not None:
-                humidity_fields['stage_room_rh'] = abs_to_rel(self._humidity_room_temp, humidity_fields['stage_abs'])
-
-                humidity_tags = {
-                    'stage_room_temperature': self._humidity_room_temp
-                }
+                    humidity_tags = {
+                        'stage_room_temperature': self._humidity_room_temp
+                    }
+            except (ValueError, NotImplementedError):
+                self.get_logger().warning(f"Error during humidity calculation: {humidity_fields}")
+                # raise
 
             payload.append(Measurement(self, MeasurementGroup.HUMIDITY, humidity_fields, tags=humidity_tags))
 

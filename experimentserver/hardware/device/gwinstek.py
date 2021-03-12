@@ -149,7 +149,7 @@ class GWInstekLCR6000Series(SCPIHardware):
         # Configure baud rate for serial link
         super().__init__(*args, visa_open_args={
             'baud_rate': 115200
-        }, visa_rate_limit=0.1, **kwargs)
+        }, visa_rate_limit=0.2, **kwargs)
 
     @SCPIHardware.register_parameter(description='Set measurement mode')
     def set_mode(self, mode: typing.Union[TYPE_ENUM_CAST, LCRMeasurement]):
