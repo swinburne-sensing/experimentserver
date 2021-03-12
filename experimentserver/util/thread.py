@@ -370,6 +370,11 @@ class QueueThread(ManagedThread):
         raise exc
 
     def append(self, obj):
+        """ Append data to process to the command queue.
+
+        :param obj:
+        :return:
+        """
         if not self._thread.is_alive():
             raise ThreadException('Queue thread is not running')
 

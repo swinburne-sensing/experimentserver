@@ -62,12 +62,17 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
         super(SerialHardware, self).transition_disconnect(event)
 
 
-class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
+class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
+    # Maximum bytes to request in a single read
     _BLOCK_SIZE = 32
+
+    # Maximum buffer length
     _BUFFER_MAX_LENGTH = 4096
 
     def __init__(self, identifier: str, port: str, parameters: typing.Optional[TYPE_PARAMETER_DICT] = None,
-                 serial_args: typing.Optional[typing.Dict[str, typing.Any]] = None):
+                 serial_args: typing.Optional[typing.Dict[str, typing.Any]] = None, eol_char: bytes = b'\n'):
+        self._eol_char = eol_char
+
         # Force timeout for reads
         if serial_args is None:
             serial_args = {}
@@ -76,15 +81,8 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
 
         super().__init__(identifier, port, parameters, serial_args)
 
-        # Payload queue
-        self._payload_queue = queue.Queue()
-
         self._thread_serial_consumer: typing.Optional[CallbackThread] = None
         self._thread_payload_consumer: typing.Optional[QueueThread] = None
-
-    @abc.abstractmethod
-    def _handle_object(self, payload: typing.Any, received: datetime) -> typing.Optional[typing.List[Measurement]]:
-        pass
 
     def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         super().transition_connect(event)
@@ -92,6 +90,8 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
         # Start serial thread
         self._thread_serial_consumer = CallbackThread(f"{self.get_hardware_identifier(True)}SerialConsumer",
                                                       self._thread_serial_consumer_callback)
+
+        # Start consumer thread
         self._thread_payload_consumer = QueueThread(f"{self.get_hardware_identifier(True)}PayloadConsumer",
                                                     self._thread_payload_consumer_event)
 
@@ -99,27 +99,16 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
         self._thread_payload_consumer.thread_start()
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        # Stop data consumer
+        # Stop consumers
         self._thread_serial_consumer.thread_stop()
         self._thread_payload_consumer.thread_stop()
         self._thread_serial_consumer.thread_join()
         self._thread_payload_consumer.thread_join()
 
         self._thread_serial_consumer = None
+        self._thread_payload_consumer = None
 
         super().transition_disconnect(event)
-
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        # Do nothing
-        pass
-
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        # Do nothing
-        pass
-
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        # Do nothing
-        pass
 
     def _thread_serial_consumer_callback(self):
         serial_buffer = bytearray()
@@ -135,7 +124,7 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
                         self.get_logger().debug(f"Read {self._serial_port.in_waiting} bytes")
 
                         # Read and append to buffer
-                        serial_buffer.extend(filter(lambda x: x != ord('\r'), self._serial_port.read(self._BLOCK_SIZE)))
+                        serial_buffer.extend(self._serial_port.read(self._BLOCK_SIZE))
             except serial.SerialException as exc:
                 raise CommunicationError('Error reading from serial port') from exc
 
@@ -144,38 +133,77 @@ class SerialJSONHardware(SerialHardware, metaclass=abc.ABCMeta):
                 serial_buffer.clear()
                 break
 
-            eol_index = serial_buffer.find(b'\n')
+            eol_index = serial_buffer.find(self._eol_char)
 
             while eol_index >= 0:
-                payload = bytes(serial_buffer[:eol_index]), datetime.now()
+                payload = bytes(serial_buffer[:eol_index])
 
                 self.get_logger().debug(f"Payload found: {payload!r}")
 
-                # Save payload
-                self._thread_payload_consumer.append(payload)
+                # Place in consumer queue
+                self._thread_payload_consumer.append((payload, datetime.now()))
+
+                # Trim buffer
                 serial_buffer = serial_buffer[eol_index + 1:]
 
+                # Search for another line
                 eol_index = serial_buffer.find(b'\n')
 
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        # Do nothing
+        pass
+
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        # Do nothing
+        pass
+
+    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        # Do nothing
+        pass
+
+    @abc.abstractmethod
     def _thread_payload_consumer_event(self, payload: typing.Tuple[bytes, datetime]):
-        measurements: typing.List[Measurement] = []
+        pass
 
+
+class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[typing.List[Measurement]]:
+        pass
+
+    def _thread_payload_consumer_event(self, payload: typing.Tuple[bytes, datetime]):
+        # Attempt to decode payload
         try:
-            payload_obj = json.loads(payload[0].decode())
+            payload_str = payload[0].decode().strip()
 
-            payload_measurement = self._handle_object(payload_obj, payload[1])
+            # Attempt to handle payload
+            measurements = self._handle_payload(payload_str, payload[1])
 
-            if payload_measurement is not None:
-                measurements.extend(payload_measurement)
+            # If nothing decoded, log that
+            if measurements is None:
+                self.get_logger().debug('No measurements generated from payload')
             else:
-                self.get_logger().info('No measurement in payload')
+                self.get_logger().debug(f"Decoded {len(measurements)} measurement(s)")
+
+                for measurement in measurements:
+                    MeasurementTarget.record(measurement)
+        except TypeError as exc:
+            self.get_logger().warning(f"Bad type in payload \"{payload[0]}\", error: {exc}")
         except UnicodeDecodeError as exc:
             self.get_logger().warning(f"Could not decode unicode in \"{payload[0]}\", error: {exc}")
+
+
+class SerialJSONHardware(SerialStringHardware, metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def _handle_object(self, payload: typing.Any, received: datetime) -> typing.Optional[typing.List[Measurement]]:
+        pass
+
+    def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[Measurement]:
+        try:
+            # Attempt to decode JSON
+            payload_obj = json.loads(payload)
+
+            return self._handle_object(payload_obj, received)
         except json.decoder.JSONDecodeError as exc:
             self.get_logger().warning(f"Could not decode JSON in \"{payload[0]}\", error: {exc}")
-
-        if len(measurements) > 0:
-            self.get_logger().debug(f"Decoded {len(measurements)} measurement(s)")
-
-            for measurement in measurements:
-                MeasurementTarget.record(measurement)
+            return None

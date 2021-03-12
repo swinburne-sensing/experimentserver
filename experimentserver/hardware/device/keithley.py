@@ -389,6 +389,11 @@ class Picoammeter6487(_KeithleyInstrument):
 
         self.get_logger().info(f"Sweep values: {', '.join(map(str, self._source_sweep_range))}")
 
+    @SCPIHardware.register_parameter(description='Source sweep measurement delay')
+    def set_source_sweep_settling(self, settling_time: TYPE_TIME):
+        # Settling time for sweep measurements
+        self._settling_time = to_timedelta(settling_time)
+
     @staticmethod
     def get_hardware_class_description() -> str:
         return 'Keithley 6487 Picoammeter'
@@ -419,18 +424,20 @@ class Picoammeter6487(_KeithleyInstrument):
             raise MeasurementUnavailable('Open circuit')
 
         if self._expect_ohms:
-            field = 'resistance'
-            group = MeasurementGroup.RESISTANCE
+            return Measurement(self, MeasurementGroup.RESISTANCE, {
+                'resistance': reading
+            }, tags={
+                'source_voltage': source_voltage,
+                'source_enabled': 'ON' if source_enabled else 'OFF'
+            })
         else:
-            field = 'current'
-            group = MeasurementGroup.CONDUCTOMETRIC_IV
-
-        return Measurement(self, group, {
-            field: reading
-        }, tags={
-            'source_voltage': source_voltage,
-            'source_enabled': 'ON' if source_enabled else 'OFF'
-        })
+            return Measurement(self, MeasurementGroup.CONDUCTOMETRIC_IV, {
+                'current': reading,
+                'voltage': source_voltage
+            }, tags={
+                'source_voltage': source_voltage,
+                'source_enabled': 'ON' if source_enabled else 'OFF'
+            })
 
     @SCPIHardware.register_measurement(description='Measure current/resistance across range of source voltages')
     def get_sweep(self) -> TYPE_MEASUREMENT_LIST:

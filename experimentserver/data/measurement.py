@@ -357,8 +357,11 @@ class MeasurementGroup(enum.Enum):
     # Gas flow
     MFC = 'mfc'
 
-    # Calculated gas flows
+    # Calculated gas concentrations
     GAS = 'gas'
+
+    # Gas combustion measurements
+    COMBUSTION = 'combust'
 
     # Valves
     VALVE = 'valve'

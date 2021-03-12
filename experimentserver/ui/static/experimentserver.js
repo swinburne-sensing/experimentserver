@@ -248,7 +248,7 @@ function updateStatus() {
 
 function autoUpdateStatus() {
     updateStatus();
-    setInterval(updateStatus, 1000);
+    setInterval(updateStatus, 3000);
 }
 
 $(document).ready(function() {
