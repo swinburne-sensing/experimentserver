@@ -8,8 +8,8 @@
 .idea/ansibleVaultSettings.xml
 
 # Testing files
-test
-scratch
+test/**
+scratch/**
 
 # Virtual environments
 venv_*
