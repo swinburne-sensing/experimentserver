@@ -7,6 +7,13 @@
 
 .idea/ansibleVaultSettings.xml
 
+# Testing files
+test
+scratch
+
+# Virtual environments
+venv_*
+
 
 # Created by .ignore support plugin (hsz.mobi)
 ### Windows template
