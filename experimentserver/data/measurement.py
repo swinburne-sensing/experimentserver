@@ -185,6 +185,9 @@ class Measurement(LoggerClass):
 
         :param tags:
         """
+        if len(tags) == 0:
+            return
+
         with cls._metadata_lock:
             cls._metadata_global_tags.update(tags)
 

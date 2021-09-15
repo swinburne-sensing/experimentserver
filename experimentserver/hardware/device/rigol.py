@@ -1,6 +1,5 @@
 import enum
 import re
-import time
 import typing
 
 from transitions import EventData
@@ -181,7 +180,7 @@ class DP832PowerSupply(SCPIHardware):
                                        measurement_group=MeasurementGroup.SUPPLY, force=True)
     def get_supply_state(self) -> typing.Sequence[Measurement]:
         # Delay slightly to allow for new data
-        self.sleep(0.5, 'rate limit, infrequent update')
+        self.sleep(1, 'rate limit, infrequent update')
 
         status = []
 

@@ -247,6 +247,8 @@ class YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
         if self._root is None:
             raise ConfigurationError('Cannot include files when loading from string')
 
+        filename_abs = None
+
         for include_path in node.value.split(';'):
             # From http://stackoverflow.com/questions/528281/how-can-i-include-an-yaml-file-inside-another
             filename = self._format_node(node, include_path)
@@ -259,6 +261,8 @@ class YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
                 break
             else:
                 self.get_logger().info(f"Include not found {filename_abs}")
+
+        assert filename_abs is not None
 
         with open(filename_abs) as f:
             include_data = yaml.load(f, YAMLShortcutLoader)

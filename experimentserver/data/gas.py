@@ -1,7 +1,7 @@
 import enum
 import typing
 
-from .unit import Quantity, units, TYPE_UNIT_OPTIONAL
+from .unit import Quantity, units
 
 
 # Gas constants
@@ -64,14 +64,6 @@ class GasConstant(object):
         else:
             return f"{self.__class__.__name__}('{self.label}', None, {self.molecular_structure}, " \
                    f"{self.specific_heat}, {self.density})"
-
-
-class GasMixture(object):
-    def __init__(self, composition: typing.Sequence[typing.Tuple[GasConstant, TYPE_UNIT_OPTIONAL]]):
-        pass
-
-    def __str__(self):
-        pass
 
 
 # Sources

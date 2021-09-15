@@ -223,7 +223,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 while True:
                     try:
                         flushed_buffer.extend(self._parent._visa_resource.read_raw(1))
-                    except pyvisa.errors.VisaIOError as exc:
+                    except pyvisa.errors.VisaIOError:
                         break
             finally:
                 # Restore timeout
@@ -325,7 +325,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                     cmd_description = 'query'
 
                 if format_args:
-                    command = command.format(*format_args)
+                    command = command.format(*format_args, **format_kwargs)
 
             if len(visa_kwargs) == 0:
                 self.get_logger().debug(f"Transaction #{self._number} {cmd_description}: {command!r}")

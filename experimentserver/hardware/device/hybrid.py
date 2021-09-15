@@ -1,14 +1,15 @@
 import abc
+import collections
 import typing
 
 from transitions import EventData
 
-from experimentserver.util.module import HybridMethod
+from experimentserver.data import to_timedelta, TYPE_TIME
 from ..base.core import Hardware, TYPE_PARAMETER_DICT, TYPE_TAG_DICT, TYPE_HARDWARE
-from ..error import ExternalError, ParameterError
+from ..error import ParameterError
 from .hp import HP34401AMultimeter
 from .keithley import MultimeterDAQ6510, Picoammeter6487
-from ..metadata import TYPE_PARAMETER_COMMAND, _ParameterMetadata, _MeasurementMetadata
+from ..metadata import TYPE_PARAMETER_COMMAND
 from ...util import metadata as metadata
 
 __author__ = 'Chris Harrison'
@@ -30,7 +31,9 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         # Channel configuration
         self._channel_list: typing.List[int] = []
-        self._channel_delay = channel_delay
+        self._channel_metadata: typing.Dict[int, typing.Dict[str, str]] = collections.defaultdict(dict)
+        self._channel_delay = to_timedelta(channel_delay)
+        self._channel_repeat: int = 1
 
     @classmethod
     @abc.abstractmethod
@@ -56,12 +59,25 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
     # Parameters
     @Hardware.register_parameter(description='Add channel to scan list')
     def add_channel(self, channel: int):
-        self._channel_list.append(channel)
+        self._channel_list.append(int(channel))
+
+    @Hardware.register_parameter(description='Append metadata to measurements from channel')
+    def add_channel_metadata(self, channel: int, tag: str, value: str):
+        self.get_logger().info(f"Add channel {channel} metadata: {tag} = {value}")
+        self._channel_metadata[int(channel)][tag] = value
 
     @Hardware.register_parameter(description='Remove channel from scan list')
     def remove_channel(self, channel: int):
         if channel in self._channel_list:
-            self._channel_list.remove(channel)
+            self._channel_list.remove(int(channel))
+
+    @Hardware.register_parameter(description='Delay before measurement after channel switch')
+    def set_channel_delay(self, t: TYPE_TIME):
+        self._channel_delay = to_timedelta(t)
+
+    @Hardware.register_parameter(description='Set channel repeat count')
+    def set_channel_repeat(self, count: int):
+        self._channel_repeat = int(count)
 
     def produce_measurement(self, extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
         extra_tags = extra_tags or {}
@@ -81,7 +97,14 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                     multimeter_transaction.write("ROUT:CLOS (@{})", self._channel_list[0])
 
                     # Use original method
-                    return super(MultiChannelHardware, self).produce_measurement(extra_tags)
+                    channel_tags = extra_tags.copy()
+
+                    if self._channel_list[0] in self._channel_metadata:
+                        channel_tags.update(self._channel_metadata[self._channel_list[0]])
+
+                    channel_tags['channel'] = str(self._channel_list[0])
+
+                    return self._child_hardware.produce_measurement(channel_tags.copy())
 
                 # Turn off all relays
                 multimeter_transaction.write('ROUT:OPEN:ALL')
@@ -89,6 +112,10 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                 for channel in self._channel_list:
                     # Setup metadata
                     channel_tags = extra_tags.copy()
+
+                    if channel in self._channel_metadata:
+                        channel_tags.update(self._channel_metadata[channel])
+
                     channel_tags['channel'] = str(channel)
 
                     self.pre_channel_close(channel)
@@ -99,14 +126,15 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                     self.post_channel_close(channel)
 
                     # Settling time
-                    self.sleep(self._channel_delay, 'multi-channel settling')
+                    self.sleep(self._channel_delay.total_seconds(), 'multi-channel settling')
 
                     # Take measurement
-                    measurement_flag |= self._child_hardware.produce_measurement(channel_tags)
+                    for repeat in range(self._channel_repeat):
+                        measurement_flag |= self._child_hardware.produce_measurement(channel_tags.copy())
 
                     self.pre_channel_open(channel)
 
-                    # Close channel
+                    # Open channel
                     multimeter_transaction.write("ROUT:OPEN (@{})", channel)
 
                     self.post_channel_open(channel)

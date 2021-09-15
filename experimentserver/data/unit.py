@@ -23,7 +23,7 @@ Quantity = units.Quantity
 
 
 # Values are optional fields that represent data of some sort
-TYPE_VALUE = typing.Union[None, str, int, float, bool, Quantity]
+TYPE_VALUE = typing.Union[None, str, int, float, bool, Quantity, timedelta]
 
 # Types for units
 TYPE_UNIT = typing.Union[str, float, Quantity]

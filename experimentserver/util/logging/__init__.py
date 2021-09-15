@@ -26,7 +26,7 @@ class _ModifiedLogger(logging.Logger):
     # Fixes bug where base logger considers the wrapper class as the base for all function calls
     def findCaller(self, stack_info: bool = ..., stacklevel: int = ...) -> Tuple[str, int, str, Optional[str]]:
         # Fetch frame and code
-        # noinspection PyProtectedMember
+        # noinspection PyProtectedMember,PyUnresolvedReferences
         f = sys._getframe(4)
         co = f.f_code
 

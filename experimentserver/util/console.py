@@ -11,6 +11,7 @@ except ImportError:
 # Colourised logging stream
 if colorama:
     # From https://gist.github.com/ravngr/26b84b73a1457d69185e
+    # noinspection PyUnresolvedReferences
     class ColoramaStreamHandler(logging.StreamHandler):
         color_map = {
             logging.INFO: colorama.Style.BRIGHT + colorama.Fore.BLACK,
@@ -64,6 +65,7 @@ if colorama:
                 return message
 else:
     # Define dummy handler if colorama is not installed
+    # noinspection PyUnresolvedReferences
     class ColoramaStreamHandler(logging.StreamHandler):
         def __init__(self, stream, _):
             logging.StreamHandler.__init__(self, stream)

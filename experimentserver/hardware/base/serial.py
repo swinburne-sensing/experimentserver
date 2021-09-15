@@ -1,7 +1,5 @@
 import abc
 import json
-import queue
-import threading
 import typing
 from datetime import datetime
 
@@ -122,6 +120,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
                     if self._serial_port is None:
                         return
 
+                    # noinspection PyUnresolvedReferences
                     if self._serial_port.in_waiting > 0:
                         # Read and append to buffer
                         serial_buffer.extend(self._serial_port.read(self._BLOCK_SIZE))

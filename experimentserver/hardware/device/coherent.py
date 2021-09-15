@@ -24,7 +24,7 @@ class FieldMasterGSPowerMeter(SerialHardware):
 
     @SerialHardware.register_parameter(description='Configure wavelength')
     def set_wavelength(self, wavelength: float):
-        wavelength = to_unit(wavelength, 'nm', magnitude=True)
+        wavelength = to_unit(wavelength, 'nm').to('m').magnitude
 
         # Configure wavelength
         with self._serial_lock.lock():
@@ -34,18 +34,24 @@ class FieldMasterGSPowerMeter(SerialHardware):
     def get_power(self) -> Measurement:
         with self._serial_lock.lock():
             self._serial_port.write(f"pw?{self._termination}".encode())
-            power = self._serial_port.read_until(self._termination.encode()).strip()
+            power = self._serial_port.read_until(self._termination.encode()).decode().strip()
 
             self._serial_port.write(f"wv?{self._termination}".encode())
-            wavelength = self._serial_port.read_until(self._termination.encode()).strip()
+            wavelength = self._serial_port.read_until(self._termination.encode()).decode().strip()
+
+        self.get_logger().debug(f"Read power: {power}")
+        self.get_logger().debug(f"Read wavelength: {wavelength}")
 
         power = to_unit(power, 'W')
-        wavelength = to_unit(wavelength, 'nm')
+        wavelength = to_unit(wavelength, 'm')
+
+        self.get_logger().debug(f"Parsed power: {power}")
+        self.get_logger().debug(f"Parsed wavelength: {wavelength}")
 
         return Measurement(self, MeasurementGroup.POWER, {
             'power': power
         }, tags={
-            'wavelength': wavelength
+            'wavelength': f"{wavelength.to('nm').magnitude:g} nm"
         })
 
     def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
@@ -53,28 +59,28 @@ class FieldMasterGSPowerMeter(SerialHardware):
 
         with self._serial_lock.lock():
             self._serial_port.write(f"*ind{self._termination}".encode())
-            identity = self._serial_port.read_until(self._termination.encode()).strip()
+            identity = self._serial_port.read_until(self._termination.encode()).decode().strip()
 
             self._serial_port.write(f"v{self._termination}".encode())
-            version = self._serial_port.read_until(self._termination.encode()).strip()
+            version = self._serial_port.read_until(self._termination.encode()).decode().strip()
 
             self._serial_port.write(f"*dt?{self._termination}".encode())
-            detector = self._serial_port.read_until(self._termination.encode()).strip()
+            detector = self._serial_port.read_until(self._termination.encode()).decode().strip()
 
         self.get_logger().info(f"System: {identity}")
         self.get_logger().info(f"Version: {version}")
         self.get_logger().info(f"Detector: {detector}")
 
     def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        super(FieldMasterPowerMeter, self).transition_configure(event)
+        super().transition_configure(event)
 
         # Reset
         with self._serial_lock.lock():
             self._serial_port.write(f"*rst{self._termination}".encode())
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        super(FieldMasterPowerMeter, self).transition_cleanup(event)
+        super().transition_cleanup(event)
 
     def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        super(FieldMasterPowerMeter, self).transition_error(event)
+        super().transition_error(event)
 

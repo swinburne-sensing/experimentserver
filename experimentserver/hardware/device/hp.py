@@ -1,17 +1,12 @@
-import abc
 import enum
 import re
-import time
 import typing
-from datetime import timedelta
 
 from transitions import EventData
-from pyvisa import constants, errors
+from pyvisa import constants
 
-from ...data import TYPE_FIELD_DICT, TYPE_MEASUREMENT_LIST, MeasurementGroup, to_unit, TYPE_UNIT, Quantity, units, \
-    Measurement, to_timedelta, TYPE_TIME
-from ...data.measurement import TYPE_MEASUREMENT_LIST
-from ..error import CommunicationError, ParameterError, MeasurementUnavailable, MeasurementError
+from ...data import MeasurementGroup, to_unit, Measurement
+from ..error import CommunicationError, MeasurementUnavailable, MeasurementError
 from ..base.scpi import SCPIHardware
 from ..base.visa import VISAHardware, TYPE_ERROR
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
@@ -195,6 +190,7 @@ class HP34401AMultimeter(SCPIHardware):
 
     def transition_connect(self, event: typing.Optional[EventData] = None):
         for attempt in range(3):
+            # noinspection PyBroadException
             try:
                 super().transition_connect(event)
                 break

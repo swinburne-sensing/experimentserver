@@ -1,4 +1,3 @@
-import json
 import time
 import typing
 
@@ -94,7 +93,7 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
                     # Network issues, retry later
                     self.get_logger().warning(f"Unable to write data points to database (connection error)",
                                               exc_info=True, event=False)
-                except influxdb.exceptions.InfluxDBServerError as exc:
+                except influxdb.exceptions.InfluxDBServerError:
                     # Problem server side, retry later
                     self.get_logger().warning(f"Unable to write data points to database (server error)", exc_info=True,
                                               event=False)

@@ -1,4 +1,3 @@
-import io
 import threading
 import time
 import typing
@@ -109,7 +108,7 @@ class Procedure(ManagedStateMachine):
             if index is None:
                 self._procedure_stages.append(stage)
             else:
-                self._procedure_stages.insert(index, stage)**stage_kwargs
+                self._procedure_stages.insert(index, stage)
 
     def add_hardware(self, identifier: str) -> typing.NoReturn:
         if self.get_state().is_valid():

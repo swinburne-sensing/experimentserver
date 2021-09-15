@@ -1,4 +1,3 @@
-import time
 import typing
 
 from transitions import EventData
@@ -109,7 +108,8 @@ class T96Controller(Hardware):
                                                           
                 # RH at room temperature
                 if self._humidity_room_temp is not None:
-                    humidity_fields['stage_room_rh'] = abs_to_rel(self._humidity_room_temp, humidity_fields['stage_abs'])
+                    humidity_fields['stage_room_rh'] = abs_to_rel(self._humidity_room_temp,
+                                                                  humidity_fields['stage_abs'])
 
                     humidity_tags = {
                         'stage_room_temperature': self._humidity_room_temp

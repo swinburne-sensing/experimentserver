@@ -85,7 +85,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
         }
 
     # noinspection PyMethodMayBeStatic
-    def loader_pause(self, node):
+    def loader_pause(self, _):
         return {
             'class': 'core.Pause',
             'version': BaseStage.EXPORT_VERSION

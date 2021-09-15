@@ -31,7 +31,7 @@ If installed on Linux then users may need to be added to the dialout group to ha
 
 #### udev rules
 
-Linux requires additional udev rules to allow access to instruments via USB without root access. ``lsusb`` can be used to find the USB vendor and product IDs and an override in ``/etc/udev/rules.d/*.rules`` can be used to provide global access:
+Linux requires additional udev rules to allow USB access to instruments without requiring root privilege. ``lsusb`` can be used to find the USB vendor and product IDs and an override in ``/etc/udev/rules.d/*.rules`` can be used to provide global access:
 
 ``SUBSYSTEM=="usb", ATTR{idVendor}=="<VENDOR_ID>", ATTR{idProduct}=="<PRODUCT_ID>", MODE="0666"``
 

@@ -237,6 +237,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
         :return: True if measurements were produced, False otherwise
         """
         measurement_flag = False
+        extra_tags = extra_tags or {}
 
         with self._measurement_lock:
             if self._measurement is None:
@@ -316,6 +317,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
             if type(parameter_args) is not dict:
                 if type(parameter_args) is str:
+                    # FIXME Bad type hints
                     parameter_args = [x.strip() for x in parameter_args.split(',')]
 
                 # If arguments are not iterable then convert to a tuple

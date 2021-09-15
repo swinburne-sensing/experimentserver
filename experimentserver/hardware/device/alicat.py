@@ -12,6 +12,10 @@ from .. import Hardware, HardwareInitError, CommunicationError, ParameterError
 from ...data import Measurement, MeasurementGroup, TYPE_UNIT, to_unit, get_gas, calc_gcf, units, Quantity
 
 
+__author__ = 'Chris Harrison'
+__email__ = 'cjharrison@swin.edu.au'
+
+
 class MCMassFlowController(Hardware):
     REGISTER_GET_STATUS = 1201
     REGISTER_GET_PRESSURE = 1203
@@ -112,12 +116,16 @@ class MCMassFlowController(Hardware):
 
     @Hardware.register_measurement(description='Get reading', force=True)
     def get_measurement(self) -> Measurement:
-        return Measurement(self, MeasurementGroup.MFC, {
+        m = Measurement(self, MeasurementGroup.MFC, {
             'flow_actual': self.mass_flow,
             'flow_target': self.mass_flow_setpoint
-        }, None, {
+        }, tags={
             'gas_mixture': self.get_gas_mix_label()
         })
+
+        self.sleep(0.1, 'rate limit')
+
+        return m
 
     def _modbus_read_input_float(self, address: int) -> float:
         """
@@ -132,7 +140,7 @@ class MCMassFlowController(Hardware):
 
         self.get_logger().debug(f"Input register read {address} response: {response.registers!s}")
 
-        decoder = BinaryPayloadDecoder.fromRegisters(response.registers, byteorder=Endian.Big, wordorder=Endian.Big)
+        decoder = BinaryPayloadDecoder.fromRegisters(response.registers, Endian.Big, Endian.Big)
         value = decoder.decode_32bit_float()
 
         return value
@@ -150,7 +158,7 @@ class MCMassFlowController(Hardware):
 
         flow = flow.m_as(units.sccm)
 
-        builder = BinaryPayloadBuilder(byteorder=Endian.Big, wordorder=Endian.Big)
+        builder = BinaryPayloadBuilder(Endian.Big, Endian.Big)
         builder.add_32bit_float(flow)
         payload = builder.to_registers()
 

@@ -96,6 +96,8 @@
     <inspection_tool class="DockerFileAddOrCopySemantic" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="DockerFileArgumentCount" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="DockerFileAssignments" enabled="false" level="ERROR" enabled_by_default="false" />
+    <inspection_tool class="DotEnvDuplicateKeyInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="DotEnvSpaceInsideNonQuotedInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="DuplicateKeyInSection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="DuplicateSectionInFile" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="DuplicatedBlockNamesInspection" enabled="false" level="WARNING" enabled_by_default="false" />
@@ -104,6 +106,7 @@
     <inspection_tool class="ES6BindWithArrowFunction" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="ES6CheckImport" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="ES6ClassMemberInitializationOrder" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="ES6ConvertIndexedForToForOf" enabled="false" level="INFORMATION" enabled_by_default="false" />
     <inspection_tool class="ES6ConvertLetToConst" enabled="false" level="INFORMATION" enabled_by_default="false" />
     <inspection_tool class="ES6ConvertModuleExportToExport" enabled="false" level="INFORMATION" enabled_by_default="false" />
     <inspection_tool class="ES6ConvertRequireIntoImport" enabled="false" level="INFORMATION" enabled_by_default="false" />
@@ -192,6 +195,8 @@
       <option name="myCustomValuesEnabled" value="true" />
     </inspection_tool>
     <inspection_tool class="HtmlUnknownTarget" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="HttpRequestContentLengthIsIgnored" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="HttpRequestPlaceholder" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="IgnoreCoverEntry" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="IgnoreDuplicateEntry" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="IgnoreFileDuplicateEntry" enabled="false" level="WARNING" enabled_by_default="false" />
@@ -201,6 +206,7 @@
     <inspection_tool class="IgnoreUnusedEntry" enabled="false" level="UNUSED ENTRY" enabled_by_default="false" />
     <inspection_tool class="IncompatibleMaskJS" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="IncompleteProperty" enabled="false" level="ERROR" enabled_by_default="false" />
+    <inspection_tool class="IncorrectHttpHeaderInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="InfiniteLoopJS" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="InfiniteRecursionJS" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="InjectedReferences" enabled="false" level="ERROR" enabled_by_default="false" />
@@ -268,15 +274,20 @@
     <inspection_tool class="JSUnresolvedExtXType" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JSUnresolvedFunction" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="JSUnresolvedLibraryURL" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="JSUnresolvedReactComponent" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="JSUnresolvedVariable" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="JSUnusedAssignment" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JSUnusedGlobalSymbols" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JSUnusedLocalSymbols" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JSValidateJSDoc" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JSValidateTypes" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="JSVoidFunctionReturnValueUsed" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JSXNamespaceValidation" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="Json5StandardCompliance" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="JsonDuplicatePropertyKeys" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="JsonPathEvaluateUnknownKey" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="JsonPathUnknownFunction" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="JsonPathUnknownOperator" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JsonSchemaCompliance" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="JsonSchemaDeprecation" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="JsonSchemaRefReference" enabled="false" level="WARNING" enabled_by_default="false" />
@@ -290,11 +301,17 @@
     <inspection_tool class="LossyEncoding" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="MakoArgumentListInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="MarkdownUnresolvedFileReference" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="MongoJSDeprecationInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="MongoJSExtDeprecationInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="MongoJSExtResolveInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="MongoJSExtSideEffectsInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="MongoJSResolveInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="MongoJSSideEffectsInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="MsBuiltinInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="MsOrderByInspection" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="MysqlLoadDataPathInspection" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="MysqlParsingInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="NodeCoreCodingAssistance" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="NodeModulesDependencies" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="NonAsciiCharacters" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="NpmUsedModulesInstalled" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
@@ -437,6 +454,7 @@
     <inspection_tool class="TypeScriptSuspiciousConstructorParameterAssignment" enabled="false" level="WARNING" enabled_by_default="false" />
     <inspection_tool class="TypeScriptUMDGlobal" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="TypeScriptUnresolvedFunction" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="TypeScriptUnresolvedReactComponent" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="TypeScriptUnresolvedVariable" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
     <inspection_tool class="TypeScriptValidateGenericTypes" enabled="false" level="ERROR" enabled_by_default="false" />
     <inspection_tool class="TypeScriptValidateJSTypes" enabled="false" level="WEAK WARNING" enabled_by_default="false" />

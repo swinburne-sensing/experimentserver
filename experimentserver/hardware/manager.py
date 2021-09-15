@@ -45,7 +45,7 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
     # Timeout for Hardware reset after errors occur
     _TIMEOUT_RESET = 30
 
-    _WATCHDOG_RESET = 20
+    _WATCHDOG_RESET = 300
 
     # Internal list of manager instances
     _manager_instances: typing.Mapping[str, HardwareManager] = {}

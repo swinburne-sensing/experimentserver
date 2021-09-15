@@ -1,4 +1,3 @@
-import time
 import typing
 from datetime import datetime, timedelta
 
@@ -7,7 +6,7 @@ from transitions import EventData
 from .. import SerialHardware, SerialJSONHardware
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
 from ..metadata import TYPE_PARAMETER_DICT
-from ...data import TYPE_FIELD_DICT, Measurement, MeasurementGroup, units
+from ...data import TYPE_FIELD_DICT, Measurement, MeasurementGroup
 
 
 __author__ = 'Chris Harrison'
@@ -79,7 +78,7 @@ class AccelMonitor(SerialJSONHardware):
 
 class GenericSerial(SerialHardware):
     def __init__(self, identifier: str, port: str, enable_receive: bool = True, enable_send: bool = True):
-        super().__init__(identifier, port, None, {
+        super().__init__(identifier, port, serial_args={
             'baudrate': 115200
         })
 
@@ -138,7 +137,7 @@ class GenericSerial(SerialHardware):
 
 class GrblController(SerialHardware):
     def __init__(self, identifier: str, port: str):
-        super().__init__(identifier, port, None, {
+        super().__init__(identifier, port, serial_args={
             'baudrate': 115200
         })
 
@@ -212,7 +211,7 @@ class ValveController(SerialHardware):
                                          force=True)
     def get_position(self) -> TYPE_FIELD_DICT:
         # Slow down sample rate
-        self.sleep(0.5, 'rate limit, infrequent change')
+        self.sleep(1, 'rate limit, infrequent change')
 
         with self._serial_lock.lock():
             self._serial_port.write('?'.encode())

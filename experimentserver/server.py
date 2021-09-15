@@ -1,7 +1,6 @@
 import experimentserver
 from .config import ConfigManager
 from .data.measurement import TYPE_TAG_DICT
-from .protocol import Procedure
 from .util.logging import get_logger
 from .ui.web import WebServer
 from .ui.html import register_html

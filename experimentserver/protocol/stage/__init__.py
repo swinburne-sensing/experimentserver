@@ -13,7 +13,7 @@ from ...hardware import HardwareManager, HardwareTransition, ParameterError
 from ...hardware.metadata import BoundMetadataCall, TYPE_PARAMETER_DICT
 from ...util.constant import FORMAT_TIMESTAMP
 from ...util.logging import LoggerObject
-from ...util.module import class_instance_from_str, get_all_subclasses, import_submodules, TrackedIdentifierError
+from ...util.module import class_instance_from_str, import_submodules, TrackedIdentifierError
 from ...util.uniqueid import hex_str
 
 
@@ -109,7 +109,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         else:
             return self.get_stage_duration()
 
-    def get_stage_summary(self) -> typing.Sequence[typing.Union[str, typing.Sequence[str]]]:
+    def get_stage_summary(self) -> typing.MutableSequence[typing.Union[str, typing.MutableSequence[str]]]:
         """ Get a string description (or multiple descriptions) of this stages behaviour.
 
         :return:

@@ -87,6 +87,7 @@ class ManagedStateMachine(CallbackThread):
                                             initial=initial_state.value, send_event=True, queued=queued_transitions)
 
     def _get_state(self) -> TYPE_STATE:
+        # FIXME Bad type hints
         return self._state_type(self._model.state)
 
     def get_state(self, timeout: typing.Optional[float] = None) -> TYPE_STATE:

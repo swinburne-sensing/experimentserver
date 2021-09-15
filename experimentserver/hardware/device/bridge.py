@@ -1,5 +1,4 @@
 import typing
-import queue
 from datetime import datetime, timedelta
 
 from transitions import EventData

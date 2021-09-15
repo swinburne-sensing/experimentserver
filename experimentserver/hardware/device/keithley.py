@@ -1,17 +1,15 @@
 import abc
 import enum
 import re
-import time
 import typing
 from datetime import timedelta
 
 from transitions import EventData
 
-from ...data import TYPE_FIELD_DICT, TYPE_MEASUREMENT_LIST, MeasurementGroup, to_unit, TYPE_UNIT, Quantity, units, \
-    Measurement, to_timedelta, TYPE_TIME
+from ...data import TYPE_FIELD_DICT, MeasurementGroup, to_unit, TYPE_UNIT, Quantity, units, Measurement, to_timedelta,\
+    TYPE_TIME
 from ...data.measurement import TYPE_MEASUREMENT_LIST
 from ..error import CommunicationError, ParameterError, MeasurementUnavailable, MeasurementError
-from ..base.core import Hardware
 from ..base.scpi import SCPIHardware
 from ..base.visa import VISAHardware, TYPE_ERROR
 from ..base.enum import HardwareEnum
@@ -339,6 +337,24 @@ class Picoammeter6487(_KeithleyInstrument):
     def _fetch_interlock_state(transaction: VISAHardware.VISATransaction) -> bool:
         return not (transaction.query(':SOUR:VOLT:INT:FAIL?') == '1')
 
+    @SCPIHardware.register_parameter(description='Measurement range', order=40)
+    def set_measure_range(self, measure_range: TYPE_UNIT):
+        if type(measure_range) is str and measure_range.lower() == 'auto':
+            with self.visa_transaction() as transaction:
+                transaction.write(':RANG:AUTO')
+        else:
+            measure_range = to_unit(measure_range, 'amp', magnitude=True)
+
+            with self.visa_transaction() as transaction:
+                transaction.write(":RANG {}", measure_range)
+
+    @SCPIHardware.register_parameter(description='Measurement rate', order=40)
+    def set_measure_rate(self, rate: TYPE_UNIT):
+        rate = float(rate)
+
+        with self.visa_transaction() as transaction:
+            transaction.write(":NPLC {}", rate)
+
     @SCPIHardware.register_parameter(description='Enable resistance measurement')
     def set_measure_ohms(self, enable: typing.Union[bool, str]):
         if type(enable) is str:
@@ -448,7 +464,8 @@ class Picoammeter6487(_KeithleyInstrument):
 
         if self._expect_ohms:
             return Measurement(self, MeasurementGroup.RESISTANCE, {
-                'resistance': reading
+                'resistance': reading,
+                'voltage': source_voltage
             }, tags={
                 'source_voltage': source_voltage,
                 'source_enabled': 'ON' if source_enabled else 'OFF'

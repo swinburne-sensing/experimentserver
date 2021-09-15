@@ -41,7 +41,7 @@ class Delay(BaseStage):
         else:
             return timedelta()
 
-    def get_stage_summary(self) -> typing.Sequence[typing.Union[str, typing.Sequence[str]]]:
+    def get_stage_summary(self) -> typing.MutableSequence[typing.Union[str, typing.MutableSequence[str]]]:
         summary = super(Delay, self).get_stage_summary()
 
         summary.append(f"Delay for {self._delay_interval} ({self._delay_interval.total_seconds()} seconds)")

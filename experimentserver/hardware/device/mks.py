@@ -182,6 +182,7 @@ class GE50MassFlowController(Hardware):
 
     # Utility methods
     def _get_url(self, path: str):
+        # noinspection HttpUrlsUsage
         return f"http://{self._host}:{self._port}/{path}"
 
     def _fetch_url(self, path: str, data: typing.Union[None, bytes, str, typing.Dict[str, typing.Any]] = None,

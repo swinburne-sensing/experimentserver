@@ -59,9 +59,9 @@ class DatabaseEventHandler(logging.Handler, MeasurementSource):
 
                 trace_split = trace.strip().split('\n')
 
-                trace_filename = 'Unknown'
-                trace_line = 'Unknown'
-                trace_function = 'Unknown'
+                # trace_filename = 'Unknown'
+                # trace_line = 'Unknown'
+                # trace_function = 'Unknown'
 
                 if len(trace_split) == 2:
                     (trace_file, trace_content) = trace_split

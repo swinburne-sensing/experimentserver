@@ -98,9 +98,9 @@ class Pulse(BaseStage):
             pass
 
         metadata = {
-            'pulse_setup': self._pulse_setup.total_seconds(),
-            'pulse_exposure': self._pulse_exposure.total_seconds(),
-            'pulse_recovery': self._pulse_recovery.total_seconds()
+            'pulse_setup': str(self._pulse_setup.total_seconds()),
+            'pulse_exposure': str(self._pulse_exposure.total_seconds()),
+            'pulse_recovery': str(self._pulse_recovery.total_seconds())
         }
 
         super(Pulse, self).__init__(config, uid, metadata=metadata)
