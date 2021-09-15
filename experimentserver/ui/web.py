@@ -1,4 +1,6 @@
 import time
+import typing
+import os.path
 
 import flask
 
@@ -106,16 +108,26 @@ class WebServer(LoggerObject, MeasurementSource):
 
         self.get_logger().info(f"{experimentserver.__app_name__} {experimentserver.__version__} ready", notify=True)
 
+        # Load startup procedure if specified
+        startup_procedure_path = self._config.get('startup.procedure')
+
+        if startup_procedure_path is not None:
+            with open(startup_procedure_path, 'r') as startup_procedure_file:
+                startup_procedure = Procedure.procedure_import(startup_procedure_file.read())
+
+            self.set_procedure(startup_procedure)
+
+            # Queue validation
+            self.get_procedure().queue_transition(ProcedureTransition.VALIDATE)
+
         while True:
             # Check web interface is still running
             if not self._thread.is_thread_alive():
                 self.get_logger().info('Web interface thread stopped')
-
                 break
 
             if not self._procedure.is_thread_alive():
                 self.get_logger().error('Procedure thread stopped unexpectedly')
-
                 break
 
             # Check all managers are still running
@@ -139,8 +151,8 @@ class WebServer(LoggerObject, MeasurementSource):
             try:
                 time.sleep(5)
 
-                MeasurementTarget.record(Measurement(self, MeasurementGroup.STATUS, {'status': 'running',
-                                                                                     'count': count}))
+                # MeasurementTarget.record(Measurement(self, MeasurementGroup.STATUS, {'status': 'running',
+                #                                                                      'count': count}))
 
                 count += 1
             except KeyboardInterrupt:
@@ -148,5 +160,3 @@ class WebServer(LoggerObject, MeasurementSource):
 
         # Attempt to stop procedure if running
         self._procedure.queue_transition(ProcedureTransition.STOP, raise_exception=False)
-
-

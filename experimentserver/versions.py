@@ -34,4 +34,4 @@ dependencies = {
     'wrapt': __wrapt_version
 }
 
-python_version_tested = [(3, 7)]
+python_version_tested = [(3, 7), (3, 8), (3, 9)]

@@ -192,7 +192,7 @@ def register_json(ui: WebServer):
 
         procedure = Procedure.procedure_import(procedure_file_content.decode())
 
-        ui.get_logger().info(f"Read procedure:\n{procedure.procedure_export(True)}")
+        ui.get_logger().info(f"Read procedure:\n{procedure.procedure_export(True)}", event=True)
 
         ui.set_procedure(procedure)
 

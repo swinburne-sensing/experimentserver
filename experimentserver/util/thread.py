@@ -101,7 +101,7 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
                  thread_target_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
                  thread_name_prefix: typing.Optional[str] = None, thread_name: typing.Optional[str] = None,
                  thread_name_postfix: typing.Optional[str] = None, thread_daemon: bool = False,
-                 exception_threshold: typing.Optional[int] = 10, exception_timeout: typing.Optional[float] = 60.0,
+                 exception_threshold: typing.Optional[int] = 3, exception_timeout: typing.Optional[float] = 30.0,
                  run_final: bool = False):
         """ Instantiate a managed thread.
 
@@ -155,7 +155,7 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
 
         :return:
         """
-        self.get_logger().debug('Requesting start')
+        self.get_logger().info('Managed thread starting')
         self._thread.start()
 
     @abc.abstractmethod
@@ -166,7 +166,7 @@ class ManagedThread(LoggerObject, metaclass=abc.ABCMeta):
         :param kwargs:
         :return:
         """
-        self.get_logger().debug('Requesting stop')
+        self.get_logger().warning('Managed thread stopping')
 
     def thread_join(self, timeout: typing.Optional[float] = None):
         if self.is_thread_alive():

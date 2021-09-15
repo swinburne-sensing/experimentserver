@@ -125,6 +125,19 @@ class ConfigManager(object):
 
             return node[key_set[-1]]
 
+    def set(self, key: str, value: typing.Any):
+        with self._config_lock:
+            node = self._config
+            key_set = key.split('.')
+
+            for node_key in key_set[:-1]:
+                if not issubclass(type(node), dict) or node_key not in node:
+                    node[node_key] = self._create_node()
+
+                node = node[node_key]
+
+            node[key_set[-1]] = value
+
     def __contains__(self, value):
         try:
             self.get(value, required=True)

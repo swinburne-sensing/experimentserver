@@ -199,8 +199,8 @@ class LinkamSDK(LoggerObject):
 
         # This might be a little crazy, but the Linkam SDK crashes occasionally (maybe 1 out of every 100 loads) and
         # it looks like it's because the library attempts to open the license file before it's written. This delay
-        # makes that... less likely
-        time.sleep(0.2)
+        # makes that less likely 🤷
+        self.sleep(0.2, 'hack, avoid SDK crash')
 
         self._license_path = license_path
         license_path = license_path.encode()

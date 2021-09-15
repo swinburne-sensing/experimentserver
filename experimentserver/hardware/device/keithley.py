@@ -11,6 +11,7 @@ from ...data import TYPE_FIELD_DICT, TYPE_MEASUREMENT_LIST, MeasurementGroup, to
     Measurement, to_timedelta, TYPE_TIME
 from ...data.measurement import TYPE_MEASUREMENT_LIST
 from ..error import CommunicationError, ParameterError, MeasurementUnavailable, MeasurementError
+from ..base.core import Hardware
 from ..base.scpi import SCPIHardware
 from ..base.visa import VISAHardware, TYPE_ERROR
 from ..base.enum import HardwareEnum
@@ -20,6 +21,7 @@ __email__ = 'cjharrison@swin.edu.au'
 
 
 class DAQChannelFunction(HardwareEnum):
+    OPEN = enum.auto()
     VOLTAGE_DC = enum.auto()
     VOLTAGE_AC = enum.auto()
     CURRENT_DC = enum.auto()
@@ -31,20 +33,22 @@ class DAQChannelFunction(HardwareEnum):
     TEMPERATURE = enum.auto()
     FREQUENCY = enum.auto()
     PERIOD = enum.auto()
-    DISTANCE = enum.auto()
+    # DISTANCE = enum.auto()
 
     @classmethod
     def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
         return {
+            cls.OPEN: ['open', 'na', 'none'],
             cls.VOLTAGE_DC: ['v', 'volt', 'volts', 'voltage'],
             cls.CURRENT_DC: ['a', 'i', 'amp', 'amps', 'amperage'],
             cls.RESISTANCE_2WIRE: ['r', 'ohm', 'res', 'resistance'],
-            cls.DISTANCE: ['m', 'um', 'length', 'distance']
+            # cls.DISTANCE: ['m', 'um', 'length', 'distance']
         }
 
     @classmethod
     def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
         return {
+            cls.OPEN: 'Open Circuit (external)',
             cls.VOLTAGE_DC: 'Voltage DC',
             cls.VOLTAGE_AC: 'Voltage AC',
             cls.CURRENT_DC: 'Current DC',
@@ -56,7 +60,7 @@ class DAQChannelFunction(HardwareEnum):
             cls.TEMPERATURE: 'Temperature',
             cls.FREQUENCY: 'Frequency',
             cls.PERIOD: 'Period',
-            cls.DISTANCE: 'Distance (via Keyence amp.)'
+            # cls.DISTANCE: 'Distance (via Keyence amp.)'
         }
 
     @classmethod
@@ -73,7 +77,7 @@ class DAQChannelFunction(HardwareEnum):
             cls.TEMPERATURE: '\"TEMP\"',
             cls.FREQUENCY: '\"FREQ\"',
             cls.PERIOD: '\"PER\"',
-            cls.DISTANCE: '\"VOLT\"'
+            # cls.DISTANCE: '\"VOLT\"'
         }
 
 
@@ -107,6 +111,8 @@ class MultimeterDAQ6510(_KeithleyInstrument):
     _SLOTS = [1, 2]
     _CHANNELS = []
 
+    _CHANNEL_INTERNAL = [23, 24, 25]
+
     def __init__(self, *args, **kwargs):
         """ Create Hardware instance for a Keithley DAQ6510.
 
@@ -119,7 +125,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
         self._slot_module: typing.Dict[int, typing.Optional[str]] = {slot: None for slot in self._SLOTS}
 
         # Channel scan settings
-        self._channel_scan: typing.List[int] = []
+        # self._channel_scan: typing.Dict[int, DAQChannelFunction] = {}
 
     @classmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
@@ -182,7 +188,28 @@ class MultimeterDAQ6510(_KeithleyInstrument):
         else:
             raise CommunicationError(f"Unexpected response to terminal status query: {terminals}")
 
-    # Measurements
+    # Parameters
+    # @SCPIHardware.register_parameter(description='Configure a measurement channel and add to scan list')
+    # def configure_channel(self, channel: int, mode: DAQChannelFunction):
+    #     mode = DAQChannelFunction.from_input(mode)
+    #
+    #     with self.visa_transaction() as transaction:
+    #         # Configure channel mode
+    #         transaction.write("SENS:FUNC {}, (@{})", mode, channel)
+    #
+    #     self._channel_scan[channel] = mode
+    #
+    # @SCPIHardware.register_parameter(description='Remove measurement channel from scan list')
+    # def remove_channel(self, channel: int):
+    #     if channel in self._channel_scan:
+    #         self._channel_scan.pop(channel)
+    #
+    # @SCPIHardware.register_parameter(description='Update channel scan configuration')
+    # def setup_channel_scan(self):
+    #     with self.visa_transaction() as transaction:
+    #         # Create scan list
+    #         transaction.write("ROUT:SCAN:CRE (@{})", ','.join(map(str, self._channel_scan)))
+
     @SCPIHardware.register_measurement(description='DC current (front terminals)',
                                        measurement_group=MeasurementGroup.CURRENT)
     def get_current(self) -> TYPE_FIELD_DICT:
@@ -243,25 +270,21 @@ class MultimeterDAQ6510(_KeithleyInstrument):
                 'voltage_ac': to_unit(transaction.query(':MEAS:VOLT:AC?'), 'volt')
             }
 
-    @SCPIHardware.register_measurement(description='Multi-channel scan (rear terminals)')
-    def get_channel_scan(self) -> TYPE_MEASUREMENT_LIST:
-        pass
-
-    @SCPIHardware.register_measurement(description='Displacement via Keyence Laser Displacment',
-                                       measurement_group=MeasurementGroup.POSITION)
-    def get_distance(self) -> TYPE_FIELD_DICT:
-        # Get DC volts and convert
-        with self.visa_transaction(timeout=6) as transaction:
-            voltage = to_unit(transaction.query(':MEAS:VOLT?'), 'volt')
-
-        distance = to_unit(voltage.magnitude, 'mm')
-
-        if distance.magnitude > 5.5:
-            raise MeasurementUnavailable('Outside measurement range')
-
-        return {
-            'distance': distance
-        }
+    # @SCPIHardware.register_measurement(description='Displacement via Keyence Laser Displacment',
+    #                                    measurement_group=MeasurementGroup.POSITION)
+    # def get_distance(self) -> TYPE_FIELD_DICT:
+    #     # Get DC volts and convert
+    #     with self.visa_transaction(timeout=6) as transaction:
+    #         voltage = to_unit(transaction.query(':MEAS:VOLT?'), 'volt')
+    #
+    #     distance = to_unit(voltage.magnitude, 'mm')
+    #
+    #     if distance.magnitude > 5.5:
+    #         raise MeasurementUnavailable('Outside measurement range')
+    #
+    #     return {
+    #         'distance': distance
+    #     }
 
 
 class Picoammeter6487(_KeithleyInstrument):
@@ -453,7 +476,7 @@ class Picoammeter6487(_KeithleyInstrument):
 
             # Take measurement after settling time
             if settling_time > 0:
-                time.sleep(settling_time)
+                self.sleep(settling_time, 'settling time')
 
             # Get reading
             try:

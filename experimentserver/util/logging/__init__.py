@@ -1,5 +1,7 @@
 import logging
 import sys
+import time
+import timeit
 import typing
 
 
@@ -155,3 +157,10 @@ class LoggerObject(LoggerClass):
 
     def get_logger(self) -> _ModifiedLogger:
         return self.__logger
+
+    def sleep(self, interval: float, reason: Optional[str] = None):
+        tic = timeit.default_timer()
+        self.get_logger().debug(f"Sleep {interval:.6g} sec (reason: {reason if reason else 'unspecified'})")
+        time.sleep(interval)
+        self.get_logger().debug(f"Sleep complete (target: {interval:.6g} sec, actual: "
+                                f"{(timeit.default_timer() - tic):.6g} sec)")

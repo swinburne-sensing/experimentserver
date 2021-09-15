@@ -12,7 +12,7 @@ from .core import Hardware
 from ..error import CommunicationError
 from ..metadata import TYPE_PARAMETER_DICT
 from ...data import Measurement, MeasurementTarget
-from ...util.thread import CallbackThread, ThreadLock, QueueThread
+from ...util.thread import CallbackThread, ThreadLock, QueueThread, ThreadException
 
 
 class SerialHardware(Hardware, metaclass=abc.ABCMeta):
@@ -95,14 +95,16 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
         self._thread_payload_consumer = QueueThread(f"{self.get_hardware_identifier(True)}PayloadConsumer",
                                                     self._thread_payload_consumer_event)
 
-        self._thread_serial_consumer.thread_start()
+        # Event consumer must start before serial thread
         self._thread_payload_consumer.thread_start()
+        self._thread_serial_consumer.thread_start()
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         # Stop consumers
         self._thread_serial_consumer.thread_stop()
-        self._thread_payload_consumer.thread_stop()
         self._thread_serial_consumer.thread_join()
+
+        self._thread_payload_consumer.thread_stop()
         self._thread_payload_consumer.thread_join()
 
         self._thread_serial_consumer = None
@@ -121,8 +123,6 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
                         return
 
                     if self._serial_port.in_waiting > 0:
-                        self.get_logger().debug(f"Read {self._serial_port.in_waiting} bytes")
-
                         # Read and append to buffer
                         serial_buffer.extend(self._serial_port.read(self._BLOCK_SIZE))
             except serial.SerialException as exc:
@@ -141,7 +141,10 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
                 self.get_logger().debug(f"Payload found: {payload!r}")
 
                 # Place in consumer queue
-                self._thread_payload_consumer.append((payload, datetime.now()))
+                try:
+                    self._thread_payload_consumer.append((payload, datetime.now()))
+                except ThreadException:
+                    self.get_logger().warning('Payload consumer thread not running')
 
                 # Trim buffer
                 serial_buffer = serial_buffer[eol_index + 1:]
@@ -171,7 +174,11 @@ class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
     def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[typing.List[Measurement]]:
         pass
 
-    def _thread_payload_consumer_event(self, payload: typing.Tuple[bytes, datetime]):
+    def _thread_payload_consumer_event(self, payload: typing.Optional[typing.Tuple[bytes, datetime]]):
+        if payload is None:
+            self.get_logger().error('No payload')
+            return
+
         # Attempt to decode payload
         try:
             payload_str = payload[0].decode().strip()

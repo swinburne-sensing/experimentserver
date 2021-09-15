@@ -65,7 +65,8 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
 
             self._event_thread.append(point)
         else:
-            raise DatabaseError(f"Cannot submit measurement to database: {measurement}", fatal=True)
+            raise DatabaseError(f"Event thread not running, cannot submit measurement to database: {measurement}",
+                                fatal=True)
 
     def _influxdb_event_handle(self, obj):
         if obj is not None:
@@ -85,7 +86,7 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
                         points = self._point_buffer[:self._SEGMENT_SIZE]
 
                         if self.client.write_points(points, time_precision='u'):
-                            self.get_logger().debug(f"Wrote {len(points)} points to database")
+                            self.get_logger().debug(f"Wrote {len(points)} points")
 
                             # Remove from buffer
                             self._point_buffer = self._point_buffer[self._SEGMENT_SIZE:]

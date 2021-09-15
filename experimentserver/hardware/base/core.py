@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import contextlib
 import functools
@@ -11,7 +13,7 @@ from transitions import EventData
 import experimentserver.util.metadata as metadata
 from ..error import MeasurementError, MeasurementUnavailable, ParameterError, NoResetHandler
 from ..metadata import TYPE_PARAMETER_DICT, TYPE_PARAMETER_COMMAND, _MeasurementMetadata, _ParameterMetadata
-from experimentserver.data.measurement import MeasurementSource, Measurement, MeasurementTarget
+from experimentserver.data.measurement import MeasurementSource, Measurement, MeasurementTarget, TYPE_TAG_DICT
 from experimentserver.util.logging import LoggerObject
 from experimentserver.util.metadata import BoundMetadataCall
 from experimentserver.util.module import HybridMethod, AbstractTracked
@@ -229,7 +231,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
         self.get_logger().info(f"Disabled measurement: {name}")
 
-    def produce_measurement(self) -> bool:
+    def produce_measurement(self, extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
         """
 
         :return: True if measurements were produced, False otherwise
@@ -259,14 +261,17 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
                         if measurement_return is not None:
                             if type(measurement_return) is Measurement:
                                 # Single result with metadata
+                                measurement_return.add_tags(extra_tags)
                                 MeasurementTarget.record(measurement_return)
                             elif type(measurement_return) is list:
                                 # Multiple results with metadata
                                 for measurement in measurement_return:
+                                    measurement.add_tags(extra_tags)
                                     MeasurementTarget.record(measurement)
                             elif type(measurement_return) is dict:
-                                # Single result
-                                MeasurementTarget.record(Measurement(self, meta.measurement_group, measurement_return))
+                                # Single result without metadata
+                                MeasurementTarget.record(Measurement(self, meta.measurement_group, measurement_return,
+                                                                     tags=extra_tags))
                             else:
                                 raise MeasurementError(
                                     f"Unexpected return from measurement method: {measurement_return!r}")

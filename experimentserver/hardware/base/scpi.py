@@ -48,6 +48,22 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         """
         transaction.write('*RST')
 
+    def _scpi_reset_pre(self, transaction: VISAHardware.VISATransaction):
+        """
+
+        :param transaction:
+        :return:
+        """
+        pass
+
+    def _scpi_reset_post(self, transaction: VISAHardware.VISATransaction):
+        """
+
+        :param transaction:
+        :return:
+        """
+        pass
+
     @staticmethod
     def scpi_clear(transaction: VISAHardware.VISATransaction) -> typing.NoReturn:
         """ Issue SCPI instrument clear status command. Clears event registers and error queue.
@@ -175,8 +191,13 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         super().transition_connect(event)
 
         with self.visa_transaction() as transaction:
+            self._scpi_reset_pre(transaction)
+
             # Reset instrument
             self.scpi_reset(transaction)
+
+            # Run post reset commands
+            self._scpi_reset_post(transaction)
 
             # Log instrument identifier
             self.get_logger().info(f"SCPI ID: {self.scpi_get_identifier(transaction)}")
@@ -186,7 +207,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 # Show identifier on display
                 self.scpi_display(transaction, f"ID:{self.get_hardware_identifier()}")
 
-                time.sleep(self._SCPI_DISPLAY_TIMEOUT)
+                self.sleep(self._SCPI_DISPLAY_TIMEOUT, 'display delay')
 
                 # Clear display
                 self.scpi_display(transaction)

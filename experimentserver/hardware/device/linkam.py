@@ -48,7 +48,7 @@ class T96Controller(Hardware):
         assert self._handle is not None
 
         # Delay since Linkam only produces measurements data every ~0.1s
-        time.sleep(self._REFRESH_PERIOD)
+        self.sleep(self._REFRESH_PERIOD, 'rate limit, infrequent update')
 
         payload = []
 

@@ -21,7 +21,6 @@ from experimentserver.config import ConfigManager
 from experimentserver.data.measurement import Measurement, MeasurementTarget, dynamic_field_time_delta
 from experimentserver.database import setup_database
 from experimentserver.hardware import Hardware, device, HardwareManager
-from experimentserver.observer import Observer
 from experimentserver.server import start_server
 from experimentserver.util.constant import FORMAT_TIMESTAMP
 from experimentserver.util.git import get_git_hash
@@ -50,7 +49,8 @@ def __exit_handler(exit_logger):
     exit_logger.critical('Stopped abnormally', notify=True, event=True)
 
 
-def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str, str]) \
+def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str, str],
+         procedure_path: typing.Optional[str] = None) \
         -> typing.NoReturn:
     """ Launch the experimentserver application.
 
@@ -58,6 +58,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
     :param enable_pushover: if True pushover notifications will be sent
     :param config_paths: path(s) to configuration file(s)
     :param cli_tags: dict containing additional metadata tags
+    :param procedure_path:
     """
     time_startup = datetime.now()
 
@@ -86,6 +87,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
         root_logger.disabled = False
         logging.getLogger("urllib3").setLevel(logging.INFO)
         logging.getLogger("pyvisa").setLevel(logging.INFO)
+        logging.getLogger("transitions.core").setLevel(logging.INFO)
 
         # Setup pushover if enabled
         if enable_pushover:
@@ -121,6 +123,17 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
 
         # Dump configuration
         root_logger.info(f"Configuration:\n{yaml.dump(app_config.dump())}")
+
+        # If procedure is specified, add to the configuration
+        if procedure_path is not None:
+            procedure_path = os.path.abspath(procedure_path)
+
+            if not os.path.isfile(procedure_path):
+                raise experimentserver.ApplicationException(f"Specified procedure file \"{procedure_path}\" not a "
+                                                            f"valid file")
+
+            app_config.set('startup.procedure', procedure_path)
+            root_logger.info(f"Configured startup procedure: {procedure_path}")
 
         # Setup fixed metadata
         app_metadata = experimentserver.config.get_system_metadata()
@@ -181,8 +194,11 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
             setup_database(database_identifier, database_connect_args, buffer_interval)
 
         # Setup database remapping
-        for exporter_source, database_target in app_config.get('remap', default={}).items():
-            MeasurementTarget.measurement_target_remap(exporter_source, database_target)
+        remap_config = app_config.get('remap', default={})
+
+        if remap_config is not None:
+            for exporter_source, database_target in remap_config.items():
+                MeasurementTarget.measurement_target_remap(exporter_source, database_target)
 
         app_metadata_string = '\n'.join((f"    {k!s}: {v!s}" for k, v in app_metadata.items()))
         root_logger.info(f"Started\nMetadata:\n{app_metadata_string}", event=True, notify=True)
@@ -209,11 +225,11 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
         if os.path.isfile(LOCK_FILENAME):
             root_logger.warning('Process did not shutdown cleanly on previous run')
         else:
-            with open(LOCK_FILENAME, 'w') as lock_file:
-                lock_file.write('')
-
-        # Create observer
-        observer = Observer()
+            try:
+                with open(LOCK_FILENAME, 'w') as lock_file:
+                    lock_file.write('')
+            except PermissionError:
+                root_logger.warning(f"Unable to write lock file {os.path.abspath(LOCK_FILENAME)}")
 
         # Hardware and manager instances
         hardware_list: typing.Dict[str, Hardware] = {}
@@ -246,9 +262,6 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
                         f"Failed to initialise hardware using configuration: {hardware_inst_config!r}") \
                         from exc
 
-            observer.start()
-            root_logger.debug(f"Observer running (pid: {observer.get_pid()})")
-
             root_logger.info('Startup OK')
 
             user_metadata = {}
@@ -276,11 +289,6 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
             # Cleanup managers
             for manager_inst in manager_list.values():
                 manager_inst.thread_stop()
-
-            # Stop observer
-            if observer.is_alive():
-                observer.stop()
-                root_logger.info(f"Observer stopped")
 
             root_logger.debug('Unregistering exit handler')
             atexit.unregister(__exit_handler)
@@ -325,6 +333,8 @@ parser.add_argument('--no-pushover', action='store_false', dest='pushover', help
                                                                                  'notifications')
 parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata ags (key=value)')
 
+parser.add_argument('-p', '--procedure', dest='procedure', help='Load and validate specified procedure on startup')
+
 app_args = parser.parse_args()
 
 # Append CLI app_metadata
@@ -340,6 +350,6 @@ if app_args.tag is not None:
 
         app_tags[arg_tag_split[0]] = arg_tag_split[1]
 
-main(app_args.debug, app_args.pushover, app_args.config, app_tags)
+main(app_args.debug, app_args.pushover, app_args.config, app_tags, app_args.procedure)
 
 exit(EXIT_SUCCESS)

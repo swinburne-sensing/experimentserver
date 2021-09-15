@@ -45,7 +45,7 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
     # Timeout for Hardware reset after errors occur
     _TIMEOUT_RESET = 30
 
-    _WATCHDOG_RESET = 10
+    _WATCHDOG_RESET = 20
 
     # Internal list of manager instances
     _manager_instances: typing.Mapping[str, HardwareManager] = {}
@@ -101,6 +101,8 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
         """ Force hardware to disconnected state regardless of current state. """
         # Get current state
         with self._state_lock:
+            self.get_logger().warning('Forcing disconnect')
+
             # Clear pending transitions
             self.clear_transition()
 

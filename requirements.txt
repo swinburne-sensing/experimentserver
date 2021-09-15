@@ -6,8 +6,10 @@ transitions==0.6.9
 requests==2.22.0
 msgpack==1.0.0
 urllib3[secure]==1.25.3
+opencv-python==4.5.1.48
 pint==0.9
 psutil==5.6.5
+pymodbus==2.5.1
 pyserial==3.4
 python-pushover==0.4
 pyvisa==1.10.0

@@ -181,7 +181,7 @@ class DP832PowerSupply(SCPIHardware):
                                        measurement_group=MeasurementGroup.SUPPLY, force=True)
     def get_supply_state(self) -> typing.Sequence[Measurement]:
         # Delay slightly to allow for new data
-        time.sleep(0.5)
+        self.sleep(0.5, 'rate limit, infrequent update')
 
         status = []
 

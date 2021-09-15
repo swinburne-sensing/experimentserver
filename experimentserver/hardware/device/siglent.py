@@ -26,7 +26,7 @@ class SDGWaveformGenerator(SCPIHardware):
         :return:
         """
         # No way to wait for a measurement, so just delay
-        time.sleep(1)
+        self.sleep(1, 'trigger delay')
 
         with self.visa_transaction() as transaction:
             result_str = transaction.query('FCNT?')

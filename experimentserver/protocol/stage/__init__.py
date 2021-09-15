@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import time
 import typing
 from datetime import datetime, timedelta
 
@@ -10,6 +11,7 @@ from ...data import TYPE_TAG_DICT, Measurement
 from ...data.measurement import dynamic_field_time_delta
 from ...hardware import HardwareManager, HardwareTransition, ParameterError
 from ...hardware.metadata import BoundMetadataCall, TYPE_PARAMETER_DICT
+from ...util.constant import FORMAT_TIMESTAMP
 from ...util.logging import LoggerObject
 from ...util.module import class_instance_from_str, get_all_subclasses, import_submodules, TrackedIdentifierError
 from ...util.uniqueid import hex_str
@@ -185,15 +187,18 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         self._stage_enter_timestamp = datetime.now()
 
         # Apply stage metadata
-        if len(self._stage_metadata) > 0:
-            Measurement.push_metadata()
+        Measurement.push_metadata()
 
-            Measurement.add_tags({
-                'stage_id': self._stage_uid,
-                'stage_type': self.__class__.__name__,
-                'stage_state': 'running'
-            })
-            Measurement.add_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
+        Measurement.add_tags({
+            'stage_uid': self._stage_uid,
+            'stage_type': self.__class__.__name__,
+            'stage_state': 'running',
+            'stage_time': time.strftime(FORMAT_TIMESTAMP),
+            'stage_timestamp': time.time(),
+        })
+        Measurement.add_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
+
+        if len(self._stage_metadata) > 0:
             Measurement.add_tags(self._stage_metadata)
 
         # Queue stage parameters

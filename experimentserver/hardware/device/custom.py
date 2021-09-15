@@ -7,7 +7,7 @@ from transitions import EventData
 from .. import SerialHardware, SerialJSONHardware
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
 from ..metadata import TYPE_PARAMETER_DICT
-from ...data import TYPE_FIELD_DICT, Measurement, MeasurementGroup
+from ...data import TYPE_FIELD_DICT, Measurement, MeasurementGroup, units
 
 
 __author__ = 'Chris Harrison'
@@ -77,6 +77,91 @@ class AccelMonitor(SerialJSONHardware):
         return measurements
 
 
+class GenericSerial(SerialHardware):
+    def __init__(self, identifier: str, port: str, enable_receive: bool = True, enable_send: bool = True):
+        super().__init__(identifier, port, None, {
+            'baudrate': 115200
+        })
+
+        self._enable_receive = enable_receive
+        self._enable_send = enable_send
+
+    @staticmethod
+    def get_hardware_class_description() -> str:
+        return 'Generic Arduino Device'
+
+    @SerialHardware.register_parameter(description='Send raw command')
+    def send(self, cmd: str):
+        # Encode command
+        cmd = bytes(cmd, "utf-8").decode("unicode_escape").encode()
+
+        with self._serial_lock.lock():
+            # Send command
+            self._serial_port.write(cmd)
+
+            # Wait for response
+            response = self._serial_port.read_until()
+            response = response.strip()
+
+        self.get_logger().info(f"Response: {response}")
+
+    @SerialHardware.register_measurement(description='Fetch raw data', measurement_group=MeasurementGroup.RAW,
+                                         force=True)
+    def receive(self) -> TYPE_FIELD_DICT:
+        if not self._enable_receive:
+            self.sleep(1, 'rate limit, receive disabled')
+            return {}
+
+        with self._serial_lock.lock():
+            response = self._serial_port.read_until()
+
+        response = response.strip()
+
+        if response == 'ERROR':
+            return {}
+
+        response_value = float(response)
+
+        return {
+            'value': response_value
+        }
+
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(GenericSerial, self).transition_configure(event)
+
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(GenericSerial, self).transition_cleanup(event)
+
+    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(GenericSerial, self).transition_error(event)
+
+
+class GrblController(SerialHardware):
+    def __init__(self, identifier: str, port: str):
+        super().__init__(identifier, port, None, {
+            'baudrate': 115200
+        })
+
+    @staticmethod
+    def get_hardware_class_description() -> str:
+        return 'grbl-compatible Motion Controller'
+
+    def send_cmd(self, cmd: str):
+        pass
+
+    def increment_axis(self, axis: str, distance: float):
+        pass
+
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(GrblController, self).transition_configure(event)
+
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(GrblController, self).transition_cleanup(event)
+
+    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+        super(GrblController, self).transition_error(event)
+
+
 class ValvePosition(HardwareEnum):
     POSITION_A = 'A'
     POSITION_B = 'B'
@@ -127,7 +212,7 @@ class ValveController(SerialHardware):
                                          force=True)
     def get_position(self) -> TYPE_FIELD_DICT:
         # Slow down sample rate
-        time.sleep(0.5)
+        self.sleep(0.5, 'rate limit, infrequent change')
 
         with self._serial_lock.lock():
             self._serial_port.write('?'.encode())

@@ -108,6 +108,7 @@ _GAS_CONSTANTS = {
     'helium': GasConstant('Helium', 'He', MolecularStructure.MONOTOMIC, 1.241, 0.1786),
     # 'hexafluoroethane': GasConstant('', MolecularStructure.POLYATOMIC, 0.1843, 6.157),
     'hexane': GasConstant('Hexane', 'C_6H14', MolecularStructure.POLYATOMIC, 0.54, 0.672),
+    'hydrocarbons': GasConstant('Hydrocarbons', 'C_xH_y', MolecularStructure.POLYATOMIC, 0.54, 0.672),
     'hydrogen': GasConstant('Hydrogen', 'H_2', MolecularStructure.DIATOMIC, 3.419, 0.0899),
     # 'hydrogen-bromide': GasConstant('', MolecularStructure.DIATOMIC, 0.0861, 3.61),
     'hydrogen-chloride': GasConstant('Hydrogen-chloride', 'HCl', MolecularStructure.DIATOMIC, 0.1912, 1.627),

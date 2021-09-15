@@ -91,6 +91,15 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             'version': BaseStage.EXPORT_VERSION
         }
 
+    def loader_pause_tag(self, node):
+        config = self.construct_scalar(node).split(',')
+
+        return {
+            'class': 'core.Pause',
+            'version': BaseStage.EXPORT_VERSION,
+            'metadata': {k.strip().lower(): v.strip() for k, v in [x.split('=') for x in config]}
+        }
+
     def loader_humidity(self, node):
         return {
             'class': 'core.Setup',
@@ -136,6 +145,7 @@ YAMLProcedureLoader.add_constructor('!delay', YAMLProcedureLoader.loader_delay)
 YAMLProcedureLoader.add_constructor('!delay_tag', YAMLProcedureLoader.loader_delay_tag)
 YAMLProcedureLoader.add_constructor('!humidity', YAMLProcedureLoader.loader_humidity)
 YAMLProcedureLoader.add_constructor('!pause', YAMLProcedureLoader.loader_pause)
+YAMLProcedureLoader.add_constructor('!pause_tag', YAMLProcedureLoader.loader_pause_tag)
 YAMLProcedureLoader.add_constructor('!pulse', YAMLProcedureLoader.loader_pulse)
 YAMLProcedureLoader.add_constructor('!setup', YAMLProcedureLoader.loader_setup)
 YAMLProcedureLoader.add_constructor('!temperature', YAMLProcedureLoader.loader_temperature)

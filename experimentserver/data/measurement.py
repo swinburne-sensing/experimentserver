@@ -73,6 +73,7 @@ class Measurement(LoggerClass):
 
         # Append source name to _tags
         self._tags['source'] = self.source.get_export_source_name()
+        self._tags['source_class'] = str(self.source.__class__)
 
         # Apply dynamic _fields and _tags
         for tag_key, tag_value in self._tags.items():
@@ -164,7 +165,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             cls._metadata_dynamic_fields[name] = callback
 
-            cls.get_class_logger().debug(f"Registered dynamic field {name} = {callback!r}")
+            cls.get_class_logger().info(f"Registered dynamic field {name} = {callback!r}")
 
     @classmethod
     def add_tag(cls, tag, value) -> typing.NoReturn:
@@ -176,7 +177,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             cls._metadata_global_tags[tag] = value
 
-            cls.get_class_logger().debug(f"Registered tag {tag} = {value!r}")
+            cls.get_class_logger().info(f"Registered tag {tag} = {value!r}")
 
     @classmethod
     def add_tags(cls, tags: TYPE_TAG_DICT) -> typing.NoReturn:
@@ -187,7 +188,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             cls._metadata_global_tags.update(tags)
 
-            cls.get_class_logger().debug(f"Registered tags {tags!r}")
+            cls.get_class_logger().info(f"Registered tags {tags!r}")
 
     @classmethod
     def push_metadata(cls) -> typing.NoReturn:
@@ -196,7 +197,7 @@ class Measurement(LoggerClass):
             cls._metadata_global_tags_stack.append((cls._metadata_dynamic_fields.copy(),
                                                     cls._metadata_global_tags.copy()))
 
-            cls.get_class_logger().debug(f"Pushed tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.get_class_logger().info(f"Pushed tag stack (depth: {len(cls._metadata_global_tags_stack)})")
 
     @classmethod
     def pop_metadata(cls) -> typing.NoReturn:
@@ -207,7 +208,7 @@ class Measurement(LoggerClass):
         with cls._metadata_lock:
             (cls._metadata_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop()
 
-            cls.get_class_logger().debug(f"Popped tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.get_class_logger().info(f"Popped tag stack (depth: {len(cls._metadata_global_tags_stack)})")
 
     @classmethod
     def flush_metadata(cls) -> typing.NoReturn:
@@ -217,7 +218,7 @@ class Measurement(LoggerClass):
                 (cls._metadata_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop(0)
                 cls._metadata_global_tags_stack.clear()
 
-                cls.get_class_logger().debug(f"Flushed tag stack")
+                cls.get_class_logger().info(f"Flushed tag stack")
 
 
 class MeasurementTarget(metaclass=abc.ABCMeta):
@@ -350,6 +351,9 @@ def dynamic_field_time_delta(initial_time: datetime) -> Measurement.TYPE_DYNAMIC
 class MeasurementGroup(enum.Enum):
     """ Definition for known types of hardware or measurements. """
 
+    # Raw data
+    RAW = 'raw'
+
     # Metadata
     EVENT = 'event'
     STATUS = 'status'
@@ -379,6 +383,7 @@ class MeasurementGroup(enum.Enum):
     CURRENT = 'current'
     RESISTANCE = 'resistance'
     IMPEDANCE = 'impedance'
+    POWER = 'power'
 
     # LCR
     CAPACITANCE = 'capacitance'
@@ -407,3 +412,7 @@ class MeasurementGroup(enum.Enum):
     TIME_DOMAIN_SAMPLE = 'timedomain'
     FREQUENCY_DOMAIN_SAMPLE = 'freqdomain'
     TIME_FREQUENCY_SAMPLE = 'tfdomain'
+
+    # Particle counts
+    PARTICLE_COUNT = 'pn'
+    PARTICLE_MASS = 'pm'
