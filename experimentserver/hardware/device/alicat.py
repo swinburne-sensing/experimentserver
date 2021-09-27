@@ -96,10 +96,10 @@ class MCMassFlowController(Hardware):
         super(MCMassFlowController, self).transition_configure(event)
         
         # Zero flow rate
-        self.mass_flow_setpoint = 0
+        self.set_mass_flow_setpoint(0)
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        self.mass_flow_setpoint = 0
+        self.set_mass_flow_setpoint(0)
         
         super(MCMassFlowController, self).transition_cleanup(event)
 
@@ -112,13 +112,13 @@ class MCMassFlowController(Hardware):
 
     @Hardware.register_parameter(description='Target gas flow rate')
     def set_flow_rate(self, flow_rate_raw: TYPE_UNIT):
-        self.mass_flow_setpoint = flow_rate_raw
+        self.set_mass_flow_setpoint(flow_rate_raw)
 
     @Hardware.register_measurement(description='Get reading', force=True)
     def get_measurement(self) -> Measurement:
         m = Measurement(self, MeasurementGroup.MFC, {
-            'flow_actual': self.mass_flow,
-            'flow_target': self.mass_flow_setpoint
+            'flow_actual': self.get_mass_flow(),
+            'flow_target': self.get_mass_flow_setpoint()
         }, tags={
             'gas_mixture': self.get_gas_mix_label()
         })
@@ -140,17 +140,15 @@ class MCMassFlowController(Hardware):
 
         self.get_logger().debug(f"Input register read {address} response: {response.registers!s}")
 
-        decoder = BinaryPayloadDecoder.fromRegisters(response.registers, Endian.Big, Endian.Big)
+        decoder = BinaryPayloadDecoder.fromRegisters(response.registers, byteorder=Endian.Big, wordorder=Endian.Big)
         value = decoder.decode_32bit_float()
 
         return value
-    
-    @property
-    def mass_flow_setpoint(self) -> Quantity:
+
+    def get_mass_flow_setpoint(self) -> Quantity:
         return Quantity(self._modbus_read_input_float(self.REGISTER_GET_FLOW_SETPOINT), self._alicat_mass_flow_unit)
 
-    @mass_flow_setpoint.setter
-    def mass_flow_setpoint(self, flow: units.TYPE_VALUE):
+    def set_mass_flow_setpoint(self, flow: units.TYPE_VALUE):
         flow = to_unit(flow, units.sccm)
 
         if flow.magnitude < 0:
@@ -158,7 +156,7 @@ class MCMassFlowController(Hardware):
 
         flow = flow.m_as(units.sccm)
 
-        builder = BinaryPayloadBuilder(Endian.Big, Endian.Big)
+        builder = BinaryPayloadBuilder(byteorder=Endian.Big, wordorder=Endian.Big)
         builder.add_32bit_float(flow)
         payload = builder.to_registers()
 
@@ -170,6 +168,5 @@ class MCMassFlowController(Hardware):
 
         self.get_logger().info(f"Set mass flow rate: {flow!s}")
 
-    @property
-    def mass_flow(self) -> Quantity:
+    def get_mass_flow(self) -> Quantity:
         return Quantity(self._modbus_read_input_float(self.REGISTER_GET_MASS_FLOW), self._alicat_mass_flow_unit)

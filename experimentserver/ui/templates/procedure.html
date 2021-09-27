@@ -46,7 +46,11 @@
     {% if stages|length > 0 %}
         {% for stage in stages %}
             <tr class="es-stage" stage_index="{{ stage.index }}">
-                <td class="es-stage-index">{{ stage.index + 1 }}</td>
+                <td class="es-stage-index">
+                    <button class="uk-button uk-button-text procedure-goto" uk-tooltip="title: Set as next stage; pos: right" id="procedure-previous" index="{{ stage.index }}" disabled>
+                        <span uk-icon="icon: arrow-right"></span> {{ stage.index + 1 }}
+                    </button>
+                </td>
                 <td class="es-stage-class">{{ stage.class }}</td>
                 <td class="es-stage-duration">{{ stage.duration }}</td>
                 <td class="es-stage-duration-remaining">{{ stage.duration_remaining }}</td>

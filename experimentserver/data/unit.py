@@ -120,7 +120,7 @@ def to_timedelta(x: TYPE_VALUE, allow_none: bool = False) -> typing.Optional[tim
     x = to_unit(x, 'sec', magnitude=True, allow_none=allow_none)
 
     if x is None:
-        return None
+        return timedelta(seconds=0)
 
     if type(x) is timedelta:
         return x

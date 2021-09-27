@@ -259,16 +259,16 @@ class Procedure(ManagedStateMachine):
             self._procedure_stage_next = None
 
         # Setup metadata
-        Measurement.push_metadata()
+        Measurement.push_global_metadata()
 
-        Measurement.add_tags({
+        Measurement.add_global_tags({
             'procedure_uid': self._procedure_uid,
             'procedure_state': 'ready'
         })
 
-        Measurement.add_tags(self._procedure_metadata)
+        Measurement.add_global_tags(self._procedure_metadata)
 
-        Measurement.add_tag('procedure_state', 'ready')
+        Measurement.add_global_tag('procedure_state', 'ready')
 
     def _procedure_start(self, _: transitions.EventData):
         # Connect required hardware
@@ -331,7 +331,7 @@ class Procedure(ManagedStateMachine):
             self.get_logger().debug(f"{hardware_identifier} ready")
 
         # Add procedure metadata
-        Measurement.add_tags({
+        Measurement.add_global_tags({
             'procedure_time': time.strftime(FORMAT_TIMESTAMP),
             'procedure_timestamp': time.time(),
             'procedure_state': 'setup'
@@ -343,12 +343,12 @@ class Procedure(ManagedStateMachine):
         self.get_logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
                                f"{completion_datetime.strftime(FORMAT_TIMESTAMP)}", event=True, notify=True)
 
-        Measurement.add_tags({
+        Measurement.add_global_tags({
             'procedure_stage_index': 0,
             'procedure_state': 'running'
         })
 
-        Measurement.add_dynamic_field('time_delta_procedure', dynamic_field_time_delta(datetime.now()))
+        Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(datetime.now()))
 
         # Enter first stage
         initial_stage = self._procedure_stages[self._procedure_stage_current]
@@ -359,13 +359,13 @@ class Procedure(ManagedStateMachine):
         current_stage.stage_pause()
 
         # Indicate procedure paused in metadata
-        Measurement.add_tag('procedure_state', 'paused')
+        Measurement.add_global_tag('procedure_state', 'paused')
 
     def _procedure_resume(self, _: transitions.EventData):
         current_stage = self._procedure_stages[self._procedure_stage_current]
         current_stage.stage_resume()
 
-        Measurement.add_tag('procedure_state', 'running')
+        Measurement.add_global_tag('procedure_state', 'running')
 
     def _procedure_stop(self, _: transitions.EventData):
         # Stop measurements and cleanup configured hardware
@@ -375,18 +375,18 @@ class Procedure(ManagedStateMachine):
         self._procedure_hardware_managers = {}
 
         # Restore metadata
-        Measurement.pop_metadata()
+        Measurement.flush_global_metadata()
 
         self.get_logger().info(f"Procedure {self._procedure_uid} stopped", event=True, notify=True)
 
     def _stage_next(self, _: transitions.EventData):
         # Queue next stage
-        self.get_logger().info('Jump to next stage', event=True)
+        self.get_logger().info('Skip to next stage', event=True)
 
-        self._procedure_stage_next = self._procedure_stage_current + 1
+        # self._procedure_stage_next = self._procedure_stage_current + 1
 
-        if self._procedure_stage_next >= len(self._procedure_stages):
-            self._procedure_stage_next = None
+        # if self._procedure_stage_next >= len(self._procedure_stages):
+        #     self._procedure_stage_next = None
 
         self._procedure_stage_advance = True
 
@@ -418,7 +418,7 @@ class Procedure(ManagedStateMachine):
     def _stage_goto(self, event: transitions.EventData):
         self._procedure_stage_next = int(event.args[0])
 
-        self.get_logger().info(f'Jump to stage {self._procedure_stage_next}', event=True)
+        self.get_logger().info(f'Queue next stage {self._procedure_stage_next}', event=True)
 
         if self._procedure_stage_next >= len(self._procedure_stages):
             self._procedure_stage_next = len(self._procedure_stages) - 1
@@ -426,7 +426,7 @@ class Procedure(ManagedStateMachine):
         if self._procedure_stage_next < 0:
             self._procedure_stage_next = 0
 
-        self._procedure_stage_advance = True
+        # self._procedure_stage_advance = True
 
     def _handle_error(self, _: transitions.EventData):
         # Stop any active hardware
@@ -536,7 +536,7 @@ class Procedure(ManagedStateMachine):
                             self._procedure_stage_current = self._procedure_stage_next
 
                             # Update procedure metadata
-                            Measurement.add_tag('procedure_stage_index', self._procedure_stage_current)
+                            Measurement.add_global_tag('procedure_stage_index', self._procedure_stage_current)
 
                             # Enter next stage
                             current_stage = self.get_stage_current()

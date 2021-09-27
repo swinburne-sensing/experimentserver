@@ -183,6 +183,8 @@ class LinkamSDK(LoggerObject):
 
         release = 'debug' if debug else 'release'
 
+        dll_path = os.path.join(_SDK_PATH, f"LinkamSDK_{release}.dll")
+
         if log_path is None:
             log_path = os.path.join(_SDK_PATH, 'Linkam.log')
 
@@ -205,7 +207,11 @@ class LinkamSDK(LoggerObject):
         license_path = license_path.encode()
 
         # Load SDK DLL
-        self._sdk = ctypes.WinDLL(f"LinkamSDK_{release}.dll")
+        try:
+            self._sdk = ctypes.WinDLL(f"LinkamSDK_{release}.dll")
+        except FileNotFoundError:
+            # Try absolute path
+            self._sdk = ctypes.WinDLL(dll_path)
 
         # Provide type hints/restrictions
         self._sdk.linkamInitialiseSDK.argtypes = (ctypes.c_char_p, ctypes.c_char_p, ctypes.c_bool)

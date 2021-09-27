@@ -236,8 +236,9 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
         :return: True if measurements were produced, False otherwise
         """
-        measurement_flag = False
         extra_tags = extra_tags or {}
+
+        measurement_flag = False
 
         with self._measurement_lock:
             if self._measurement is None:

@@ -130,6 +130,9 @@ function updateStatus() {
     // Editor controls
     const dom_procedure_edit = $(".procedure-edit");
 
+    // Goto elements
+    const dom_procedure_goto = $(".procedure-goto");
+
     // Stage elements
     const dom_stage = $(".es-stage");
 
@@ -157,6 +160,7 @@ function updateStatus() {
             // Disable controls
             $("#control button").prop('disabled', true);
             dom_procedure_edit.prop('disabled', true);
+            dom_procedure_goto.prop('disabled', true);
 
             // Clear stage display
             dom_stage.removeClass('es-stage-current');
@@ -194,6 +198,8 @@ function updateStatus() {
                     dom_repeat.prop('disabled', false);
                     dom_next.prop('disabled', false);
                     dom_finish.prop('disabled', false);
+
+                    dom_procedure_goto.prop('disabled', false);
                     break;
 
                 case 'paused':
@@ -275,6 +281,11 @@ $(document).ready(function() {
     registerAjax("#control button", '/server/state/queue', function (result) {
         updateStatus();
     }, ['target', 'transition']);
+
+    // Stage commands
+    registerAjax(".es-stage-index button", '/server/state/next', function (result) {
+        updateStatus();
+    }, ['index']);
 
     // Enable/disable hardware
     registerAjax('.hardware-enable', '/procedure/hardware', undefined, ['identifier'], 'Unable to enable/disable hardware in procedure');

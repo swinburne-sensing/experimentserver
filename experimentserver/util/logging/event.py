@@ -5,7 +5,7 @@ import traceback
 import typing
 from datetime import datetime
 
-from experimentserver.database import get_database
+from experimentserver.database import get_database, DatabaseError
 from experimentserver.data.measurement import Measurement, MeasurementSource, MeasurementTarget, MeasurementGroup
 
 
@@ -98,8 +98,12 @@ class DatabaseEventHandler(logging.Handler, MeasurementSource):
             record_tags['log_process'] = record.processName
 
         # Save record to database
-        MeasurementTarget.record(Measurement(self, MeasurementGroup.EVENT, record_payload,
-                                             datetime.fromtimestamp(record.created), record_tags))
+        try:
+            MeasurementTarget.record(Measurement(self, MeasurementGroup.EVENT, record_payload,
+                                                 datetime.fromtimestamp(record.created), record_tags))
+        except DatabaseError:
+            # Connection to database failed
+            pass
 
 
 class EventBufferHandler(logging.Handler):

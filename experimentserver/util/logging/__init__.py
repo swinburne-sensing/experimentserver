@@ -3,6 +3,7 @@ import sys
 import time
 import timeit
 import typing
+from datetime import timedelta
 
 
 # Shortcuts
@@ -158,9 +159,18 @@ class LoggerObject(LoggerClass):
     def get_logger(self) -> _ModifiedLogger:
         return self.__logger
 
-    def sleep(self, interval: float, reason: Optional[str] = None):
+    def sleep(self, interval: typing.Union[None, float, timedelta], reason: Optional[str] = None):
+        if interval is None:
+            return
+
+        if type(interval) is timedelta:
+            interval = interval.total_seconds()
+
+        if interval <= 0:
+            return
+
         tic = timeit.default_timer()
         self.get_logger().debug(f"Sleep {interval:.6g} sec (reason: {reason if reason else 'unspecified'})")
         time.sleep(interval)
-        self.get_logger().debug(f"Sleep complete (target: {interval:.6g} sec, actual: "
-                                f"{(timeit.default_timer() - tic):.6g} sec)")
+        self.get_logger().debug(f"Sleep complete (reason: {reason if reason else 'unspecified'}, "
+                                f"target: {interval:.6g} sec, actual: {(timeit.default_timer() - tic):.6g} sec)")

@@ -60,7 +60,7 @@ class Delay(BaseStage):
                                f"{self._delay_exit_timestamp.strftime(FORMAT_TIMESTAMP)}")
 
         # Add tag
-        Measurement.add_tag('delay_interval', self._delay_interval.total_seconds())
+        Measurement.add_global_tag('delay_interval', self._delay_interval.total_seconds())
 
     def stage_run(self) -> bool:
         # Test for stage completion

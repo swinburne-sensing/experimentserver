@@ -187,19 +187,19 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         self._stage_enter_timestamp = datetime.now()
 
         # Apply stage metadata
-        Measurement.push_metadata()
+        Measurement.push_global_metadata()
 
-        Measurement.add_tags({
+        Measurement.add_global_tags({
             'stage_uid': self._stage_uid,
             'stage_type': self.__class__.__name__,
             'stage_state': 'running',
             'stage_time': time.strftime(FORMAT_TIMESTAMP),
             'stage_timestamp': time.time(),
         })
-        Measurement.add_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
+        Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
 
         if len(self._stage_metadata) > 0:
-            Measurement.add_tags(self._stage_metadata)
+            Measurement.add_global_tags(self._stage_metadata)
 
         # Queue stage parameters
         for hardware_manager, parameters_bound_list in self._stage_hardware_parameters_bound:
@@ -215,7 +215,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         self._stage_pause_timestamp = datetime.now()
 
         if len(self._stage_metadata) > 0:
-            Measurement.add_tag('stage_state', 'paused')
+            Measurement.add_global_tag('stage_state', 'paused')
 
     @abc.abstractmethod
     def stage_run(self) -> bool:
@@ -228,8 +228,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
     def stage_exit(self) -> typing.NoReturn:
         """ Called upon stage completion. """
         # Restore metadata
-        if len(self._stage_metadata) > 0:
-            Measurement.pop_metadata()
+        Measurement.pop_global_metadata()
 
         # Clear timestamps
         self._stage_enter_timestamp = None
@@ -240,7 +239,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
     def stage_resume(self) -> typing.NoReturn:
         """ Called upon stage resume. """
         if len(self._stage_metadata) > 0:
-            Measurement.add_tag('stage_state', 'running')
+            Measurement.add_global_tag('stage_state', 'running')
 
         self.get_logger().debug('Resuming stage')
 

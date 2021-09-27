@@ -288,7 +288,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
 class Picoammeter6487(_KeithleyInstrument):
     """ Hardware interface for communication with Keithley 6487 Picoammeter. """
 
-    def __init__(self, *args, use_rs232: bool = True, settling_time: TYPE_TIME = timedelta(), **kwargs):
+    def __init__(self, *args, use_rs232: bool = True, **kwargs):
         """
 
         :param args:
@@ -306,7 +306,7 @@ class Picoammeter6487(_KeithleyInstrument):
             super(Picoammeter6487, self).__init__(*args, **kwargs)
 
         # Settling time for sweep measurements
-        self._settling_time = to_timedelta(settling_time)
+        self._settling_time: typing.Optional[timedelta] = None
 
         # Interlock enabled when source voltage is configured to over 10V
         self._check_interlock = False
@@ -430,8 +430,12 @@ class Picoammeter6487(_KeithleyInstrument):
 
     @SCPIHardware.register_parameter(description='Source sweep measurement delay')
     def set_source_sweep_settling(self, settling_time: TYPE_TIME):
-        # Settling time for sweep measurements
-        self._settling_time = to_timedelta(settling_time)
+        settling_time = to_timedelta(settling_time)
+
+        if settling_time.total_seconds() > 0:
+            self._settling_time = settling_time
+        else:
+            self._settling_time = None
 
     @staticmethod
     def get_hardware_class_description() -> str:
@@ -483,8 +487,6 @@ class Picoammeter6487(_KeithleyInstrument):
     def get_sweep(self) -> TYPE_MEASUREMENT_LIST:
         measurement_list = []
 
-        settling_time = self._settling_time.total_seconds()
-
         if self._source_sweep_range is None:
             raise MeasurementUnavailable('Sweep range not configured')
 
@@ -492,8 +494,7 @@ class Picoammeter6487(_KeithleyInstrument):
             self.set_source_voltage(voltage)
 
             # Take measurement after settling time
-            if settling_time > 0:
-                self.sleep(settling_time, 'settling time')
+            self.sleep(self._settling_time, f"settling time @ {voltage} V")
 
             # Get reading
             try:

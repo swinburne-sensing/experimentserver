@@ -2,6 +2,7 @@ anytree==2.7.3
 colorama==0.4.1
 Flask==1.0.2
 influxdb==5.2.2
+Jinja2==3.0.1
 transitions==0.6.9
 requests==2.22.0
 msgpack==1.0.0

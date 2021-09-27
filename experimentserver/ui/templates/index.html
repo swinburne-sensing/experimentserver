@@ -3,54 +3,58 @@
 {% block head %}
     {{ super() }}
     <script>
+        function load_procedure() {
+            let parent = $(this);
+
+            let payload = new FormData();
+
+            payload.append('file', $('#procedure-import-file')[0].files[0]);
+
+            $.ajax({
+                url: '/procedure/import',
+                data: payload,
+                type: 'POST',
+                contentType: false,
+                processData: false,
+                success: function (result) {
+                    parent.prop('disabled', false);
+
+                    if (result.success) {
+                        if ('message' in result) {
+                            // Display message to user
+                            notifySuccess('Upload Accepted', result.message);
+                        }
+
+                        // Reload page
+                        location.reload();
+                    } else {
+                        notifyWarning('Upload Error', result.message);
+                    }
+                },
+                error: function () {
+                    parent.prop('disabled', false);
+
+                    notifyError('Server Error', 'Error occurred while connecting to server.');
+                },
+                timeout: 5000
+            });
+        }
+
         $(document).ready(function() {
             $('#procedure-import-file').on('change', function () {
                 let file = this.files[0];
 
                 let extension = file.name.toLowerCase().split('.').pop();
 
-                if (extension !== 'yaml' && extension !== 'yml') {
+                if (extension !== 'yaml' && extension !== 'yml' && extension !== 'j2') {
                     notifyError('Upload Error', 'File must have .yaml or .yml extension');
                     $(this).val(null);
+                } else {
+                    load_procedure();
                 }
             });
 
-            $('#procedure-import').click(function () {
-                let parent = $(this);
-
-                let payload = new FormData();
-
-                payload.append('file', $('#procedure-import-file')[0].files[0]);
-
-                $.ajax({
-                    url: '/procedure/import',
-                    data: payload,
-                    type: 'POST',
-                    contentType: false,
-                    processData: false,
-                    success: function (result) {
-                        parent.prop('disabled', false);
-
-                        if (result.success) {
-                            if ('message' in result) {
-                                // Display message to user
-                                notifySuccess('Upload Accepted', result.message);
-                            }
-
-                            // Reload page
-                            location.reload();
-                        } else {
-                            notifyWarning('Upload Error', result.message);
-                        }
-                    },
-                    error: function () {
-                        parent.prop('disabled', false);
-
-                        notifyError('Server Error', 'Error occurred while connecting to server.');
-                    },
-                    timeout: 5000
-                });
-            });
+            $('#procedure-import').click(load_procedure);
 
             registerAjax('#procedure-export', '/procedure/export', function (result) {
                 let link = document.createElement('a');
@@ -72,7 +76,7 @@
         <p>Remember that indenting is important. Files should use spaces, not tabs.</p>
         <div id="control-edit" class="uk-display-inline-block">
             <div uk-form-custom="target: true">
-                <input type="file" id="procedure-import-file" accept="application/x-yaml,.yml,.yaml">
+                <input type="file" id="procedure-import-file" accept="application/x-yaml,.yml,.yaml,.j2">
                 <input class="uk-input uk-form-width-medium uk-form-small" type="text" placeholder="Select file" disabled>
             </div>
             <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Import procedure from a file; pos: bottom" id="procedure-import"><span uk-icon="icon: upload"></span> Import</button>

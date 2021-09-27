@@ -62,6 +62,9 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
     """
     time_startup = datetime.now()
 
+    # Create config directory if it doesn't exist
+    os.mkdir(experimentserver.CONFIG_PATH)
+
     # Try to load configuration
     try:
         app_config = ConfigManager()
@@ -88,6 +91,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
         logging.getLogger("urllib3").setLevel(logging.INFO)
         logging.getLogger("pyvisa").setLevel(logging.INFO)
         logging.getLogger("transitions.core").setLevel(logging.INFO)
+        logging.getLogger("pymodbus").setLevel(logging.INFO)
 
         # Setup pushover if enabled
         if enable_pushover:
@@ -149,10 +153,10 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
         app_metadata.update(cli_tags)
 
         # Add global metadata
-        Measurement.add_tags(app_metadata)
+        Measurement.add_global_tags(app_metadata)
 
         # Add startup dynamic field
-        Measurement.add_dynamic_field('time_delta_launch', dynamic_field_time_delta(time_startup))
+        Measurement.add_global_dynamic_field('time_delta_launch', dynamic_field_time_delta(time_startup))
 
         # Setup database connections
         for database_identifier, database_connect_args in app_config['database'].items():

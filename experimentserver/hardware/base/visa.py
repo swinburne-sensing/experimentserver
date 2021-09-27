@@ -324,8 +324,10 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                     cmd_type = 'q'
                     cmd_description = 'query'
 
-                if format_args:
-                    command = command.format(*format_args, **format_kwargs)
+                command = self._visa_format_command(command, format_args, format_kwargs)
+
+                # if format_args:
+                #     command = command.format(*format_args, **format_kwargs)
 
             if len(visa_kwargs) == 0:
                 self.get_logger().debug(f"Transaction #{self._number} {cmd_description}: {command!r}")

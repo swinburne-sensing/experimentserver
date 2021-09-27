@@ -1,7 +1,9 @@
 import functools
+import os.path
 from datetime import datetime
 
 import flask
+import jinja2
 import transitions
 
 import experimentserver
@@ -9,6 +11,7 @@ from .web import UserInterfaceError, WebServer
 from ..hardware import HardwareManager, HardwareTransition
 from ..protocol import Procedure, ProcedureTransition, dump_yaml
 from ..util.constant import FORMAT_TIMESTAMP, FORMAT_TIMESTAMP_FILENAME
+from ..util.uniqueid import hex_str
 
 
 class ServerJSONException(experimentserver.ApplicationException):
@@ -76,6 +79,15 @@ def register_json(ui: WebServer):
             'stages':  ui.get_procedure().get_stages_summary(True),
             'state': ui.get_procedure().get_state().value
         }
+
+    @ui.app.route('/server/state/next', methods=['GET', 'POST'])
+    @_json_response_wrapper(ui)
+    def server_state_next():
+        index = flask.request.args.get('index', type=int)
+
+        ui.get_procedure().queue_transition(ProcedureTransition.GOTO, index)
+
+        return f"Stage {index + 1} set as next stage"
 
     @ui.app.route('/server/state/queue', methods=['GET', 'POST'])
     @_json_response_wrapper(ui)
@@ -185,12 +197,45 @@ def register_json(ui: WebServer):
         if len(flask.request.files) != 1 or 'file' not in flask.request.files:
             raise UserInterfaceError('Missing procedure file')
 
+        filename = flask.request.files['file'].filename
+        _, file_ext = os.path.splitext(filename)
+
+        ui.get_logger().info(f"Loading filename: {filename}", event=True)
+
         with flask.request.files['file'].stream as procedure_file:
             procedure_file_content = procedure_file.read()
 
+        procedure_file_content = procedure_file_content.decode()
+
         ui.get_logger().info(f"Uploaded content:\n{procedure_file_content}")
 
-        procedure = Procedure.procedure_import(procedure_file_content.decode())
+        if file_ext.lower() == '.j2':
+            template_env = jinja2.Environment(
+                loader=jinja2.loaders.PackageLoader('experimentserver.protocol'),
+                autoescape=jinja2.select_autoescape()
+            )
+
+            procedure_file_template = template_env.from_string(
+                procedure_file_content,
+                {
+                    'hex_str': hex_str
+                }
+            )
+
+            procedure_file_content = procedure_file_template.render()
+
+            ui.get_logger().info(f"Rendered content:\n{procedure_file_content}")
+
+        procedure_store_filename = os.path.join(experimentserver.CONFIG_PATH,
+                                                f"procedure_upload_{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml")
+
+        with open(procedure_store_filename, 'w') as procedure_store_file:
+            procedure_store_file.write(procedure_file_content)
+
+        ui.get_logger().info(f"Saved prrocedure to: {procedure_store_filename}", event=True)
+
+        # Complete import
+        procedure = Procedure.procedure_import(procedure_file_content)
 
         ui.get_logger().info(f"Read procedure:\n{procedure.procedure_export(True)}", event=True)
 

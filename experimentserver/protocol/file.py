@@ -137,7 +137,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
         return {
             'class': 'core.Notify',
             'version': BaseStage.EXPORT_VERSION,
-            'message': self.construct_scalar(node)
+            'message': self.construct_scalar(node).strip()
         }
 
 

@@ -37,12 +37,12 @@ class Measurement(LoggerClass):
 
     TYPE_DYNAMIC_FIELD = typing.Callable[['Measurement'], typing.Any]
 
-    _metadata_lock = threading.RLock()
+    _metadata_global_lock = threading.RLock()
 
     _metadata_global_tags = {}
     _metadata_global_tags_stack = []
 
-    _metadata_dynamic_fields: typing.Dict[str, TYPE_DYNAMIC_FIELD] = {}
+    _metadata_global_dynamic_fields: typing.Dict[str, TYPE_DYNAMIC_FIELD] = {}
 
     def __init__(self, source: MeasurementSource, measurement_group: MeasurementGroup, fields: TYPE_FIELD_DICT,
                  timestamp: typing.Optional[datetime] = None, tags: typing.Optional[TYPE_TAG_DICT] = None):
@@ -60,22 +60,22 @@ class Measurement(LoggerClass):
         self.timestamp = timestamp or datetime.now()
         self._tags = {}
 
-        with self._metadata_lock:
-            # Default to global _tags
+        with self._metadata_global_lock:
+            # Default to global tags
             self._tags.update(self._metadata_global_tags)
 
-            # Fetch dynamic _fields
-            dynamic_field = self._metadata_dynamic_fields.copy()
+            # Fetch global dynamic fields
+            dynamic_field = self._metadata_global_dynamic_fields.copy()
 
-        # Overwrite with instance _fields and _tags
+        # Overwrite with instance fields and tags
         if tags is not None:
             self._tags.update(tags)
 
-        # Append source name to _tags
+        # Append source name to tags
         self._tags['source'] = self.source.get_export_source_name()
         self._tags['source_class'] = str(self.source.__class__)
 
-        # Apply dynamic _fields and _tags
+        # Apply dynamic fields and tags
         for tag_key, tag_value in self._tags.items():
             if callable(tag_value):
                 self._tags[tag_key] = tag_value()
@@ -102,6 +102,23 @@ class Measurement(LoggerClass):
                     fields[key] = fields[key].total_seconds()
 
         return fields
+
+    def add_tag(self, name: str, value: str):
+        """
+
+        :param name:
+        :param value:
+        :return:
+        """
+        self._tags[name] = value
+
+    def add_tags(self, tags: typing.Dict[str, str]):
+        """
+
+        :param tags:
+        :return:
+        """
+        self._tags.update(tags)
 
     def get_tags(self, quantity_support: bool = True) -> typing.Dict[str, str]:
         """ TODO
@@ -156,31 +173,31 @@ class Measurement(LoggerClass):
                f"tags={self._tags})"
 
     @classmethod
-    def add_dynamic_field(cls, name: str, callback: TYPE_DYNAMIC_FIELD) -> typing.NoReturn:
+    def add_global_dynamic_field(cls, name: str, callback: TYPE_DYNAMIC_FIELD) -> typing.NoReturn:
         """ TODO
 
         :param name:
         :param callback:
         """
-        with cls._metadata_lock:
-            cls._metadata_dynamic_fields[name] = callback
+        with cls._metadata_global_lock:
+            cls._metadata_global_dynamic_fields[name] = callback
 
-            cls.get_class_logger().info(f"Registered dynamic field {name} = {callback!r}")
+            cls.get_class_logger().info(f"Registered global dynamic field {name} = {callback!r}")
 
     @classmethod
-    def add_tag(cls, tag, value) -> typing.NoReturn:
+    def add_global_tag(cls, tag, value) -> typing.NoReturn:
         """ TODO
 
         :param tag:
         :param value:
         """
-        with cls._metadata_lock:
+        with cls._metadata_global_lock:
             cls._metadata_global_tags[tag] = value
 
-            cls.get_class_logger().info(f"Registered tag {tag} = {value!r}")
+            cls.get_class_logger().info(f"Registered global tag {tag} = {value!r}")
 
     @classmethod
-    def add_tags(cls, tags: TYPE_TAG_DICT) -> typing.NoReturn:
+    def add_global_tags(cls, tags: TYPE_TAG_DICT) -> typing.NoReturn:
         """ TODO
 
         :param tags:
@@ -188,40 +205,41 @@ class Measurement(LoggerClass):
         if len(tags) == 0:
             return
 
-        with cls._metadata_lock:
+        with cls._metadata_global_lock:
             cls._metadata_global_tags.update(tags)
 
-            cls.get_class_logger().info(f"Registered tags {tags!r}")
+            cls.get_class_logger().info(f"Registered global tags {tags!r}")
 
     @classmethod
-    def push_metadata(cls) -> typing.NoReturn:
+    def push_global_metadata(cls) -> typing.NoReturn:
         """ Pop metadata stack (save current metadata). """
-        with cls._metadata_lock:
-            cls._metadata_global_tags_stack.append((cls._metadata_dynamic_fields.copy(),
+        with cls._metadata_global_lock:
+            cls._metadata_global_tags_stack.append((cls._metadata_global_dynamic_fields.copy(),
                                                     cls._metadata_global_tags.copy()))
 
-            cls.get_class_logger().info(f"Pushed tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.get_class_logger().info(f"Pushed global tag stack (depth: {len(cls._metadata_global_tags_stack)})")
 
     @classmethod
-    def pop_metadata(cls) -> typing.NoReturn:
+    def pop_global_metadata(cls) -> typing.NoReturn:
         """ Pop metadata stack (retrieve previous metadata). """
         if len(cls._metadata_global_tags_stack) > 0:
             return
 
-        with cls._metadata_lock:
-            (cls._metadata_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop()
+        with cls._metadata_global_lock:
+            (cls._metadata_global_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop()
 
-            cls.get_class_logger().info(f"Popped tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.get_class_logger().info(f"Popped global tag stack (depth: {len(cls._metadata_global_tags_stack)})")
 
     @classmethod
-    def flush_metadata(cls) -> typing.NoReturn:
+    def flush_global_metadata(cls) -> typing.NoReturn:
         """ Clear metadata stack. """
-        with cls._metadata_lock:
+        with cls._metadata_global_lock:
             if len(cls._metadata_global_tags_stack) > 0:
-                (cls._metadata_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop(0)
+                (cls._metadata_global_dynamic_fields,
+                 cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop(0)
                 cls._metadata_global_tags_stack.clear()
 
-                cls.get_class_logger().info(f"Flushed tag stack")
+                cls.get_class_logger().info(f"Flushed global tag stack")
 
 
 class MeasurementTarget(metaclass=abc.ABCMeta):
