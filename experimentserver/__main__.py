@@ -63,7 +63,10 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
     time_startup = datetime.now()
 
     # Create config directory if it doesn't exist
-    os.mkdir(experimentserver.CONFIG_PATH)
+    try:
+        os.mkdir(experimentserver.CONFIG_PATH)
+    except FileExistsError:
+        pass
 
     # Try to load configuration
     try:
