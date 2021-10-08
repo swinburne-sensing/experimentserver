@@ -21,7 +21,7 @@ class DatabaseError(experimentserver.ApplicationException):
     pass
 
 
-class _DatabaseClient(LoggerObject, MeasurementTarget):
+class _InfluxDBv1Client(LoggerObject, MeasurementTarget):
     _DEFAULT_BUFFER_INTERVAL = 5
 
     _SEGMENT_SIZE = 1024
@@ -55,9 +55,19 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
 
     def _record(self, measurement: Measurement) -> typing.NoReturn:
         if self._event_thread.is_thread_alive():
+            tags = measurement.get_tags()
+
+            # Convert tags to strings
+            for key, value in tags.items():
+                if isinstance(value, bool):
+                    # InfluxDB style boolean
+                    tags[key] = 'true' if value else 'false'
+                elif not isinstance(value, str):
+                    tags[key] = str(value)
+
             point = {
                 'measurement': measurement.measurement_group.value,
-                'tags': measurement.get_tags(False),
+                'tags': tags,
                 'time': int(1000000 * measurement.timestamp.timestamp()),
                 'fields': measurement.get_fields(False, False)
             }
@@ -111,19 +121,19 @@ class _DatabaseClient(LoggerObject, MeasurementTarget):
                     self._point_buffer = []
 
 
-_db_client: typing.Dict[str, _DatabaseClient] = {}
+_db_client: typing.Dict[str, _InfluxDBv1Client] = {}
 
 
 def setup_database(identifier: str, connect_args, buffer_interval: typing.Optional[float] = None):
     if identifier in _db_client:
         raise KeyError(f"Database connection with identifier {identifier} already exists")
 
-    _db_client[identifier] = _DatabaseClient(identifier, connect_args, buffer_interval)
+    _db_client[identifier] = _InfluxDBv1Client(identifier, connect_args, buffer_interval)
 
     return _db_client[identifier]
 
 
-def get_database(identifier: typing.Optional[str] = None) -> _DatabaseClient:
+def get_database(identifier: typing.Optional[str] = None) -> _InfluxDBv1Client:
     if identifier is None:
         identifier = MeasurementTarget.MEASUREMENT_TARGET_DEFAULT
 

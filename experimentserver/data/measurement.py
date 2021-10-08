@@ -133,9 +133,6 @@ class Measurement(LoggerClass):
                 if is_unit(tags[key]):
                     tags[key] = tags[key].magnitude
 
-            # Tags are always strings
-            tags[key] = str(tags[key])
-
         return tags
 
     @staticmethod
@@ -357,7 +354,7 @@ class DummyTarget(LoggerClass, MeasurementTarget):
 # Type hinting definitions for measurements
 TYPE_MEASUREMENT_LIST = typing.Sequence[Measurement]
 TYPE_FIELD_DICT = typing.Dict[str, TYPE_VALUE]
-TYPE_TAG_DICT = typing.Dict[str, str]
+TYPE_TAG_DICT = typing.Dict[str, typing.Any]
 TYPE_MEASUREMENT = typing.Union[Measurement, TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT]
 
 

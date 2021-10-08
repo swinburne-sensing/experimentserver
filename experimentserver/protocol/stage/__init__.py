@@ -193,18 +193,19 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
 
         if self._has_duration:
             # Apply stage metadata
-            Measurement.push_global_metadata()
+            with Measurement.metadata_global_lock:
+                Measurement.push_global_metadata()
 
-            Measurement.add_global_tags({
-                'stage_uid': self._stage_uid,
-                'stage_class': self.__class__.__name__,
-                'stage_time': time.strftime(FORMAT_TIMESTAMP)
-            })
+                Measurement.add_global_tags({
+                    'stage_uid': self._stage_uid,
+                    'stage_class': self.__class__.__name__,
+                    'stage_time': time.strftime(FORMAT_TIMESTAMP)
+                })
 
-            Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
+                Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
 
-            if len(self._stage_metadata) > 0:
-                Measurement.add_global_tags(self._stage_metadata)
+                if len(self._stage_metadata) > 0:
+                    Measurement.add_global_tags(self._stage_metadata)
 
         # Queue stage parameters
         for hardware_manager, parameters_bound_list in self._stage_hardware_parameters_bound:
