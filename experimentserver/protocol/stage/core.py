@@ -14,13 +14,14 @@ class Delay(BaseStage):
         self._delay_interval = to_timedelta(interval)
         self._delay_sync_minute = sync_minute
 
-        if metadata is None:
-            metadata = {}
+        metadata = metadata or {}
 
         metadata.update({
-            'delay_interval': self._delay_interval.total_seconds(),
-            'delay_sync': sync_minute
+            'delay_interval': str(self._delay_interval.total_seconds())
         })
+
+        if sync_minute:
+            metadata['delay_sync'] = 'true'
 
         super(Delay, self).__init__(config, uid, metadata=metadata)
 
@@ -83,8 +84,10 @@ class Delay(BaseStage):
 
         stage.update({
             'interval': self._delay_interval.total_seconds(),
-            'sync_minute': self._delay_sync_minute
         })
+
+        if self._delay_sync_minute:
+            stage['sync_minute'] = self._delay_sync_minute
 
         return stage
 
@@ -125,10 +128,7 @@ class Setup(BaseStage):
 
     def __init__(self, config: ConfigManager, uid: typing.Optional[str] = None,
                  parameters: typing.Optional[typing.Dict[str, typing.Any]] = None):
-        super(Setup, self).__init__(config, uid, parameters)
-
-    def get_stage_duration(self) -> typing.Optional[timedelta]:
-        return timedelta()
+        super(Setup, self).__init__(config, uid, parameters, has_duration=False)
 
     def stage_run(self) -> bool:
         # Always finished

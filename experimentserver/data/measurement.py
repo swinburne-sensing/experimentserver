@@ -37,7 +37,7 @@ class Measurement(LoggerClass):
 
     TYPE_DYNAMIC_FIELD = typing.Callable[['Measurement'], typing.Any]
 
-    _metadata_global_lock = threading.RLock()
+    metadata_global_lock = threading.RLock()
 
     _metadata_global_tags = {}
     _metadata_global_tags_stack = []
@@ -60,7 +60,7 @@ class Measurement(LoggerClass):
         self.timestamp = timestamp or datetime.now()
         self._tags = {}
 
-        with self._metadata_global_lock:
+        with self.metadata_global_lock:
             # Default to global tags
             self._tags.update(self._metadata_global_tags)
 
@@ -179,7 +179,7 @@ class Measurement(LoggerClass):
         :param name:
         :param callback:
         """
-        with cls._metadata_global_lock:
+        with cls.metadata_global_lock:
             cls._metadata_global_dynamic_fields[name] = callback
 
             cls.get_class_logger().info(f"Registered global dynamic field {name} = {callback!r}")
@@ -191,7 +191,7 @@ class Measurement(LoggerClass):
         :param tag:
         :param value:
         """
-        with cls._metadata_global_lock:
+        with cls.metadata_global_lock:
             cls._metadata_global_tags[tag] = value
 
             cls.get_class_logger().info(f"Registered global tag {tag} = {value!r}")
@@ -205,7 +205,7 @@ class Measurement(LoggerClass):
         if len(tags) == 0:
             return
 
-        with cls._metadata_global_lock:
+        with cls.metadata_global_lock:
             cls._metadata_global_tags.update(tags)
 
             cls.get_class_logger().info(f"Registered global tags {tags!r}")
@@ -213,7 +213,7 @@ class Measurement(LoggerClass):
     @classmethod
     def push_global_metadata(cls) -> typing.NoReturn:
         """ Pop metadata stack (save current metadata). """
-        with cls._metadata_global_lock:
+        with cls.metadata_global_lock:
             cls._metadata_global_tags_stack.append((cls._metadata_global_dynamic_fields.copy(),
                                                     cls._metadata_global_tags.copy()))
 
@@ -225,7 +225,7 @@ class Measurement(LoggerClass):
         if len(cls._metadata_global_tags_stack) > 0:
             return
 
-        with cls._metadata_global_lock:
+        with cls.metadata_global_lock:
             (cls._metadata_global_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop()
 
             cls.get_class_logger().info(f"Popped global tag stack (depth: {len(cls._metadata_global_tags_stack)})")
@@ -233,7 +233,7 @@ class Measurement(LoggerClass):
     @classmethod
     def flush_global_metadata(cls) -> typing.NoReturn:
         """ Clear metadata stack. """
-        with cls._metadata_global_lock:
+        with cls.metadata_global_lock:
             if len(cls._metadata_global_tags_stack) > 0:
                 (cls._metadata_global_dynamic_fields,
                  cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop(0)

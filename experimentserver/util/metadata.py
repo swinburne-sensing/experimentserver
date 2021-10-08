@@ -50,6 +50,7 @@ class BoundMetadataCall(object):
     def __str__(self) -> str:
         kwargs = [f"{arg}={value!s}" for arg, value in self.kwargs.items()]
 
+        # FIXME Bad type hints
         return f"{self.parent.description}: {', '.join(kwargs)}"
 
     def __repr__(self):

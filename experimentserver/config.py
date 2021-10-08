@@ -21,14 +21,8 @@ def get_system_metadata() -> typing.Dict[str, str]:
 
     :return: dict
     """
-    server_version = list(map(int, experimentserver.__version__.split('.')))
-
     return {
-        'app_name': experimentserver.__app_name__,
-        'app_version': experimentserver.__version__,
-        'app_version_major': server_version[0],
-        'app_version_minor': server_version[1],
-        'app_version_revision': server_version[2],
+        'app_name': f"{experimentserver.__app_name__} v{experimentserver.__version__}",
         'system_hostname': socket.getfqdn(),
         'system_username': getpass.getuser()
     }

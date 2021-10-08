@@ -18,16 +18,14 @@ import yaml
 import experimentserver
 import experimentserver.util.thread
 from experimentserver.config import ConfigManager
-from experimentserver.data.measurement import Measurement, MeasurementTarget, dynamic_field_time_delta
+from experimentserver.data.measurement import Measurement, MeasurementTarget
 from experimentserver.database import setup_database
 from experimentserver.hardware import Hardware, device, HardwareManager
 from experimentserver.server import start_server
-from experimentserver.util.constant import FORMAT_TIMESTAMP
 from experimentserver.util.git import get_git_hash
 from experimentserver.util.logging import get_logger
 from experimentserver.util.logging.notify import PushoverNotificationHandler
 from experimentserver.util.module import class_instance_from_dict
-from experimentserver.util.uniqueid import hex_str
 from experimentserver.versions import dependencies, python_version_tested
 
 # Exit codes
@@ -146,10 +144,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
         app_metadata = experimentserver.config.get_system_metadata()
 
         app_metadata.update({
-            'launch_timestamp': time.time(),
-            'launch_time': time.strftime(FORMAT_TIMESTAMP),
-            'launch_mode': 'debug' if debug else 'release',
-            'launch_uid': hex_str()
+            'launch_mode': 'debug' if debug else 'release'
         })
 
         # Append CLI tags
@@ -157,9 +152,6 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
 
         # Add global metadata
         Measurement.add_global_tags(app_metadata)
-
-        # Add startup dynamic field
-        Measurement.add_global_dynamic_field('time_delta_launch', dynamic_field_time_delta(time_startup))
 
         # Setup database connections
         for database_identifier, database_connect_args in app_config['database'].items():

@@ -226,8 +226,8 @@ def register_json(ui: WebServer):
 
             ui.get_logger().info(f"Rendered content:\n{procedure_file_content}")
 
-        procedure_store_filename = os.path.join(experimentserver.CONFIG_PATH,
-                                                f"procedure_upload_{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml")
+        procedure_store_filename = os.path.join(
+            experimentserver.CONFIG_PATH, f"procedure_upload_{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml")
 
         with open(procedure_store_filename, 'w') as procedure_store_file:
             procedure_store_file.write(procedure_file_content)

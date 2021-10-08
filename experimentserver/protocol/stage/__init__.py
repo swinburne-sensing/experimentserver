@@ -37,7 +37,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
 
     def __init__(self, config: ConfigManager, uid: typing.Optional[str] = None,
                  parameters: typing.Optional[TYPE_PARAMETER_DICT] = None,
-                 metadata: typing.Optional[TYPE_TAG_DICT] = None):
+                 metadata: typing.Optional[TYPE_TAG_DICT] = None, has_duration: bool = True):
         """ Create new Stage instance.
 
         :param config:
@@ -67,6 +67,9 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         self._stage_hardware_parameters_bound: typing.List[typing.Tuple[HardwareManager,
                                                                         typing.List[BoundMetadataCall]]] = []
 
+        # Indicate stage has duration (if not ignore metadata)
+        self._has_duration = has_duration
+
     @staticmethod
     def get_config_dependencies() -> typing.Optional[typing.Sequence[str]]:
         """ Get string settings that must be defined for this stage to function.
@@ -78,13 +81,15 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
     def get_stage_hardware(self) -> typing.List[str]:
         return list(self._stage_parameters.keys())
 
-    @abc.abstractmethod
     def get_stage_duration(self) -> typing.Optional[timedelta]:
         """ Get estimate of runtime duration, may be None if duration is unknown.
 
         :return: compatible time type or None
         """
-        pass
+        if not self._has_duration:
+            return timedelta()
+
+        raise NotImplementedError()
 
     def get_stage_remaining(self) -> typing.Optional[timedelta]:
         """ Get estimate of remaining duration, may be None if duration is unknown.
@@ -186,20 +191,20 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         # Save entry time
         self._stage_enter_timestamp = datetime.now()
 
-        # Apply stage metadata
-        Measurement.push_global_metadata()
+        if self._has_duration:
+            # Apply stage metadata
+            Measurement.push_global_metadata()
 
-        Measurement.add_global_tags({
-            'stage_uid': self._stage_uid,
-            'stage_type': self.__class__.__name__,
-            'stage_state': 'running',
-            'stage_time': time.strftime(FORMAT_TIMESTAMP),
-            'stage_timestamp': time.time(),
-        })
-        Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
+            Measurement.add_global_tags({
+                'stage_uid': self._stage_uid,
+                'stage_class': self.__class__.__name__,
+                'stage_time': time.strftime(FORMAT_TIMESTAMP)
+            })
 
-        if len(self._stage_metadata) > 0:
-            Measurement.add_global_tags(self._stage_metadata)
+            Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
+
+            if len(self._stage_metadata) > 0:
+                Measurement.add_global_tags(self._stage_metadata)
 
         # Queue stage parameters
         for hardware_manager, parameters_bound_list in self._stage_hardware_parameters_bound:
@@ -214,9 +219,6 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         # Save pause timestamp
         self._stage_pause_timestamp = datetime.now()
 
-        if len(self._stage_metadata) > 0:
-            Measurement.add_global_tag('stage_state', 'paused')
-
     @abc.abstractmethod
     def stage_run(self) -> bool:
         """ Called multiple times while stage is current.
@@ -227,8 +229,9 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
 
     def stage_exit(self) -> typing.NoReturn:
         """ Called upon stage completion. """
-        # Restore metadata
-        Measurement.pop_global_metadata()
+        if self._has_duration:
+            # Restore metadata
+            Measurement.pop_global_metadata()
 
         # Clear timestamps
         self._stage_enter_timestamp = None

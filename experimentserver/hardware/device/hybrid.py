@@ -12,7 +12,6 @@ from ..base.core import Hardware, TYPE_PARAMETER_DICT, TYPE_TAG_DICT, TYPE_HARDW
 from ..error import ParameterError
 from ..metadata import TYPE_PARAMETER_COMMAND
 from ...util import metadata as metadata
-from ...util.uniqueid import hex_str
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
@@ -22,8 +21,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
     SWITCH_DELAY = 0.01
 
     def __init__(self, identifier: str, daq_args: typing.Dict[str, typing.Any],
-                 child_args: typing.Dict[str, typing.Any], parameters: typing.Optional[TYPE_PARAMETER_DICT] = None,
-                 channel_delay: float = 1.0, channel_duration: float = 1.0):
+                 child_args: typing.Dict[str, typing.Any], parameters: typing.Optional[TYPE_PARAMETER_DICT] = None):
         super(MultiChannelHardware, self).__init__(identifier, parameters)
 
         # DAQ for channel switching
@@ -68,9 +66,14 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
     def get_channel_metadata(self, channel: int) -> typing.Dict[str, str]:
         channel_tags = {
-            'channel': str(channel),
-            'channel_uid': hex_str()
+            'switch_channel': str(channel)
         }
+
+        if self._channel_repeat > 1:
+            channel_tags['switch_repeat'] = str(self._channel_repeat)
+
+        if self._channel_duration is not None:
+            channel_tags['switch_duration'] = str(self._channel_duration.total_seconds())
 
         if channel in self._channel_metadata:
             channel_tags.update(self._channel_metadata[channel].copy())

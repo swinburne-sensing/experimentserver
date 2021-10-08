@@ -259,16 +259,17 @@ class Procedure(ManagedStateMachine):
             self._procedure_stage_next = None
 
         # Setup metadata
-        Measurement.push_global_metadata()
+        with Measurement.metadata_global_lock:
+            Measurement.push_global_metadata()
 
-        Measurement.add_global_tags({
-            'procedure_uid': self._procedure_uid,
-            'procedure_state': 'ready'
-        })
+            Measurement.add_global_tags({
+                'procedure_uid': self._procedure_uid,
+                'procedure_state': 'ready'
+            })
 
-        Measurement.add_global_tags(self._procedure_metadata)
+            Measurement.add_global_tags(self._procedure_metadata)
 
-        Measurement.add_global_tag('procedure_state', 'ready')
+            Measurement.add_global_tag('procedure_state', 'ready')
 
     def _procedure_start(self, _: transitions.EventData):
         # Connect required hardware
@@ -331,51 +332,54 @@ class Procedure(ManagedStateMachine):
             self.get_logger().debug(f"{hardware_identifier} ready")
 
         # Add procedure metadata
-        Measurement.add_global_tags({
-            'procedure_time': time.strftime(FORMAT_TIMESTAMP),
-            'procedure_timestamp': time.time(),
-            'procedure_state': 'setup'
-        })
+        with Measurement.metadata_global_lock:
+            Measurement.add_global_tags({
+                'procedure_time': time.strftime(FORMAT_TIMESTAMP),
+                'procedure_stage_index': 0,
+                'procedure_state': 'running'
+            })
 
-        # Notify for start
-        completion_datetime = datetime.now() + self.get_procedure_duration()
+            # Notify for start
+            completion_datetime = datetime.now() + self.get_procedure_duration()
 
-        self.get_logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
-                               f"{completion_datetime.strftime(FORMAT_TIMESTAMP)}", event=True, notify=True)
+            self.get_logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
+                                   f"{completion_datetime.strftime(FORMAT_TIMESTAMP)}", event=True, notify=True)
 
-        Measurement.add_global_tags({
-            'procedure_stage_index': 0,
-            'procedure_state': 'running'
-        })
+            Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(datetime.now()))
 
-        Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(datetime.now()))
-
-        # Enter first stage
-        initial_stage = self._procedure_stages[self._procedure_stage_current]
-        initial_stage.stage_enter()
+            # Enter first stage
+            initial_stage = self._procedure_stages[self._procedure_stage_current]
+            initial_stage.stage_enter()
 
     def _procedure_pause(self, _: transitions.EventData):
-        current_stage = self._procedure_stages[self._procedure_stage_current]
-        current_stage.stage_pause()
+        with Measurement.metadata_global_lock:
+            current_stage = self._procedure_stages[self._procedure_stage_current]
+            current_stage.stage_pause()
 
-        # Indicate procedure paused in metadata
-        Measurement.add_global_tag('procedure_state', 'paused')
+            # Indicate procedure paused in metadata
+            Measurement.add_global_tag('procedure_state', 'paused')
+
+        self.get_logger().info(f"Procedure {self._procedure_uid} paused", event=True, notify=True)
 
     def _procedure_resume(self, _: transitions.EventData):
-        current_stage = self._procedure_stages[self._procedure_stage_current]
-        current_stage.stage_resume()
+        with Measurement.metadata_global_lock:
+            current_stage = self._procedure_stages[self._procedure_stage_current]
+            current_stage.stage_resume()
 
-        Measurement.add_global_tag('procedure_state', 'running')
+            Measurement.add_global_tag('procedure_state', 'running')
+
+        self.get_logger().info(f"Procedure {self._procedure_uid} resumed", event=True, notify=True)
 
     def _procedure_stop(self, _: transitions.EventData):
-        # Stop measurements and cleanup configured hardware
-        for hardware_manager in self._procedure_hardware_managers.values():
-            hardware_manager.force_disconnect()
+        with Measurement.metadata_global_lock:
+            # Stop measurements and cleanup configured hardware
+            for hardware_manager in self._procedure_hardware_managers.values():
+                hardware_manager.force_disconnect()
 
-        self._procedure_hardware_managers = {}
+            self._procedure_hardware_managers = {}
 
-        # Restore metadata
-        Measurement.flush_global_metadata()
+            # Restore metadata
+            Measurement.flush_global_metadata()
 
         self.get_logger().info(f"Procedure {self._procedure_uid} stopped", event=True, notify=True)
 
