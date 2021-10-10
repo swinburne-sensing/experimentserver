@@ -338,10 +338,8 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
 class HP34401AMultimeterMultiChannel(MultiChannelHardware):
     def __init__(self, identifier: str, daq_args: typing.Dict[str, typing.Any],
-                 child_args: typing.Dict[str, typing.Any], parameters: typing.Optional[TYPE_PARAMETER_DICT] = None,
-                 channel_delay: float = 1.0):
-        super(HP34401AMultimeterMultiChannel, self).__init__(identifier, daq_args, child_args, parameters,
-                                                             channel_delay)
+                 child_args: typing.Dict[str, typing.Any], parameters: typing.Optional[TYPE_PARAMETER_DICT] = None):
+        super(HP34401AMultimeterMultiChannel, self).__init__(identifier, daq_args, child_args, parameters)
 
     @classmethod
     def get_child_class(cls) -> typing.Type:
@@ -350,9 +348,8 @@ class HP34401AMultimeterMultiChannel(MultiChannelHardware):
 
 class Picoammeter6487MultiChannel(MultiChannelHardware):
     def __init__(self, identifier: str, daq_args: typing.Dict[str, typing.Any],
-                 child_args: typing.Dict[str, typing.Any], parameters: typing.Optional[TYPE_PARAMETER_DICT] = None,
-                 channel_delay: float = 0.0):
-        super(Picoammeter6487MultiChannel, self).__init__(identifier, daq_args, child_args, parameters, channel_delay)
+                 child_args: typing.Dict[str, typing.Any], parameters: typing.Optional[TYPE_PARAMETER_DICT] = None):
+        super(Picoammeter6487MultiChannel, self).__init__(identifier, daq_args, child_args, parameters)
 
     @classmethod
     def get_child_class(cls) -> typing.Type:

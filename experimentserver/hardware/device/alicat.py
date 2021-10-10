@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 import typing
 
 from transitions import EventData
@@ -26,8 +25,7 @@ class MCMassFlowController(Hardware):
 
     REGISTER_SET_FLOW_SETPOINT = 1010
 
-    def __init__(self, identifier: str, host: str, composition: typing.Dict[str, str], sample_period: float = 0.5,
-                 **kwargs):
+    def __init__(self, identifier: str, host: str, composition: typing.Dict[str, str], **kwargs):
         super(MCMassFlowController, self).__init__(identifier, **kwargs)
 
         # Address
@@ -118,7 +116,7 @@ class MCMassFlowController(Hardware):
             'gas_mixture': self.get_gas_mix_label()
         })
 
-        self.sleep(0.1, 'rate limit')
+        self.sleep(0.25, 'rate limit')
 
         return m
 
@@ -167,4 +165,5 @@ class MCMassFlowController(Hardware):
         self.get_logger().info(f"Set mass flow rate: {flow!s}")
 
     def get_mass_flow(self) -> Quantity:
-        return Quantity(self._modbus_read_input_float(self.REGISTER_GET_MASS_FLOW), self._alicat_mass_flow_unit)
+        return to_unit(self._modbus_read_input_float(self.REGISTER_GET_MASS_FLOW), self._alicat_mass_flow_unit,
+                       apply_round=2)
