@@ -15,7 +15,7 @@ __email__ = 'cjharrison@swin.edu.au'
 class T96Controller(Hardware):
     """ Linkam stage controller. Can interface with humidity generator and LN cooler. """
 
-    _REFRESH_PERIOD = 0.1
+    _REFRESH_PERIOD = 0.25
 
     def __init__(self, *args, humidity_room_temp: TYPE_UNIT_OPTIONAL = None, sdk_debug: bool = False,
                  sdk_log_path: typing.Optional[str] = None, sdk_license_path: typing.Optional[str] = None, **kwargs):
@@ -56,17 +56,18 @@ class T96Controller(Hardware):
 
         if controller.flags.supportsHeater:
             payload.append(Measurement(self, MeasurementGroup.TEMPERATURE, {
-                'heater_temperature_ch1': self._handle.get_value(StageValueType.HEATER1_TEMP),
-                'heater_temperature_ch2': self._handle.get_value(StageValueType.HEATER2_TEMP),
-                'heater_temperature_ch3': self._handle.get_value(StageValueType.HEATER3_TEMP),
-                'heater_temperature_ch4': self._handle.get_value(StageValueType.HEATER4_TEMP),
+                'heater_temperature_ch1': to_unit(self._handle.get_value(StageValueType.HEATER1_TEMP), 'degC',
+                                                  apply_round=2),
+                # 'heater_temperature_ch2': self._handle.get_value(StageValueType.HEATER2_TEMP),
+                # 'heater_temperature_ch3': self._handle.get_value(StageValueType.HEATER3_TEMP),
+                # 'heater_temperature_ch4': self._handle.get_value(StageValueType.HEATER4_TEMP),
                 'heater_temperature_ramp': self._handle.get_value(StageValueType.HEATER_RATE),
                 'heater_temperature_setpoint': self._handle.get_value(StageValueType.HEATER_SETPOINT),
-                'heater_output_ch1': self._handle.get_value(StageValueType.HEATER1_POWER),
-                'heater_output_ch2': self._handle.get_value(StageValueType.HEATER2_POWER),
-                'heater_voltage': to_unit(program_state.voltage, 'volt'),
-                'heater_current': to_unit(program_state.current, 'amp'),
-                'heater_power': to_unit(program_state.pwm, 'watt')
+                'heater_output_ch1': round(self._handle.get_value(StageValueType.HEATER1_POWER), 2),
+                # 'heater_output_ch2': self._handle.get_value(StageValueType.HEATER2_POWER),
+                'heater_voltage': to_unit(program_state.voltage, 'volt', apply_round=3),
+                'heater_current': to_unit(program_state.current, 'amp', apply_round=3),
+                'heater_power': to_unit(program_state.pwm, 'watt', apply_round=3)
             }))
 
             if not self._has_heater:
@@ -80,16 +81,16 @@ class T96Controller(Hardware):
             humidity = self._handle.get_humidity_details()
 
             humidity_fields = {
-                'stage_rh': to_unit(humidity.rh, 'pct'),
-                'stage_rh_temperature': to_unit(humidity.rhTemp, 'degC'),
+                'stage_rh': to_unit(humidity.rh, 'pct', apply_round=2),
+                'stage_rh_temperature': to_unit(humidity.rhTemp, 'degC', apply_round=2),
                 'stage_rh_setpoint': to_unit(humidity.rhSetpoint, 'pct'),
-                'generator_rh': to_unit(humidity.tubePercent, 'pct'),
+                'generator_rh': to_unit(humidity.tubePercent, 'pct', apply_round=2),
                 'generator_rh_setpoint': to_unit(humidity.rhSetpoint, 'pct'),
-                'water_temperature': to_unit(humidity.waterTemp, 'degC'),
+                'water_temperature': to_unit(humidity.waterTemp, 'degC', apply_round=2),
                 'water_temperature_setpoint': to_unit(humidity.waterSetpoint, 'degC'),
-                'generator_column': humidity.status.flags.colSel,
-                'generator_drying': humidity.status.flags.dessicantDryMode,
-                'generator_running': humidity.status.flags.started
+                # 'generator_column': humidity.status.flags.colSel,
+                # 'generator_drying': humidity.status.flags.dessicantDryMode,
+                # 'generator_running': humidity.status.flags.started
             }
 
             humidity_tags = None
