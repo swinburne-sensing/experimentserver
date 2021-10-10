@@ -472,7 +472,7 @@ class Picoammeter6487(_KeithleyInstrument):
                 'voltage': source_voltage
             }, tags={
                 'source_voltage': source_voltage,
-                'source_enabled': 'ON' if source_enabled else 'OFF'
+                'source_enabled': source_enabled
             })
         else:
             return Measurement(self, MeasurementGroup.CONDUCTOMETRIC_IV, {
@@ -480,7 +480,7 @@ class Picoammeter6487(_KeithleyInstrument):
                 'voltage': source_voltage
             }, tags={
                 'source_voltage': source_voltage,
-                'source_enabled': 'ON' if source_enabled else 'OFF'
+                'source_enabled': source_enabled
             })
 
     @SCPIHardware.register_measurement(description='Measure current/resistance across range of source voltages')

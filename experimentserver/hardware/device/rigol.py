@@ -50,7 +50,7 @@ class PowerSupplyChannel(HardwareEnum):
 
     @staticmethod
     def get_tag_name() -> str:
-        return 'channel'
+        return 'supply_channel'
 
     @classmethod
     def _get_tag_map(cls) -> typing.Dict[HardwareEnum, typing.Any]:
@@ -176,8 +176,7 @@ class DP832PowerSupply(SCPIHardware):
         with self.visa_transaction() as transaction:
             transaction.write(':SOUR{}:CURR {}', channel, current)
 
-    @SCPIHardware.register_measurement(description='Output manager, voltage and current',
-                                       measurement_group=MeasurementGroup.SUPPLY, force=True)
+    @SCPIHardware.register_measurement(description='Output manager, voltage and current', force=True)
     def get_supply_state(self) -> typing.Sequence[Measurement]:
         # Delay slightly to allow for new data
         self.sleep(1, 'rate limit, infrequent update')
@@ -192,6 +191,9 @@ class DP832PowerSupply(SCPIHardware):
 
                 if self.get_ovp_alarm(channel):
                     self.get_logger().error(f"Over voltage alarm triggered on channel {channel}")
+
+                # Check for enabled channel
+                channel_enable = transaction.query(':OUTP? {}', channel) == 'ON'
 
                 channel_ocp = transaction.query(':OUTP:OCP:VAL?', channel)
                 channel_ovp = transaction.query(':OUTP:OVP:VAL?', channel)
@@ -214,10 +216,7 @@ class DP832PowerSupply(SCPIHardware):
             if channel_mode not in ('CV', 'CC', 'UR'):
                 raise RigolError(f"Unexpected response to channel mode query: {channel_mode}")
 
-            status.append(Measurement(
-                self,
-                MeasurementGroup.SUPPLY,
-                {
+            status.append(Measurement(self, MeasurementGroup.SUPPLY, {
                     'voltage': to_unit(channel_status_split[0], 'volt', apply_round=3),
                     'voltage_setpoint': to_unit(channel_setting_split[1], 'volt', apply_round=3),
                     'voltage_limit': to_unit(channel_ovp, 'volt', apply_round=3),
@@ -226,9 +225,10 @@ class DP832PowerSupply(SCPIHardware):
                     'current_limit': to_unit(channel_ocp, 'volt', apply_round=3),
                     'power': to_unit(channel_status_split[2], 'watt', apply_round=3),
                     'mode': channel_mode
-                },
-                tags={
-                    PowerSupplyChannel.get_tag_name(): channel.get_tag_value()
+                }, tags={
+                    PowerSupplyChannel.get_tag_name(): channel.get_tag_value(),
+                    'channel_enable': channel_enable,
+                    'channel_mode': channel_mode
                 })
             )
 

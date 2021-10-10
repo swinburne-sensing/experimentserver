@@ -66,11 +66,6 @@ class MCMassFlowController(Hardware):
 
         self._gcf = calc_gcf(list(self._composition.keys()), list(self._composition.values()))
 
-        # Lock to prevent multiple access
-        self._http_lock = threading.RLock()
-
-        self._sample_period = sample_period
-
         # Start with sane defaults (from factory)
         self._alicat_mass_flow_unit = units.sccm
         self._alicat_pressure_unit = units.psi
@@ -150,6 +145,9 @@ class MCMassFlowController(Hardware):
 
     def set_mass_flow_setpoint(self, flow: units.TYPE_VALUE):
         flow = to_unit(flow, units.sccm)
+
+        # Apply gas correction factor
+        flow = flow / self._gcf
 
         if flow.magnitude < 0:
             raise ParameterError(f"Mass flow rate setpoint must be positive (got: {flow})")

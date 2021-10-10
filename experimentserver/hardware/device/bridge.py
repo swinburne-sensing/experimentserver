@@ -16,10 +16,10 @@ class GasAlanyzer(SerialStringHardware):
     _ZERO_PERIOD = timedelta(seconds=60)
 
     _GAS_CHANNELS = [
-        (get_gas('carbon-monoxide'), 0.01, 'percent'),
+        (get_gas('carbon-monoxide'), 0.01, 'pct'),
         (get_gas('hexane'), 1e-6, 'ppm'),
-        (get_gas('carbon-dioxide'), 0.01, 'percent'),
-        (get_gas('oxygen'), 0.01, 'percent'),
+        (get_gas('carbon-dioxide'), 0.01, 'pct'),
+        (get_gas('oxygen'), 0.01, 'pct'),
         (get_gas('nitric-oxides'), 1e-6, 'ppm')
     ]
 

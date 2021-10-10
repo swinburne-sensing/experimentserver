@@ -55,18 +55,6 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         }
 
-    def loader_pulse(self, node):
-        config = self._get_node_config(node)
-
-        return {
-            'class': 'flow.Pulse',
-            'version': BaseStage.EXPORT_VERSION,
-            'exposure': config['expose'],
-            'recovery': config['recover'],
-            'setup': config['setup'] if 'setup' in config else None,
-
-        }
-
     def loader_delay(self, node):
         return {
             'class': 'core.Delay',
@@ -140,14 +128,54 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             'message': self.construct_scalar(node).strip()
         }
 
+    # Special delays
+    def loader_delay_setup(self, node):
+        config = self.construct_scalar(node).split(',')
+        metadata = {k.strip().lower(): v.strip() for k, v in [x.split('=') for x in config[1:]]}
+        metadata['expose_phase'] = 'setup'
+
+        return {
+            'class': 'core.Delay',
+            'version': BaseStage.EXPORT_VERSION,
+            'interval': config[0],
+            'metadata': metadata
+        }
+
+    def loader_delay_expose(self, node):
+        config = self.construct_scalar(node).split(',')
+        metadata = {k.strip().lower(): v.strip() for k, v in [x.split('=') for x in config[1:]]}
+        metadata['expose_phase'] = 'expose'
+
+        return {
+            'class': 'core.Delay',
+            'version': BaseStage.EXPORT_VERSION,
+            'interval': config[0],
+            'metadata': metadata
+        }
+
+    def loader_delay_recover(self, node):
+        config = self.construct_scalar(node).split(',')
+        metadata = {k.strip().lower(): v.strip() for k, v in [x.split('=') for x in config[1:]]}
+        metadata['expose_phase'] = 'recover'
+
+        return {
+            'class': 'core.Delay',
+            'version': BaseStage.EXPORT_VERSION,
+            'interval': config[0],
+            'metadata': metadata
+        }
+
 
 YAMLProcedureLoader.add_constructor('!delay', YAMLProcedureLoader.loader_delay)
 YAMLProcedureLoader.add_constructor('!delay_tag', YAMLProcedureLoader.loader_delay_tag)
 YAMLProcedureLoader.add_constructor('!humidity', YAMLProcedureLoader.loader_humidity)
 YAMLProcedureLoader.add_constructor('!pause', YAMLProcedureLoader.loader_pause)
 YAMLProcedureLoader.add_constructor('!pause_tag', YAMLProcedureLoader.loader_pause_tag)
-YAMLProcedureLoader.add_constructor('!pulse', YAMLProcedureLoader.loader_pulse)
 YAMLProcedureLoader.add_constructor('!setup', YAMLProcedureLoader.loader_setup)
 YAMLProcedureLoader.add_constructor('!temperature', YAMLProcedureLoader.loader_temperature)
 YAMLProcedureLoader.add_constructor('!valve', YAMLProcedureLoader.loader_valve)
 YAMLProcedureLoader.add_constructor('!notify', YAMLProcedureLoader.loader_notify)
+
+YAMLProcedureLoader.add_constructor('!delay_setup', YAMLProcedureLoader.loader_delay_setup)
+YAMLProcedureLoader.add_constructor('!delay_expose', YAMLProcedureLoader.loader_delay_expose)
+YAMLProcedureLoader.add_constructor('!delay_recover', YAMLProcedureLoader.loader_delay_recover)
