@@ -1,15 +1,14 @@
 import time
 import typing
 
-import influxdb
-import influxdb.exceptions
+import influxdb_client
 import requests.exceptions
 import urllib3
+from influxdb_client.client.write_api import ASYNCHRONOUS
 
 import experimentserver
 from experimentserver.data.measurement import Measurement
 from experimentserver.util.logging import LoggerObject
-from experimentserver.util.thread import QueueThread
 from experimentserver.data.measurement import MeasurementTarget
 
 
@@ -21,119 +20,67 @@ class DatabaseError(experimentserver.ApplicationException):
     pass
 
 
-class _InfluxDBv1Client(LoggerObject, MeasurementTarget):
-    _DEFAULT_BUFFER_INTERVAL = 5
+class _InfluxDBv2Client(LoggerObject, MeasurementTarget):
+    _INFLUXDB_RETRY = urllib3.Retry()
 
-    _SEGMENT_SIZE = 1024
-
-    def __init__(self, identifier: str, connect_args: typing.Dict[str, typing.Any],
-                 buffer_interval: typing.Optional[float] = None):
+    def __init__(self, identifier: str, connect_args: typing.Dict[str, typing.Any]):
         self._identifier = identifier
-        self._buffer_interval = buffer_interval or self._DEFAULT_BUFFER_INTERVAL
 
         LoggerObject.__init__(self, logger_name_postfix=f":{self._identifier}")
         MeasurementTarget.__init__(self, identifier)
 
-        # Client to InfluxDB instance
-        self.database = connect_args['database']
-        self.client = influxdb.InfluxDBClient(**connect_args)
+        self.bucket = connect_args.pop('bucket')
+        self.client = influxdb_client.InfluxDBClient(**connect_args, retries=self._INFLUXDB_RETRY)
 
         # Test connection
-        try:
-            self.get_logger().info(f"Influx DB {self.client.ping()}")
-        except requests.exceptions.ConnectionError as exc:
-            raise DatabaseError(f"Connection to database server (connection: {self._identifier}) could not be "
-                                f"established, the server or local internet connection may be unavailable") from exc
+        health = self.client.health()
 
-        # Buffer for points
-        self._point_buffer = []
-        self._point_timeout = time.time() + self._buffer_interval
+        if health.status == 'pass':
+            self.get_logger().info(f"InfluxDB health: OK {health.version}")
+        else:
+            raise DatabaseError(f"InfluxDB failed health check with status {health}")
 
-        # Thread for database writing
-        self._event_thread = QueueThread(f"Database:{self._identifier}", event_callback=self._influxdb_event_handle)
-        self._event_thread.thread_start()
+        # Setup write API
+        self.write_api: influxdb_client.WriteApi = self.client.write_api(write_options=ASYNCHRONOUS)
+
+    def __del__(self):
+        if hasattr(self, 'write_api') and self.write_api is not None:
+            self.write_api.close()
+            self.write_api = None
 
     def _record(self, measurement: Measurement) -> typing.NoReturn:
-        if self._event_thread.is_thread_alive():
-            tags = measurement.get_tags()
+        point = influxdb_client.Point(measurement.measurement_group.value).time(measurement.timestamp)
 
-            # Convert tags to strings
-            for key, value in tags.items():
-                if isinstance(value, bool):
-                    # InfluxDB style boolean
-                    tags[key] = 'true' if value else 'false'
-                elif not isinstance(value, str):
-                    tags[key] = str(value)
+        # Add fields
+        for field, value in measurement.get_fields(False, False).items():
+            point.field(field, value)
 
-            point = {
-                'measurement': measurement.measurement_group.value,
-                'tags': tags,
-                'time': int(1000000 * measurement.timestamp.timestamp()),
-                'fields': measurement.get_fields(False, False)
-            }
+        # Convert tags to strings
+        for tag, value in measurement.get_tags().items():
+            if isinstance(value, bool):
+                # InfluxDB style boolean
+                point.tag(tag, 'true' if value else 'false')
+            elif not isinstance(value, str):
+                point.tag(tag, str(value))
+            else:
+                point.tag(tag, value)
 
-            self._event_thread.append(point)
-        else:
-            raise DatabaseError(f"Event thread not running, cannot submit measurement to database: {measurement}",
-                                fatal=True)
-
-    def _influxdb_event_handle(self, obj):
-        if obj is not None:
-            # Append to point buffer
-            self._point_buffer.append(obj)
-
-        if obj is None or time.time() > self._point_timeout:
-            # Update timeout
-            self._point_timeout = time.time() + self._buffer_interval
-
-            n_points = len(self._point_buffer)
-
-            if n_points > 0:
-                try:
-                    # Split transactions to avoid sending too large a payload
-                    while len(self._point_buffer) > 0:
-                        points = self._point_buffer[:self._SEGMENT_SIZE]
-
-                        if self.client.write_points(points, time_precision='u'):
-                            self.get_logger().debug(f"Wrote {len(points)} points")
-
-                            # Remove from buffer
-                            self._point_buffer = self._point_buffer[self._SEGMENT_SIZE:]
-                except requests.exceptions.ConnectionError:
-                    # Network issues, retry later
-                    self.get_logger().warning(f"Unable to write data points to database (connection error)",
-                                              exc_info=True, event=False)
-                except influxdb.exceptions.InfluxDBServerError:
-                    # Problem server side, retry later
-                    self.get_logger().warning(f"Unable to write data points to database (server error)", exc_info=True,
-                                              event=False)
-                except influxdb.exceptions.InfluxDBClientError as exc:
-                    # Parse response
-                    if exc.code == 404:
-                        raise DatabaseError(f"Cannot write to database {self.database}, it might not exist (response: "
-                                            f"\"{exc.content}\")", fatal=True)
-
-                    # Dump response, will include possibly bad payload
-                    self.get_logger().error(f"Unable to write data points to database (client error): {exc.content}",
-                                            exc_info=True, event=False)
-
-                    # Flush buffer
-                    self._point_buffer = []
+        self.write_api.write(self.bucket, record=point)
 
 
-_db_client: typing.Dict[str, _InfluxDBv1Client] = {}
+_db_client: typing.Dict[str, _InfluxDBv2Client] = {}
 
 
-def setup_database(identifier: str, connect_args, buffer_interval: typing.Optional[float] = None):
+def setup_database(identifier: str, connect_args):
     if identifier in _db_client:
         raise KeyError(f"Database connection with identifier {identifier} already exists")
 
-    _db_client[identifier] = _InfluxDBv1Client(identifier, connect_args, buffer_interval)
+    _db_client[identifier] = _InfluxDBv2Client(identifier, connect_args)
 
     return _db_client[identifier]
 
 
-def get_database(identifier: typing.Optional[str] = None) -> _InfluxDBv1Client:
+def get_database(identifier: typing.Optional[str] = None) -> _InfluxDBv2Client:
     if identifier is None:
         identifier = MeasurementTarget.MEASUREMENT_TARGET_DEFAULT
 
