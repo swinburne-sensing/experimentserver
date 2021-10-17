@@ -83,7 +83,7 @@ class Delay(BaseStage):
         stage = super(Delay, self).stage_export()
 
         stage.update({
-            'interval': self._delay_interval.total_seconds(),
+            'interval': f"{self._delay_interval.total_seconds():g} s",
         })
 
         if self._delay_sync_minute:

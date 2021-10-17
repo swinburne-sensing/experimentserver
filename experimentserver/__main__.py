@@ -181,16 +181,11 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
                 if database_connect_args['path'].endswith('/'):
                     database_connect_args['path'] = database_connect_args['path'][:-1]
 
-            if 'buffer_interval' in database_connect_args:
-                buffer_interval = float(database_connect_args.pop('buffer_interval'))
-            else:
-                buffer_interval = None
-
             # Strip empty values
             database_connect_args = {k: v for k, v in database_connect_args.items() if v != ''}
 
             root_logger.info(f"Database connection: {database_identifier} (args: {database_connect_args})")
-            setup_database(database_identifier, database_connect_args, buffer_interval)
+            setup_database(database_identifier, database_connect_args)
 
         # Setup database remapping
         remap_config = app_config.get('remap', default={})
