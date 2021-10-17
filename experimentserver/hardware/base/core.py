@@ -319,6 +319,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
             if type(parameter_args) is not dict:
                 if type(parameter_args) is str:
                     # FIXME Bad type hints
+                    # noinspection PyUnresolvedReferences
                     parameter_args = [x.strip() for x in parameter_args.split(',')]
 
                 # If arguments are not iterable then convert to a tuple

@@ -60,6 +60,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
     def pre_channel_open(self, channel: int):
         pass
 
+    # noinspection PyUnusedLocal
     def post_channel_open(self, channel: int):
         # Switch open time
         self.sleep(self.SWITCH_DELAY, 'contact open time')

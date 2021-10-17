@@ -88,6 +88,7 @@ class ManagedStateMachine(CallbackThread):
 
     def _get_state(self) -> TYPE_STATE:
         # FIXME Bad type hints
+        # noinspection PyUnresolvedReferences
         return self._state_type(self._model.state)
 
     def get_state(self, timeout: typing.Optional[float] = None) -> TYPE_STATE:

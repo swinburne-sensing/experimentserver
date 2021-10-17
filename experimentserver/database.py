@@ -1,8 +1,6 @@
-import time
 import typing
 
 import influxdb_client
-import requests.exceptions
 import urllib3
 from influxdb_client.client.write_api import ASYNCHRONOUS
 
