@@ -6,6 +6,8 @@ import time
 import traceback
 import typing
 
+# Dependency pulled from experimentlib
+# noinspection PyPackageRequirements
 import pushover
 
 import experimentserver
@@ -109,10 +111,13 @@ class PushoverNotificationHandler(logging.Handler):
         self._title = title
 
         # Create Pushover client
-        if api_token is not None and user_key is not None:
-            self._pushover = pushover.Client(api_token=api_token, user_key=user_key, device=user_device)
-        else:
-            self._pushover = None
+        self._pushover: typing.Optional[pushover.Pushover] = None
+
+        if api_token is not None:
+            self._pushover = pushover.Pushover(token=api_token)
+
+        self._user_key = user_key
+        self._user_device = user_device
 
         # Message cache (prevent repeat messages)
         self._message_cache: typing.Optional[typing.Dict[str, typing.List[float]]] = {} if cache_enabled else None
@@ -165,8 +170,12 @@ class PushoverNotificationHandler(logging.Handler):
 
                 # If length of the list is now 2 send a notification indicating messages were withheld
                 if len(self._message_cache[msg_hash]) == 2:
-                    self._pushover.send_message('Duplicate message, future duplicates will be withheld\n\n' + msg,
-                                                priority=self.PUSHOVER_PRIORITY_QUIET, title=self._title)
+                    self._pushover.message(
+                        self._user_key,
+                        'Duplicate message, future duplicates will be withheld\n\n' + msg,
+                        priority=self.PUSHOVER_PRIORITY_QUIET,
+                        title=self._title
+                    )
 
                 return
             else:
@@ -174,7 +183,12 @@ class PushoverNotificationHandler(logging.Handler):
 
         try:
             # Send message to Pushover client
-            self._pushover.send_message(msg, priority=priority, title=self._title)
+            self._pushover.message(
+                self._user_key,
+                msg,
+                priority=priority,
+                title=self._title
+            )
         except IOError as exc:
             print('Exception occurred while connecting to Pushover', file=sys.stderr)
             print(repr(exc), file=sys.stderr)

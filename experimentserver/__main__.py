@@ -185,7 +185,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
             database_connect_args = {k: v for k, v in database_connect_args.items() if v != ''}
 
             root_logger.info(f"Database connection: {database_identifier} (args: {database_connect_args})")
-            setup_database(database_identifier, database_connect_args)
+            setup_database(database_identifier, database_connect_args, debug)
 
         # Setup database remapping
         remap_config = app_config.get('remap', default={})

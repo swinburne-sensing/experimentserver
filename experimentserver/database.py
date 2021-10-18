@@ -21,7 +21,7 @@ class DatabaseError(experimentserver.ApplicationException):
 class _InfluxDBv2Client(LoggerObject, MeasurementTarget):
     _INFLUXDB_RETRY = urllib3.Retry()
 
-    def __init__(self, identifier: str, connect_args: typing.Dict[str, typing.Any]):
+    def __init__(self, identifier: str, connect_args: typing.MutableMapping[str, typing.Any]):
         self._identifier = identifier
 
         LoggerObject.__init__(self, logger_name_postfix=f":{self._identifier}")
@@ -69,9 +69,12 @@ class _InfluxDBv2Client(LoggerObject, MeasurementTarget):
 _db_client: typing.Dict[str, _InfluxDBv2Client] = {}
 
 
-def setup_database(identifier: str, connect_args):
+def setup_database(identifier: str, connect_args: typing.MutableMapping[str, typing.Any], debug: bool):
     if identifier in _db_client:
         raise KeyError(f"Database connection with identifier {identifier} already exists")
+
+    if debug:
+        connect_args['bucket'] = connect_args['bucket'] + '_dev'
 
     _db_client[identifier] = _InfluxDBv2Client(identifier, connect_args)
 

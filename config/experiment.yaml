@@ -19,8 +19,8 @@ remap: []
 procedure:
   # Default configuration for procedures
   pulse:
-    experiment: Unknown
-    sample: Unknown
+    experiment: 'Unlabelled Experiment'
+    sample: 'Unlabelled Sample'
 
 pushover:
   title: !format '{app_name} {system_hostname}'
