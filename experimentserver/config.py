@@ -265,10 +265,16 @@ class YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
 
     @staticmethod
     def loader_env(_, node):
-        if node.value not in os.environ:
-            raise ConfigurationError(f"Environment variable {node.value} not defined")
+        node_list = node.value.split(' ', 1)
 
-        return os.environ[node.value]
+        while len(node_list) > 0:
+            node_val = node_list.pop(0)
+
+            if node_val in os.environ:
+                return os.environ[node.value]
+
+        node_list_str = '", "'.join(node_list)
+        raise ConfigurationError(f"No environment variable from list \"{node_list_str}\" defined")
 
     @staticmethod
     def loader_env_optional(_, node):
