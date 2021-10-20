@@ -5,12 +5,12 @@ from datetime import datetime
 import flask
 import jinja2
 import transitions
+from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE, FORMAT_TIMESTAMP_FILENAME
 
 import experimentserver
 from .web import UserInterfaceError, WebServer
 from ..hardware import HardwareManager, HardwareTransition
-from ..protocol import Procedure, ProcedureTransition, dump_yaml
-from ..util.constant import FORMAT_TIMESTAMP, FORMAT_TIMESTAMP_FILENAME
+from ..protocol import Procedure, ProcedureTransition
 from ..util.uniqueid import hex_str
 
 
@@ -26,14 +26,14 @@ def _json_response_wrapper(ui: WebServer):
                 value = func(*args, **kwargs)
 
                 if type(value) is str:
-                    ui.get_logger().info(value)
+                    ui.logger().info(value)
 
                     return flask.jsonify({
                         'success': True,
                         'message': value
                     })
                 elif type(value) in (list, dict, tuple):
-                    # ui.get_logger().debug(f"JSON payload {value!r}")
+                    # ui.logger().debug(f"JSON payload {value!r}")
 
                     return flask.jsonify({
                         'success': True,
@@ -42,22 +42,22 @@ def _json_response_wrapper(ui: WebServer):
                 else:
                     raise UserInterfaceError(f"Unexpected return type in JSON wrapper: {value!r}")
             except experimentserver.ApplicationException as exc:
-                ui.get_logger().exception('Application error generated via web interface', notify=False, event=False,
-                                          exc_info=exc)
+                ui.logger().exception('Application error generated via web interface', notify=False, event=False,
+                                      exc_info=exc)
 
                 return flask.jsonify({
                     'success': False,
                     'message': exc.get_user_str('<hr>')
                 })
             except transitions.MachineError as exc:
-                ui.get_logger().warning(str(exc), event=False, exc_info=exc)
+                ui.logger().warning(str(exc), exc_info=exc)
 
                 return flask.jsonify({
                     'success': False,
                     'message': exc.args[0]
                 })
             except Exception as exc:
-                ui.get_logger().exception('Unhandled exception generated via web interface', exc_info=exc)
+                ui.logger().exception('Unhandled exception generated via web interface', exc_info=exc)
 
                 return flask.jsonify({
                     'success': False,
@@ -125,7 +125,7 @@ def register_json(ui: WebServer):
         elif transition == ProcedureTransition.START:
             completion = datetime.now() + ui.get_procedure().get_procedure_duration()
 
-            return f"Procedure running, estimated completion {completion.strftime(FORMAT_TIMESTAMP)}"
+            return f"Procedure running, estimated completion {completion.strftime(FORMAT_TIMESTAMP_CONSOLE)}"
         elif transition == ProcedureTransition.STOP:
             return 'Procedure stopped and returned to setup state.'
         else:
@@ -136,7 +136,7 @@ def register_json(ui: WebServer):
     def server_event():
         records = []
 
-        for record in ui.get_event_buffer().get_events():
+        for record in ui.get_event_buffer().records:
             records.insert(0, {
                 'time': datetime.fromtimestamp(record.created).isoformat(),
                 'level': record.levelname,
@@ -149,7 +149,7 @@ def register_json(ui: WebServer):
     @ui.app.route('/server/event/clear')
     @_json_response_wrapper(ui)
     def server_event_clear():
-        ui.get_event_buffer().clear()
+        ui.get_event_buffer().flush()
 
         return 'Event log cleared'
 
@@ -166,7 +166,7 @@ def register_json(ui: WebServer):
             raise UserInterfaceError('Not running with the Werkzeug Server, shutdown request ignored')
 
         # Call shutdown method
-        ui.get_logger().info('Shutdown requested via web interface', event=True, notify=True)
+        ui.logger().info('Shutdown requested via web interface', notify=True)
         shutdown_func()
 
         return 'Shutting down, this page may now be closed.'
@@ -188,7 +188,7 @@ def register_json(ui: WebServer):
             'filename': f"procedure-{ui.get_procedure().get_uid()}-"
                         f"{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml",
             'content_type': 'application/x-yaml',
-            'content': dump_yaml(ui.get_procedure().procedure_export())
+            'content': ui.get_procedure().procedure_export()
         }
 
     @ui.app.route('/procedure/import', methods=['POST'])
@@ -200,14 +200,14 @@ def register_json(ui: WebServer):
         filename = flask.request.files['file'].filename
         _, file_ext = os.path.splitext(filename)
 
-        ui.get_logger().info(f"Loading filename: {filename}", event=True)
+        ui.logger().info(f"Loading filename: {filename}")
 
         with flask.request.files['file'].stream as procedure_file:
             procedure_file_content = procedure_file.read()
 
         procedure_file_content = procedure_file_content.decode()
 
-        ui.get_logger().info(f"Uploaded content:\n{procedure_file_content}")
+        ui.logger().info(f"Uploaded content:\n{procedure_file_content}")
 
         if file_ext.lower() == '.j2':
             template_env = jinja2.Environment(
@@ -224,7 +224,7 @@ def register_json(ui: WebServer):
 
             procedure_file_content = procedure_file_template.render()
 
-            ui.get_logger().info(f"Rendered content:\n{procedure_file_content}")
+            ui.logger().info(f"Rendered content:\n{procedure_file_content}")
 
         procedure_store_filename = os.path.join(
             experimentserver.CONFIG_PATH, f"procedure_upload_{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml")
@@ -232,12 +232,12 @@ def register_json(ui: WebServer):
         with open(procedure_store_filename, 'w') as procedure_store_file:
             procedure_store_file.write(procedure_file_content)
 
-        ui.get_logger().info(f"Saved prrocedure to: {procedure_store_filename}", event=True)
+        ui.logger().info(f"Saved prrocedure to: {procedure_store_filename}")
 
         # Complete import
         procedure = Procedure.procedure_import(procedure_file_content)
 
-        ui.get_logger().info(f"Read procedure:\n{procedure.procedure_export(True)}", event=True)
+        ui.logger().info(f"Read procedure:\n{procedure.procedure_export(False)}")
 
         ui.set_procedure(procedure)
 

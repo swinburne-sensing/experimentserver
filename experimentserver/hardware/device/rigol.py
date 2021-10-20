@@ -75,7 +75,7 @@ class DP832PowerSupply(SCPIHardware):
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         if msg is not None:
             if len(msg) > 45:
-                cls.get_class_logger().warning("Truncating message to 45 characters (original: {})".format(msg))
+                cls.logger().warning("Truncating message to 45 characters (original: {})".format(msg))
                 msg = msg[:45]
 
             transaction.write(":DISP:TEXT \"{}\"".format(msg))
@@ -187,10 +187,10 @@ class DP832PowerSupply(SCPIHardware):
             with self.visa_transaction() as transaction:
                 # Query over voltage and current alarms
                 if self.get_ocp_alarm(channel):
-                    self.get_logger().error(f"Over current alarm triggered on channel {channel}")
+                    self.logger().error(f"Over current alarm triggered on channel {channel}")
 
                 if self.get_ovp_alarm(channel):
-                    self.get_logger().error(f"Over voltage alarm triggered on channel {channel}")
+                    self.logger().error(f"Over voltage alarm triggered on channel {channel}")
 
                 # Check for enabled channel
                 channel_enable = transaction.query(':OUTP? {}', channel) == 'ON'
@@ -263,7 +263,7 @@ class DP832PowerSupply(SCPIHardware):
                         try:
                             transaction.write(':OUTP {},OFF', channel)
                         except (CommunicationError, ExternalError):
-                            self.get_logger().warning(f"Failed to disable output channel {channel} after error",
-                                                      notify=True)
+                            self.logger().error(f"Failed to disable output channel {channel} after error",
+                                                notify=True)
 
         super().transition_error(event)

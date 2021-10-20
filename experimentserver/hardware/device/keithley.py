@@ -134,7 +134,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
         if msg is not None:
             # Truncate long messages
             if len(msg) > 20:
-                cls.get_class_logger().warning(f"Truncating message to 20 characters (original: {msg})")
+                cls.logger().warning(f"Truncating message to 20 characters (original: {msg})")
                 msg = msg[:20]
 
             transaction.write(':DISP:USER1:TEXT {}', msg)
@@ -155,7 +155,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
             # Check for available modules
             for slot in self._SLOTS:
                 card_idn = transaction.query(':SYST:CARD{}:IDN?', slot)
-                self.get_logger().info(f"Card {slot}: {card_idn}")
+                self.logger().info(f"Card {slot}: {card_idn}")
 
                 if card_idn.lower().startswith('empty slot'):
                     self._slot_module[slot] = None
@@ -326,7 +326,7 @@ class Picoammeter6487(_KeithleyInstrument):
         else:
             # Truncate long messages
             if len(msg) > 12:
-                cls.get_class_logger().warning(f"Truncating message to 12 characters (original: {msg})")
+                cls.logger().warning(f"Truncating message to 12 characters (original: {msg})")
                 msg = msg[:12]
 
             # Set message and enable message mode
@@ -426,7 +426,7 @@ class Picoammeter6487(_KeithleyInstrument):
             self._source_sweep_range.append(voltage)
             voltage += step
 
-        self.get_logger().info(f"Sweep values: {', '.join(map(str, self._source_sweep_range))}")
+        self.logger().info(f"Sweep values: {', '.join(map(str, self._source_sweep_range))}")
 
     @SCPIHardware.register_parameter(description='Source sweep measurement delay')
     def set_source_sweep_settling(self, settling_time: TYPE_TIME):
@@ -472,7 +472,8 @@ class Picoammeter6487(_KeithleyInstrument):
                 'voltage': source_voltage
             }, tags={
                 'source_voltage': source_voltage,
-                'source_enabled': source_enabled
+                'source_enabled': source_enabled,
+                'source_sweep': False
             })
         else:
             return Measurement(self, MeasurementGroup.CONDUCTOMETRIC_IV, {
@@ -480,12 +481,19 @@ class Picoammeter6487(_KeithleyInstrument):
                 'voltage': source_voltage
             }, tags={
                 'source_voltage': source_voltage,
-                'source_enabled': source_enabled
+                'source_enabled': source_enabled,
+                'source_sweep': False
             })
 
     @SCPIHardware.register_measurement(description='Measure current/resistance across range of source voltages')
     def get_sweep(self) -> TYPE_MEASUREMENT_LIST:
         measurement_list = []
+        sweep_tags = {
+            'source_sweep': True
+        }
+
+        if self._settling_time is not None:
+            sweep_tags['source_settling_delay'] = self._settling_time
 
         if self._source_sweep_range is None:
             raise MeasurementUnavailable('Sweep range not configured')
@@ -498,7 +506,10 @@ class Picoammeter6487(_KeithleyInstrument):
 
             # Get reading
             try:
-                measurement_list.append(self.get_reading())
+                measurement = self.get_reading()
+                measurement.add_tags(sweep_tags)
+
+                measurement_list.append(measurement)
             except MeasurementUnavailable:
                 pass
 

@@ -1,15 +1,18 @@
 import time
 
 import flask
+from experimentlib.logging import get_logger, INFO
+from experimentlib.logging.classes import LoggedAbstract
+from experimentlib.logging.filters import only_event_factory
+from experimentlib.logging.handlers import BufferedHandler
 
 import experimentserver
-from experimentserver.data.measurement import MeasurementSource, TYPE_TAG_DICT
+from experimentserver.data.measurement import MeasurementSource, TYPE_TAG_DICT, MeasurementTarget, Measurement, \
+    MeasurementGroup
 from experimentserver.config import ConfigManager
 from experimentserver.hardware.manager import HardwareError, HardwareManager
-from experimentserver.protocol import Procedure, ProcedureConfigurationError, ProcedureTransition
+from experimentserver.protocol import Procedure, ProcedureLoadError, ProcedureTransition, ProcedureState
 from experimentserver.util.thread import CallbackThread
-from experimentserver.util.logging import LoggerObject, get_logger, INFO
-from experimentserver.util.logging.event import EventBufferHandler
 
 
 # Suppress werkzeug logging for status updates
@@ -25,7 +28,7 @@ class UserInterfaceError(experimentserver.ApplicationException):
     pass
 
 
-class WebServer(LoggerObject, MeasurementSource):
+class WebServer(LoggedAbstract, MeasurementSource):
     """  """
 
     def __init__(self, config: ConfigManager, app_metadata: TYPE_TAG_DICT, user_metadata: TYPE_TAG_DICT):
@@ -35,20 +38,23 @@ class WebServer(LoggerObject, MeasurementSource):
         :param app_metadata:
         :param user_metadata:
         """
-        super().__init__()
+        LoggedAbstract.__init__(self)
+        MeasurementSource.__init__(self)
 
         self._config = config
         self._app_metadata = app_metadata
         self._user_metadata = user_metadata
 
         # Initial procedure using default configuration
-        procedure_config = config.get('procedure', default=ConfigManager())
+        procedure_metadata = config.get('procedure_metadata', default=ConfigManager())
 
-        self._procedure = Procedure(config=procedure_config)
+        self._procedure = Procedure(metadata=procedure_metadata, stages=[])
         self._procedure.thread_start()
 
         # Inject event buffer into logger
-        self._event_buffer = EventBufferHandler(enable_filter=False)
+        self._event_buffer = BufferedHandler()
+        self._event_buffer.addFilter(only_event_factory())
+
         self._event_buffer.setLevel(INFO)
         get_logger().addHandler(self._event_buffer)
 
@@ -82,28 +88,26 @@ class WebServer(LoggerObject, MeasurementSource):
 
     def set_procedure(self, procedure: Procedure):
         if self._procedure.get_state().is_valid():
-            raise ProcedureConfigurationError('Procedure currently validated or running, stop before attempting import')
+            raise ProcedureLoadError('Procedure currently validated or running, stop before attempting import')
 
-        self.get_logger().info(f"Unloaded procedure {self._procedure.get_uid()}", event=True)
+        self.logger().info(f"Unloaded procedure {self._procedure.get_uid()}")
 
         # Update procedure
         self._procedure = procedure
         self._procedure.thread_start()
 
-        self.get_logger().info(f"Loaded procedure {self._procedure.get_uid()}", event=True)
+        self.logger().info(f"Loaded procedure {self._procedure.get_uid()}")
 
-    def get_event_buffer(self):
+    def get_event_buffer(self) -> BufferedHandler:
         return self._event_buffer
 
     def get_thread(self):
         return self._thread
 
     def run(self):
-        count = 0
-
         self._thread.thread_start()
 
-        self.get_logger().info(f"{experimentserver.__app_name__} {experimentserver.__version__} ready", notify=True)
+        self.logger().info(f"{experimentserver.__app_name__} {experimentserver.__version__} ready", notify=True)
 
         # Load startup procedure if specified
         startup_procedure_path = self._config.get('startup.procedure')
@@ -120,11 +124,11 @@ class WebServer(LoggerObject, MeasurementSource):
         while True:
             # Check web interface is still running
             if not self._thread.is_thread_alive():
-                self.get_logger().info('Web interface thread stopped')
+                self.logger().info('Web interface thread stopped')
                 break
 
             if not self._procedure.is_thread_alive():
-                self.get_logger().error('Procedure thread stopped unexpectedly')
+                self.logger().error('Procedure thread stopped unexpectedly')
                 break
 
             # Check all managers are still running
@@ -134,7 +138,7 @@ class WebServer(LoggerObject, MeasurementSource):
                 try:
                     manager.check_watchdog()
                 except HardwareError:
-                    self.get_logger().error(
+                    self.logger().error(
                         f"Hardware manager for {manager.get_hardware().get_hardware_identifier()} crashed")
 
                     run = False
@@ -148,10 +152,18 @@ class WebServer(LoggerObject, MeasurementSource):
             try:
                 time.sleep(5)
 
-                # MeasurementTarget.record(Measurement(self, MeasurementGroup.STATUS, {'status': 'running',
-                #                                                                      'count': count}))
+                procedure_state = self._procedure.get_state()
 
-                count += 1
+                if procedure_state in (ProcedureState.RUNNING, ProcedureState.PAUSED):
+                    MeasurementTarget.record(
+                        Measurement(
+                            self,
+                            MeasurementGroup.STATUS,
+                            {
+                                'state': procedure_state.name
+                            }
+                        )
+                    )
             except KeyboardInterrupt:
                 break
 

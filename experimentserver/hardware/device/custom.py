@@ -37,7 +37,7 @@ class AccelMonitor(SerialJSONHardware):
             return measurements
 
         if 'time' not in payload:
-            self.get_logger().warning(f"Missing time field in payload: {payload}")
+            self.logger().warning(f"Missing time field in payload: {payload}")
             return None
 
         if 'acceleration' in payload:
@@ -71,7 +71,7 @@ class AccelMonitor(SerialJSONHardware):
                 'rtd_temperature': payload['temperature']
             }, received))
         else:
-            self.get_logger().warning(f"Unrecognised structure in payload: {payload}")
+            self.logger().warning(f"Unrecognised structure in payload: {payload}")
 
         return measurements
 
@@ -102,7 +102,7 @@ class GenericSerial(SerialHardware):
             response = self._serial_port.read_until()
             response = response.strip()
 
-        self.get_logger().info(f"Response: {response}")
+        self.logger().info(f"Response: {response}")
 
     @SerialHardware.register_measurement(description='Fetch raw data', measurement_group=MeasurementGroup.RAW,
                                          force=True)
@@ -205,7 +205,7 @@ class ValveController(SerialHardware):
             response = self._serial_port.read_until()
             response = response.strip()
 
-        self.get_logger().info(f"Valve position: {response}")
+        self.logger().info(f"Valve position: {response}")
 
     @SerialHardware.register_measurement(description='Valve position', measurement_group=MeasurementGroup.VALVE,
                                          force=True)

@@ -8,7 +8,7 @@ from transitions import EventData
 from experimentserver.data import to_timedelta
 from .hp import HP34401AMultimeter
 from .keithley import MultimeterDAQ6510, Picoammeter6487
-from ..base.core import Hardware, TYPE_PARAMETER_DICT, TYPE_TAG_DICT, TYPE_HARDWARE
+from ..base.core import Hardware, TYPE_PARAMETER_DICT, TYPE_TAG_DICT, TYPE_HARDWARE, TYPE_DYNAMIC_FIELD_DICT
 from ..error import ParameterError
 from ..metadata import TYPE_PARAMETER_COMMAND
 from ...util import metadata as metadata
@@ -32,7 +32,8 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         # Channel configuration
         self._channel_list: typing.List[int] = []
-        self._channel_metadata: typing.Dict[int, typing.Dict[str, str]] = collections.defaultdict(dict)
+        self._channel_metadata: typing.MutableMapping[int, typing.MutableMapping[str, typing.Any]] \
+            = collections.defaultdict(dict)
         self._channel_duration: typing.Optional[timedelta] = None
         self._channel_repeat: int = 1
 
@@ -65,19 +66,19 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         # Switch open time
         self.sleep(self.SWITCH_DELAY, 'contact open time')
 
-    def get_channel_metadata(self, channel: int) -> typing.Dict[str, str]:
+    def get_channel_metadata(self, channel: int) -> typing.Dict[str, typing.Any]:
         channel_tags = {
-            'switch_channel': str(channel)
+            'switch_channel': channel
         }
 
         if self._channel_repeat > 1:
-            channel_tags['switch_repeat'] = str(self._channel_repeat)
+            channel_tags['switch_repeat_total'] = self._channel_repeat
 
         if self._channel_duration is not None:
-            channel_tags['switch_duration'] = str(self._channel_duration.total_seconds())
+            channel_tags['switch_duration'] = self._channel_duration.total_seconds()
 
         if channel in self._channel_metadata:
-            channel_tags.update(self._channel_metadata[channel].copy())
+            channel_tags.update(self._channel_metadata[channel])
 
         return channel_tags
 
@@ -99,16 +100,16 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
             with self._measurement_lock:
                 self._channel_list.append(channel)
 
-        self.get_logger().info(f"Added channel {channel}")
+        self.logger().info(f"Added channel {channel}")
 
     @Hardware.register_parameter(description='Append metadata to measurements from channel')
-    def add_channel_metadata(self, channel: typing.Any, tag: typing.Any, value: typing.Any):
+    def add_channel_metadata(self, channel: typing.Any, tag: str, value: typing.Any):
         channel = int(channel)
         tag = str(tag)
         value = str(value)
 
         self._channel_metadata[channel][tag] = value
-        self.get_logger().info(f"Added channel {channel} metadata: {tag} = {value}")
+        self.logger().info(f"Added channel {channel} metadata: {tag} = {value}")
 
     @Hardware.register_parameter(description='Remove channel from scan list')
     def remove_channel(self, channel: typing.Any):
@@ -121,9 +122,9 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                 # Force all relays open
                 self._daq_open_all()
 
-            self.get_logger().info(f"Removed channel {channel}")
+            self.logger().info(f"Removed channel {channel}")
         else:
-            self.get_logger().warning(f"Channel {channel} not in scan list")
+            self.logger().warning(f"Channel {channel} not in scan list")
 
     @Hardware.register_parameter(description='Set scan list to single channel')
     def set_channel(self, channel: typing.Any):
@@ -138,7 +139,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
             # Force all relays open
             self._daq_open_all()
 
-        self.get_logger().info(f"Selecting channel {channel}", event=True)
+        self.logger().info(f"Selecting channel {channel}")
 
     @Hardware.register_parameter(description='Time to make measurements from selected channel')
     def set_channel_duration(self, duration: typing.Any):
@@ -150,7 +151,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
             else:
                 self._channel_duration = None
 
-        self.get_logger().info(f"Set channel duration to {self.set_channel_duration}")
+        self.logger().info(f"Set channel duration to {self.set_channel_duration}")
 
     @Hardware.register_parameter(description='Set channel repeat reading count')
     def set_channel_repeat(self, count: typing.Any):
@@ -159,7 +160,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         with self._measurement_lock:
             self._channel_repeat = count
 
-        self.get_logger().info(f"Set channel repeat to {self._channel_repeat}")
+        self.logger().info(f"Set channel repeat to {self._channel_repeat}")
 
     @Hardware.register_parameter(description='Time to make measurements from selected channel')
     def set_channel_duration(self, duration: typing.Any):
@@ -171,7 +172,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
             else:
                 self._channel_duration = None
 
-        self.get_logger().info(f"Set channel duration to {self.set_channel_duration}")
+        self.logger().info(f"Set channel duration to {self.set_channel_duration}")
 
     @Hardware.register_parameter(description='Delay before commencing measurements after channel switch')
     def set_post_channel_delay(self, delay: typing.Any):
@@ -183,9 +184,10 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
             else:
                 self._post_channel_delay = None
 
-        self.get_logger().info(f"Set post-channel switch delay to {self._post_channel_delay}")
+        self.logger().info(f"Set post-channel switch delay to {self._post_channel_delay}")
 
-    def produce_measurement(self, extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
+    def produce_measurement(self, extra_dynamic_fields: typing.Optional[TYPE_DYNAMIC_FIELD_DICT] = None,
+                            extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
         extra_tags = extra_tags or {}
 
         measurement_flag = False
@@ -193,20 +195,21 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         with self._measurement_lock:
             # No channels selected, just return
             if len(self._channel_list) == 0:
-                self.get_logger().debug('No channels')
+                self.logger().debug('No channels')
                 return False
 
             with self._daq_hardware.visa_transaction() as daq_transaction:
                 if len(self._channel_list) == 1:
-                    self.get_logger().debug('Single channel')
+                    self.logger().debug('Single channel')
 
                     # Close channel
                     daq_transaction.write("ROUT:CLOS (@{})", self._channel_list[0])
 
                     # Use child method
-                    return self._child_hardware.produce_measurement(self.get_channel_metadata(self._channel_list[0]))
+                    return self._child_hardware.produce_measurement(extra_dynamic_fields,
+                                                                    self.get_channel_metadata(self._channel_list[0]))
 
-                self.get_logger().debug(f"Channels: {', '.join(map(str, self._channel_list))}")
+                self.logger().debug(f"Channels: {', '.join(map(str, self._channel_list))}")
 
                 for channel in self._channel_list:
                     channel_repeat = 0
@@ -219,7 +222,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
                     # Close channel
                     daq_transaction.write("ROUT:CLOS (@{})", channel)
-                    self.get_logger().debug(f"Channel {channel} closed")
+                    self.logger().debug(f"Channel {channel} closed")
 
                     # Start timing
                     channel_time = datetime.now()
@@ -233,20 +236,21 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                         channel_repeat += 1
 
                         measurement_metadata = channel_tags.copy()
-                        measurement_metadata['channel_repeat'] = str(channel_repeat)
+                        measurement_metadata['channel_repeat'] = str()
 
-                        self.get_logger().debug(f"Channel {channel} metadata {measurement_metadata!r}")
+                        self.logger().debug(f"Channel {channel} metadata {measurement_metadata!r}")
 
-                        measurement_flag |= self._child_hardware.produce_measurement(measurement_metadata)
+                        measurement_flag |= self._child_hardware.produce_measurement(extra_dynamic_fields,
+                                                                                     measurement_metadata)
 
                         # Stop when enough measurements made
                         if self._channel_duration is not None:
                             if (datetime.now() - channel_time) > self._channel_duration:
-                                self.get_logger().debug('Enough duration')
+                                self.logger().trace('Enough duration')
                                 channel_active = False
                         elif self._channel_repeat > 1:
                             if channel_repeat > self._channel_repeat:
-                                self.get_logger().debug('Enough repeats')
+                                self.logger().trace('Enough repeats')
                                 channel_active = False
                         else:
                             # No stopping condition, single measurement
@@ -256,7 +260,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
                     # Open channel
                     daq_transaction.write("ROUT:OPEN (@{})", channel)
-                    self.get_logger().debug(f"Channel {channel} opened")
+                    self.logger().debug(f"Channel {channel} opened")
 
                     self.post_channel_open(channel)
 

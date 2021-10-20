@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import time
 import threading
-import typing
 from datetime import datetime
+from typing import Mapping, MutableMapping, Union
 
 import transitions
 import wrapt
 
-from . import CommandError, Hardware, HardwareError, CommunicationError, ExternalError, NoResetHandler, HardwareState,\
-    HardwareTransition, TYPE_HARDWARE
+from . import CommandError, Hardware, HardwareIdentifierError, HardwareError, CommunicationError, ExternalError,\
+    NoResetHandler, HardwareState, HardwareTransition
 from experimentserver.util.state import ManagedStateMachine, TYPE_STATE, TYPE_TRANSITION
 from experimentserver.util.thread import LockTimeout
-from experimentserver.util.module import AbstractTracked, TTracked
 
 
 # noinspection PyAbstractClass
@@ -25,9 +24,9 @@ class HardwareStateWrapper(wrapt.ObjectProxy):
         try:
             self.transition_error(event)
         except CommunicationError:
-            self.get_logger().exception('Communication error occurred while handling error')
+            self.logger().exception('Communication error occurred while handling error')
         except ExternalError:
-            self.get_logger().exception('Hardware reported error while handling error')
+            self.logger().exception('Hardware reported error while handling error')
 
     def _wrapped_transition_reset(self, event: transitions.EventData):
         try:
@@ -36,7 +35,7 @@ class HardwareStateWrapper(wrapt.ObjectProxy):
             pass
 
 
-class HardwareManager(ManagedStateMachine, AbstractTracked):
+class HardwareManager(ManagedStateMachine):
     """ Hardware manager manager for asynchronous monitoring and control of Hardware objects. """
 
     # Limit the maximum repetition rate of the management thread when no measurements are made
@@ -47,8 +46,9 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
 
     _WATCHDOG_RESET = 300
 
-    # Internal list of manager instances
-    _manager_instances: typing.Mapping[str, HardwareManager] = {}
+    # List of active hardware manager instances
+    _MANAGER_LUT: MutableMapping[str, HardwareManager] = {}
+    _MANAGER_LUT_LOCK = threading.RLock()
 
     def __init__(self, hardware: Hardware):
         """
@@ -56,12 +56,11 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
         :param hardware: Hardware object to manage
         """
         # Wrap Hardware object with additional handling methods
-        self._hardware = HardwareStateWrapper(hardware)
+        self._hardware: Union[HardwareStateWrapper, Hardware] = HardwareStateWrapper(hardware)
 
         # Setup state machine within wrapped hardware
         ManagedStateMachine.__init__(self, self._hardware.get_hardware_identifier(True), self._hardware, HardwareState,
                                      HardwareTransition, HardwareState.DISCONNECTED)
-        AbstractTracked.__init__(self, self._hardware.get_identifier())
 
         # Reset timeout and target state to restore
         self._reset_time = None
@@ -69,6 +68,23 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
 
         # Watchdog
         self._watchdog = threading.Event()
+
+        # Save instance, conflict management already handled by Hardware
+        with self._MANAGER_LUT_LOCK:
+            self._MANAGER_LUT[self._hardware.get_hardware_identifier()] = self
+
+    @classmethod
+    def get_instance(cls, hardware_identifier: str) -> HardwareManager:
+        with cls._MANAGER_LUT_LOCK:
+            if hardware_identifier not in cls._MANAGER_LUT:
+                raise HardwareIdentifierError(f"Unknown hardware identifier \"{hardware_identifier}\"")
+
+            return cls._MANAGER_LUT[hardware_identifier]
+
+    @classmethod
+    def get_all_instances(cls) -> Mapping[str, HardwareManager]:
+        with cls._MANAGER_LUT_LOCK:
+            return dict(cls._MANAGER_LUT)
 
     def get_hardware(self) -> Hardware:
         return self._hardware.__wrapped__
@@ -83,25 +99,11 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
         if not self._watchdog.wait(self._WATCHDOG_RESET):
             raise HardwareError('Watchdog timeout')
 
-    @classmethod
-    def get_all_hardware_instances(cls: typing.Type[TTracked], hardware_class: typing.Type[TYPE_HARDWARE],
-                                   filter_connected: bool = True) -> typing.Dict[str, TTracked]:
-        """
-
-        :param hardware_class:
-        :param filter_connected:
-        :return:
-        """
-        instances = super(HardwareManager, cls).get_all_hardware_instances(True)
-
-        return {k: v for k, v in instances.items() if issubclass(v.__class__, hardware_class) and
-                (not filter_connected or v.get_state().is_connected())}
-
-    def force_disconnect(self) -> typing.NoReturn:
+    def force_disconnect(self):
         """ Force hardware to disconnected state regardless of current state. """
         # Get current state
         with self._state_lock:
-            self.get_logger().warning('Forcing disconnect')
+            self.logger().warning('Forcing disconnect')
 
             # Clear pending transitions
             self.clear_transition()
@@ -112,14 +114,14 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
             try:
                 with self._hardware.hardware_lock():
                     if hardware_state.is_error():
-                        self.get_logger().error('Hardware in error state during forced disconnect')
+                        self.logger().error('Hardware in error state during forced disconnect')
 
                         # Clear error state
                         HardwareTransition.RESET.apply(self._hardware)
                     else:
                         # If currently running then stop
                         if hardware_state == HardwareState.RUNNING:
-                            self.get_logger().info('Stopping hardware')
+                            self.logger().info('Stopping hardware')
 
                             HardwareTransition.STOP.apply(self._hardware)
 
@@ -127,7 +129,7 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
 
                         # If stopped then cleanup
                         if hardware_state == HardwareState.CONFIGURED:
-                            self.get_logger().info('Cleaning up hardware')
+                            self.logger().info('Cleaning up hardware')
 
                             HardwareTransition.CLEANUP.apply(self._hardware)
 
@@ -135,13 +137,13 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
 
                         # If configured then disconnect
                         if hardware_state == HardwareState.CONNECTED:
-                            self.get_logger().info('Disconnecting hardware')
+                            self.logger().info('Disconnecting hardware')
 
                             HardwareTransition.DISCONNECT.apply(self._hardware)
             except CommunicationError:
-                self.get_logger().exception('Hardware communication error occurred during disconnect')
+                self.logger().exception('Hardware communication error occurred during disconnect')
             except ExternalError:
-                self.get_logger().exception('Hardware reported error during during disconnect')
+                self.logger().exception('Hardware reported error during during disconnect')
 
                 # Try and transition to error state (might contain fail-safe code)
                 HardwareTransition.ERROR.apply(self._hardware)
@@ -156,7 +158,7 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
         if issubclass(type(exc), HardwareError):
             HardwareTransition.ERROR.apply(self._hardware)
 
-    def _thread_manager(self) -> typing.NoReturn:
+    def _thread_manager(self) -> None:
         # Activity flag to indicate an operation was performed on this loop (prevents high idle CPU usage)
         start_time = time.time()
 
@@ -166,9 +168,9 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
                 try:
                     self.force_disconnect()
                 except LockTimeout:
-                    self.get_logger().exception('Could not acquire hardware lock during shutdown')
+                    self.logger().exception('Could not acquire hardware lock during shutdown')
                 except transitions.MachineError:
-                    self.get_logger().exception('State machine error occurred during shutdown')
+                    self.logger().exception('State machine error occurred during shutdown')
 
                 # Exit from thread
                 return
@@ -182,10 +184,10 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
                 # Set timeout for reset if not already set
                 self._reset_time = time.time() + self._TIMEOUT_RESET
 
-                self.get_logger().info(f"Reset at {datetime.fromtimestamp(self._reset_time).strftime('%H:%M:%S')}")
+                self.logger().info(f"Reset at {datetime.fromtimestamp(self._reset_time).strftime('%H:%M:%S')}")
             elif time.time() >= self._reset_time:
                 # Attempt to reset hardware after timeout
-                self.get_logger().info('Attempting reset', event=True)
+                self.logger().info('Attempting hardware reset', event=True)
 
                 with self._hardware.hardware_lock():
                     try:
@@ -195,28 +197,26 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
                         if self._reset_state is HardwareState.CONNECTED or \
                                 self._reset_state is HardwareState.CONFIGURED or \
                                 self._reset_state is HardwareState.RUNNING:
-                            self.get_logger().info("Attempting reconnect")
+                            self.logger().info("Attempting hardware reconnect")
                             HardwareTransition.CONNECT.apply(self._hardware)
 
                         if self._reset_state is HardwareState.CONFIGURED or \
                                 self._reset_state is HardwareState.RUNNING:
-                            self.get_logger().info("Attempting reconfigure")
+                            self.logger().info("Attempting hardware reconfigure")
                             HardwareTransition.CONFIGURE.apply(self._hardware)
 
                         if self._reset_state is HardwareState.RUNNING:
-                            self.get_logger().info("Attempting restart")
+                            self.logger().info("Attempting hardware restart")
                             HardwareTransition.START.apply(self._hardware)
 
-                        self.get_logger().info('Reset successful', event=True, notify=True)
+                        self.logger().info('Successfully reset hardware', event=True, notify=True)
                     except CommunicationError:
-                        self.get_logger().error('Hardware communication error occurred during reset', exc_info=True,
-                                                notify=False)
+                        self.logger().error('Hardware communication error occurred during reset', exc_info=True)
 
                         # Return to error state
                         HardwareTransition.ERROR.apply(self._hardware)
                     except ExternalError:
-                        self.get_logger().error('Hardware reported error during reset', exc_info=True,
-                                                notify=False)
+                        self.logger().error('Hardware reported error during reset', exc_info=True)
 
                         # Return to error state
                         HardwareTransition.ERROR.apply(self._hardware)
@@ -241,17 +241,17 @@ class HardwareManager(ManagedStateMachine, AbstractTracked):
                 try:
                     activity_flag |= self._hardware.produce_measurement()
                 except CommandError:
-                    self.get_logger().exception('Command error occurred while gathering measurements')
+                    self.logger().exception('Command error occurred while gathering measurements')
 
                     # Transition to error state
                     HardwareTransition.ERROR.apply(self._hardware)
                 except CommunicationError:
-                    self.get_logger().exception('Hardware communication error occurred while gathering measurements')
+                    self.logger().exception('Hardware communication error occurred while gathering measurements')
 
                     # Transition to error state
                     HardwareTransition.ERROR.apply(self._hardware)
                 except ExternalError:
-                    self.get_logger().exception('Hardware reported error while gathering measurements')
+                    self.logger().exception('Hardware reported error while gathering measurements')
 
                     # Transition to error state
                     HardwareTransition.ERROR.apply(self._hardware)

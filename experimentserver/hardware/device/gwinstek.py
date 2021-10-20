@@ -7,8 +7,8 @@ from datetime import datetime
 from .. import MeasurementError
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
 from ..base.scpi import SCPIHardware
-from experimentserver.data import TYPE_UNIT, units, to_unit, Measurement, MeasurementGroup, TYPE_MEASUREMENT_LIST
 from ..base.visa import VISAHardware, TYPE_ERROR
+from experimentserver.data import TYPE_UNIT, units, to_unit, Measurement, MeasurementGroup, TYPE_MEASUREMENT_LIST
 
 
 __author__ = 'Chris Harrison'
@@ -263,7 +263,7 @@ class GWInstekLCR6000Series(SCPIHardware):
                      msg: typing.Optional[str] = None) -> typing.NoReturn:
         if msg is not None:
             if len(msg) > 30:
-                cls.get_class_logger().warning("Truncating message to 30 characters (original: {})".format(msg))
+                cls.logger().warning("Truncating message to 30 characters (original: {})".format(msg))
                 msg = msg[:30]
                 msg = msg.replace(':', ' ')
 

@@ -1,13 +1,14 @@
 import typing
+from datetime import datetime, timedelta, timezone
 
 import influxdb_client
 import urllib3
+from experimentlib.logging.classes import LoggedAbstract
 from influxdb_client.client.write_api import ASYNCHRONOUS
 
 import experimentserver
-from experimentserver.data.measurement import Measurement
-from experimentserver.util.logging import LoggerObject
-from experimentserver.data.measurement import MeasurementTarget
+from experimentserver.data import to_unit, Quantity
+from experimentserver.data.measurement import Measurement, MeasurementTarget
 
 
 # Suppress HTTPS warnings
@@ -18,14 +19,14 @@ class DatabaseError(experimentserver.ApplicationException):
     pass
 
 
-class _InfluxDBv2Client(LoggerObject, MeasurementTarget):
+class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
     _INFLUXDB_RETRY = urllib3.Retry()
 
     def __init__(self, identifier: str, connect_args: typing.MutableMapping[str, typing.Any]):
         self._identifier = identifier
 
-        LoggerObject.__init__(self, logger_name_postfix=f":{self._identifier}")
-        MeasurementTarget.__init__(self, identifier)
+        LoggedAbstract.__init__(self, self._identifier)
+        MeasurementTarget.__init__(self, self._identifier)
 
         self.bucket = connect_args.pop('bucket')
         self.client = influxdb_client.InfluxDBClient(**connect_args, retries=self._INFLUXDB_RETRY)
@@ -34,7 +35,7 @@ class _InfluxDBv2Client(LoggerObject, MeasurementTarget):
         health = self.client.health()
 
         if health.status == 'pass':
-            self.get_logger().info(f"InfluxDB health: OK {health.version}")
+            self.logger().info(f"InfluxDB health: OK {health.version}")
         else:
             raise DatabaseError(f"InfluxDB failed health check with status {health}")
 
@@ -50,17 +51,28 @@ class _InfluxDBv2Client(LoggerObject, MeasurementTarget):
         point = influxdb_client.Point(measurement.measurement_group.value).time(measurement.timestamp)
 
         # Add fields
-        for field, value in measurement.get_fields(False, False).items():
+        for field, value in measurement.get_fields().items():
             point.field(field, value)
 
         # Convert tags to strings
         for tag, value in measurement.get_tags().items():
             if isinstance(value, bool):
                 # InfluxDB style boolean
-                point.tag(tag, 'true' if value else 'false')
+                value = 'true' if value else 'false'
+            elif isinstance(value, Quantity):
+                value = str(value)
+            elif isinstance(value, timedelta):
+                value = str(to_unit(value.total_seconds(), 's'))
+            elif isinstance(value, datetime):
+                # Add UTC referenced tag
+                point.tag(tag + '_utc', value.astimezone(timezone.utc).isoformat())
+
+                value = value.isoformat()
             elif not isinstance(value, str):
-                point.tag(tag, str(value))
-            else:
+                self.logger().warning(f"Casting tag {tag} (repr: {value!r}, type: {type(value)}) to string")
+                value = str(value)
+
+            if len(value) > 0:
                 point.tag(tag, value)
 
         self.write_api.write(self.bucket, record=point)

@@ -1,10 +1,11 @@
 import typing
 from datetime import datetime, timedelta
 
+from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE
+
 from . import BaseStage
 from ...config import ConfigManager
 from ...data import TYPE_TAG_DICT, TYPE_TIME, Measurement, to_timedelta
-from ...util.constant import FORMAT_TIMESTAMP
 
 
 class Delay(BaseStage):
@@ -17,7 +18,7 @@ class Delay(BaseStage):
         metadata = metadata or {}
 
         metadata.update({
-            'delay_interval': str(self._delay_interval.total_seconds())
+            'delay_interval': self._delay_interval
         })
 
         if sync_minute:
@@ -57,8 +58,8 @@ class Delay(BaseStage):
 
         self._sync_delay_exit_timestamp()
 
-        self.get_logger().info(f"Delay for {self._delay_interval} until "
-                               f"{self._delay_exit_timestamp.strftime(FORMAT_TIMESTAMP)}")
+        self.logger().info(f"Delay for {self._delay_interval} until "
+                           f"{self._delay_exit_timestamp.strftime(FORMAT_TIMESTAMP_CONSOLE)}")
 
         # Add tag
         Measurement.add_global_tag('delay_interval', self._delay_interval.total_seconds())
@@ -110,7 +111,7 @@ class Pause(BaseStage):
     def stage_enter(self) -> typing.NoReturn:
         super().stage_enter()
 
-        self.get_logger().info('Reached pause in procedure', notify=True)
+        self.logger().info('Reached pause in procedure', notify=True)
 
     def get_stage_duration(self) -> typing.Optional[timedelta]:
         return None
@@ -147,6 +148,6 @@ class Notify(Setup):
     def stage_enter(self) -> typing.NoReturn:
         super().stage_enter()
 
-        self.get_logger().info(self._message, notify=True)
+        self.logger().info(self._message, notify=True)
 
 

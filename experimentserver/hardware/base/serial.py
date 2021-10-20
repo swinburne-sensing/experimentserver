@@ -45,7 +45,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
         with self._serial_lock.lock():
             # Open serial port
             try:
-                self.get_logger().debug(f"Opening serial port using args: {self._serial_args}")
+                self.logger().debug(f"Opening serial port using args: {self._serial_args}")
                 self._serial_port = serial.Serial(**self._serial_args)
             except serial.SerialException as exc:
                 raise CommunicationError(f"Unable to open serial port {self._serial_args['port']}") from exc
@@ -128,7 +128,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
                 raise CommunicationError('Error reading from serial port') from exc
 
             if len(serial_buffer) > self._BUFFER_MAX_LENGTH:
-                self.get_logger().warning('Buffer overflow', event=False)
+                self.logger().warning('Buffer overflow')
                 serial_buffer.clear()
                 break
 
@@ -137,13 +137,13 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
             while eol_index >= 0:
                 payload = bytes(serial_buffer[:eol_index])
 
-                self.get_logger().debug(f"Payload found: {payload!r}")
+                self.logger().debug(f"Payload found: {payload!r}")
 
                 # Place in consumer queue
                 try:
                     self._thread_payload_consumer.append((payload, datetime.now()))
                 except ThreadException:
-                    self.get_logger().warning('Payload consumer thread not running')
+                    self.logger().warning('Payload consumer thread not running')
 
                 # Trim buffer
                 serial_buffer = serial_buffer[eol_index + 1:]
@@ -175,7 +175,7 @@ class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
 
     def _thread_payload_consumer_event(self, payload: typing.Optional[typing.Tuple[bytes, datetime]]):
         if payload is None:
-            self.get_logger().error('No payload')
+            self.logger().error('No payload')
             return
 
         # Attempt to decode payload
@@ -187,16 +187,16 @@ class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
 
             # If nothing decoded, log that
             if measurements is None:
-                self.get_logger().debug('No measurements generated from payload')
+                self.logger().debug('No measurements generated from payload')
             else:
-                self.get_logger().debug(f"Decoded {len(measurements)} measurement(s)")
+                self.logger().debug(f"Decoded {len(measurements)} measurement(s)")
 
                 for measurement in measurements:
                     MeasurementTarget.record(measurement)
         except TypeError as exc:
-            self.get_logger().warning(f"Bad type in payload \"{payload[0]}\", error: {exc}")
+            self.logger().warning(f"Bad type in payload \"{payload[0]}\", error: {exc}")
         except UnicodeDecodeError as exc:
-            self.get_logger().warning(f"Could not decode unicode in \"{payload[0]}\", error: {exc}")
+            self.logger().warning(f"Could not decode unicode in \"{payload[0]}\", error: {exc}")
 
 
 class SerialJSONHardware(SerialStringHardware, metaclass=abc.ABCMeta):
@@ -211,5 +211,5 @@ class SerialJSONHardware(SerialStringHardware, metaclass=abc.ABCMeta):
 
             return self._handle_object(payload_obj, received)
         except json.decoder.JSONDecodeError as exc:
-            self.get_logger().warning(f"Could not decode JSON in \"{payload[0]}\", error: {exc}")
+            self.logger().warning(f"Could not decode JSON in \"{payload[0]}\", error: {exc}")
             return None

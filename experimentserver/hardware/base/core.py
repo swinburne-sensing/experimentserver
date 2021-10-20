@@ -8,19 +8,26 @@ import sys
 import threading
 import typing
 
+from experimentlib.logging.classes import LoggedAbstract
+from experimentlib.util.classes import HybridMethod
 from transitions import EventData
 
 import experimentserver.util.metadata as metadata
-from ..error import MeasurementError, MeasurementUnavailable, ParameterError, NoResetHandler
-from ..metadata import TYPE_PARAMETER_DICT, TYPE_PARAMETER_COMMAND, _MeasurementMetadata, _ParameterMetadata
-from experimentserver.data.measurement import MeasurementSource, Measurement, MeasurementTarget, TYPE_TAG_DICT
-from experimentserver.util.logging import LoggerObject
+from experimentserver import ApplicationException
+from experimentserver.data.measurement import MeasurementSource, Measurement, MeasurementTarget, TYPE_TAG_DICT,\
+    TYPE_DYNAMIC_FIELD_DICT
+from experimentserver.hardware.error import MeasurementError, MeasurementUnavailable, ParameterError, NoResetHandler
+from experimentserver.hardware.metadata import TYPE_PARAMETER_DICT, TYPE_PARAMETER_COMMAND, _MeasurementMetadata, \
+    _ParameterMetadata
 from experimentserver.util.metadata import BoundMetadataCall
-from experimentserver.util.module import HybridMethod, AbstractTracked
 from experimentserver.util.thread import ThreadLock
 
 
-class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
+class HardwareIdentifierError(ApplicationException):
+    pass
+
+
+class Hardware(LoggedAbstract, MeasurementSource):
     """ Base class for all Hardware objects controlled in experiments.
 
     Hardware can represent instrumentation used to perform measurements (like a multimeter), or equipment that controls
@@ -29,6 +36,10 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
     If implementing new hardware modules then this should be the parent class (or one of its abstract children like
     VISAHardware or SCPIHardware if applicable).
     """
+
+    # List of active hardware instances
+    _HARDWARE_LUT: typing.MutableMapping[str, Hardware] = {}
+    _HARDWARE_LUT_LOCK = threading.RLock()
 
     # Timeout to prevent deadlocks
     _HARDWARE_LOCK_TIMEOUT = 30
@@ -44,9 +55,10 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
         # Force identifier to be lower case and stripped
         identifier = identifier.strip().lower()
 
-        AbstractTracked.__init__(self, identifier)
-        LoggerObject.__init__(self, logger_name_postfix=f":{self._identifier}")
+        LoggedAbstract.__init__(self, identifier)
         MeasurementSource.__init__(self)
+
+        self._identifier = identifier
 
         # Hardware interaction lock
         self._hardware_lock = ThreadLock(f"{self._identifier}:hardware", self._HARDWARE_LOCK_TIMEOUT)
@@ -61,6 +73,14 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
         # Enabled measurement map
         self._measurement_lock = threading.RLock()
         self._measurement: typing.Optional[str, bool] = None
+
+        # Add to list of instances
+        with self._HARDWARE_LUT_LOCK:
+            if identifier in self._HARDWARE_LUT:
+                raise HardwareIdentifierError(f"Identifier conflict, \"{identifier}\" already defined")
+
+            # Save instance
+            self._HARDWARE_LUT[self._identifier] = self
 
     # Hardware metadata
     @classmethod
@@ -108,9 +128,9 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
         :return: str
         """
         if capitalise:
-            return ''.join([x.capitalize() for x in self.get_identifier().split('_')])
+            return ''.join([x.capitalize() for x in self._identifier.split('_')])
         else:
-            return self.get_identifier()
+            return self._identifier
 
     def get_hardware_instance_description(self) -> str:
         """ Provide a description of this particular instance of Hardware.
@@ -197,7 +217,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
                 # Enable the selected measurement
                 self.enable_hardware_measurement(name)
 
-        self.get_logger().info(f"Configured measurement: {name}")
+        self.logger().info(f"Configured measurement: {name}")
 
     @register_parameter(description='Enable a measurement method', order=0,
                         validation={'name': _validate_measurement})
@@ -213,7 +233,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
         with self._measurement_lock:
             self._measurement[name] = True
 
-        self.get_logger().info(f"Enabled measurement: {name}")
+        self.logger().info(f"Enabled measurement: {name}")
 
     @register_parameter(description='Disable a measurement method', order=0,
                         validation={'name': _validate_measurement})
@@ -229,10 +249,11 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
         with self._measurement_lock:
             self._measurement[name] = False
 
-        self.get_logger().info(f"Disabled measurement: {name}")
+        self.logger().info(f"Disabled measurement: {name}")
 
-    def produce_measurement(self, extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
-        """
+    def produce_measurement(self, extra_dynamic_fields: typing.Optional[TYPE_DYNAMIC_FIELD_DICT] = None,
+                            extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
+        """ FIXME TYPE_DYNAMIC_FIELD
 
         :return: True if measurements were produced, False otherwise
         """
@@ -261,18 +282,29 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
                         measurement_return = measurement_method()
 
                         if measurement_return is not None:
-                            if type(measurement_return) is Measurement:
+                            if isinstance(measurement_return, Measurement):
                                 # Single result with metadata
                                 measurement_return.add_tags(extra_tags)
+
+                                if extra_dynamic_fields is not None:
+                                    for field_name, field_callable in extra_dynamic_fields.items():
+                                        measurement_return.add_field(field_name, field_callable(measurement_return))
+
                                 MeasurementTarget.record(measurement_return)
-                            elif type(measurement_return) is list:
+                            elif isinstance(measurement_return, list):
                                 # Multiple results with metadata
                                 for measurement in measurement_return:
                                     measurement.add_tags(extra_tags)
+
+                                    if extra_dynamic_fields is not None:
+                                        for field_name, field_callable in extra_dynamic_fields.items():
+                                            measurement.add_field(field_name, field_callable(measurement))
+
                                     MeasurementTarget.record(measurement)
-                            elif type(measurement_return) is dict:
+                            elif isinstance(measurement_return, dict):
                                 # Single result without metadata
                                 MeasurementTarget.record(Measurement(self, meta.measurement_group, measurement_return,
+                                                                     dynamic_fields=extra_dynamic_fields,
                                                                      tags=extra_tags))
                             else:
                                 raise MeasurementError(
@@ -351,7 +383,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
         # If not bound then do that now
         if type(parameter_command) is not list or not all([type(x) is BoundMetadataCall for x in parameter_command]):
-            self.get_logger().debug('Parameters bound inside state transition')
+            self.logger().debug('Parameters bound inside state transition')
             parameter_command = self.bind_parameter(parameter_command)
 
         # Ignore empty lists
@@ -414,7 +446,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
             enabled_list = ', '.join([measure for measure, enabled in self._measurement.items() if enabled])
 
-            self.get_logger().info(f"Configured default measurements: {enabled_list}")
+            self.logger().info(f"Configured default measurements: {enabled_list}")
 
     @abc.abstractmethod
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
@@ -498,7 +530,7 @@ class Hardware(AbstractTracked, LoggerObject, MeasurementSource):
 
         :param event: transition metadata
         """
-        self.get_logger().error(f"Hardware {self.get_hardware_identifier()} has entered an error state")
+        self.logger().error(f"Hardware {self.get_hardware_identifier()} has entered an error state")
 
     def transition_reset(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         """ Optionally called when resetting from an error state.

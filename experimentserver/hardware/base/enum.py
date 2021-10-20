@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import enum
 import typing
+from enum import Enum
 
 
-class HardwareEnum(enum.Enum):
+class HardwareEnum(Enum):
     """ An enum base class useful for VISA fields with a fixes number of valid values. """
 
     @classmethod
@@ -25,7 +25,8 @@ class HardwareEnum(enum.Enum):
         """
         raise NotImplementedError()
 
-    def get_description(self) -> str:
+    @property
+    def description(self) -> str:
         """ Get a user readable description of this VISAEnum.
 
         :return: str
@@ -54,7 +55,8 @@ class HardwareEnum(enum.Enum):
         """
         return None
 
-    def get_tag_value(self) -> str:
+    @property
+    def tag_value(self) -> str:
         """ Get the tag value for this VISAEnum.
 
         :return: str, int, float
@@ -72,7 +74,8 @@ class HardwareEnum(enum.Enum):
         """
         raise NotImplementedError()
 
-    def get_command(self) -> str:
+    @property
+    def visa_value(self) -> str:
         """ Get the command string for this enum.
 
         :return: str representing the enum value in hardware communications

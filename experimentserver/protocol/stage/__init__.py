@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 import abc
-import time
 import typing
 from datetime import datetime, timedelta
 
-from ... import ApplicationException
-from ...config import ConfigManager
-from ...data import TYPE_TAG_DICT, Measurement
-from ...data.measurement import dynamic_field_time_delta
-from ...hardware import HardwareManager, HardwareTransition, ParameterError
-from ...hardware.metadata import BoundMetadataCall, TYPE_PARAMETER_DICT
-from ...util.constant import FORMAT_TIMESTAMP
-from ...util.logging import LoggerObject
-from ...util.module import class_instance_from_str, import_submodules, TrackedIdentifierError
-from ...util.uniqueid import hex_str
+from experimentlib.logging.classes import LoggedAbstract
+from experimentlib.util.classes import reference_from_str
+from experimentlib.util.generate import hex_str
+from experimentlib.util.module import import_submodules
+from experimentlib.util.time import now
+
+from experimentserver import ApplicationException
+from experimentserver.config import ConfigManager
+from experimentserver.data import TYPE_TAG_DICT, Measurement
+from experimentserver.data.measurement import dynamic_field_time_delta
+from experimentserver.hardware import HardwareIdentifierError, HardwareManager, HardwareTransition, ParameterError
+from experimentserver.hardware.metadata import BoundMetadataCall, TYPE_PARAMETER_DICT
 
 
 class StageConfigurationError(ApplicationException):
@@ -27,13 +28,13 @@ class StageRuntimeError(ApplicationException):
     pass
 
 
-class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
+class BaseStage(LoggedAbstract):
     """ Stages form the basis of an experimental procedure. Stages are entered at their beginning, run multiple times
         until flagging completion. Stages can be exported to/imported from dict objects. """
 
     # Export version indicator
-    EXPORT_VERSION = 1
-    _EXPORT_COMPATIBILITY = 1,
+    EXPORT_VERSION = 2
+    _EXPORT_COMPATIBILITY = 2,
 
     def __init__(self, config: ConfigManager, uid: typing.Optional[str] = None,
                  parameters: typing.Optional[TYPE_PARAMETER_DICT] = None,
@@ -51,7 +52,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         # Stage ID
         self._stage_uid = uid or hex_str()
 
-        super(BaseStage, self).__init__(logger_name_postfix='_' + self._stage_uid)
+        LoggedAbstract.__init__(self, self._stage_uid)
 
         # Hardware parameters
         self._stage_parameters = parameters or {}
@@ -169,7 +170,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         for hardware_identifier, hardware_parameters in self._stage_parameters.items():
             if hardware_parameters is not None:
                 try:
-                    self.get_logger().debug(f"Testing parameters {hardware_identifier}: {hardware_parameters!r}")
+                    self.logger().debug(f"Testing parameters {hardware_identifier}: {hardware_parameters!r}")
 
                     # Test hardware is available
                     hardware_manager = HardwareManager.get_instance(hardware_identifier)
@@ -179,14 +180,14 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
 
                     # Save bound parameters
                     self._stage_hardware_parameters_bound.append((hardware_manager, bound_parameters))
-                except TrackedIdentifierError:
+                except HardwareIdentifierError:
                     raise StageRuntimeError(f"Hardware identifier {hardware_identifier} not available")
                 except ParameterError as exc:
                     raise StageRuntimeError(f"Invalid parameter set for {hardware_identifier} (error: {exc!s})")
 
     def stage_enter(self) -> typing.NoReturn:
         """ Called upon stage entry. """
-        self.get_logger().debug('Entering stage')
+        self.logger().debug('Entering stage')
 
         # Save entry time
         self._stage_enter_timestamp = datetime.now()
@@ -199,7 +200,7 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
                 Measurement.add_global_tags({
                     'stage_uid': self._stage_uid,
                     'stage_class': self.__class__.__name__,
-                    'stage_time': time.strftime(FORMAT_TIMESTAMP)
+                    'stage_time': now()
                 })
 
                 Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
@@ -209,13 +210,13 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
 
         # Queue stage parameters
         for hardware_manager, parameters_bound_list in self._stage_hardware_parameters_bound:
-            self.get_logger().debug(f"Queue {hardware_manager.get_hardware().get_hardware_identifier()} parameters")
+            self.logger().debug(f"Queue {hardware_manager.get_hardware().get_hardware_identifier()} parameters")
 
             hardware_manager.queue_transition(HardwareTransition.PARAMETER, parameters_bound_list, block=False)
 
     def stage_pause(self) -> typing.NoReturn:
         """ Called upon stage pause. """
-        self.get_logger().debug('Pausing stage')
+        self.logger().debug('Pausing stage')
 
         # Save pause timestamp
         self._stage_pause_timestamp = datetime.now()
@@ -238,14 +239,14 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
         self._stage_enter_timestamp = None
         self._stage_pause_timestamp = None
 
-        self.get_logger().debug('Exiting stage')
+        self.logger().debug('Exiting stage')
 
     def stage_resume(self) -> typing.NoReturn:
         """ Called upon stage resume. """
         if len(self._stage_metadata) > 0:
             Measurement.add_global_tag('stage_state', 'running')
 
-        self.get_logger().debug('Resuming stage')
+        self.logger().debug('Resuming stage')
 
     # Import/export
     @classmethod
@@ -272,7 +273,8 @@ class BaseStage(LoggerObject, metaclass=abc.ABCMeta):
                                           f"compatibility list ({', '.join(map(str, cls._EXPORT_COMPATIBILITY))})")
 
         # Create class
-        stage = class_instance_from_str(target_class, __name__, **data)
+        class_ref = reference_from_str(target_class, __name__)
+        stage = class_ref(**data)
 
         # Check for valid subclass
         if not issubclass(stage.__class__, cls):

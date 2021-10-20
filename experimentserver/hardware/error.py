@@ -1,7 +1,7 @@
-import experimentserver
+from experimentserver import ApplicationException
 
 
-class HardwareError(experimentserver.ApplicationException):
+class HardwareError(ApplicationException):
     """ Base exception for all errors thrown by Hardware devices. """
     pass
 
@@ -50,6 +50,6 @@ class ParameterError(CommandError):
     pass
 
 
-class NoResetHandler(experimentserver.ApplicationException):
+class NoResetHandler(ApplicationException):
     """ Exception to indicate that reset events should be handled as setup events. """
     pass

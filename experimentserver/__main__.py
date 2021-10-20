@@ -13,7 +13,9 @@ import typing
 import sys
 from datetime import datetime
 
-import yaml
+from experimentlib.file.git import get_git_hash
+from experimentlib.logging import basic_logging, get_logger, DEBUG, INFO
+from experimentlib.util.classes import instance_from_dict
 
 import experimentserver
 import experimentserver.util.thread
@@ -22,15 +24,7 @@ from experimentserver.data.measurement import Measurement, MeasurementTarget
 from experimentserver.database import setup_database
 from experimentserver.hardware import Hardware, device, HardwareManager
 from experimentserver.server import start_server
-from experimentserver.util.git import get_git_hash
-from experimentserver.util.logging import get_logger
-from experimentserver.util.logging.notify import PushoverNotificationHandler
-from experimentserver.util.module import class_instance_from_dict
 from experimentserver.versions import dependencies, python_version_tested
-
-# Exit codes
-EXIT_SUCCESS = 0
-EXIT_ERROR_ARGUMENTS = -1
 
 
 # Timeout before ignoring running threads and exiting in release mode
@@ -47,18 +41,22 @@ def __exit_handler(exit_logger):
     exit_logger.critical('Stopped abnormally', notify=True, event=True)
 
 
-def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str, str],
-         procedure_path: typing.Optional[str] = None) \
-        -> typing.NoReturn:
+def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str, str],
+         procedure_path: typing.Optional[str] = None) -> int:
     """ Launch the experimentserver application.
 
     :param debug: if True application will launch in debug mode
-    :param enable_pushover: if True pushover notifications will be sent
     :param config_paths: path(s) to configuration file(s)
     :param cli_tags: dict containing additional metadata tags
     :param procedure_path:
     """
     time_startup = datetime.now()
+
+    # Initial logging setup
+    basic_logging(level=DEBUG if debug else INFO)
+
+    # Get root logger
+    root_logger = get_logger(experimentserver.__app_name__)
 
     # Create config directory if it doesn't exist
     try:
@@ -72,43 +70,21 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
 
         for config_path in config_paths:
             config_path = os.path.abspath(config_path)
-            print(f"Loading configuration: {config_path}")
+            root_logger.info(f"Loading configuration: {config_path}")
 
             app_config.load(config_path)
     except Exception:
         print("An error occurred while attempting to load application configuration.")
         raise
 
-    # Get root logger
-    root_logger = get_logger(experimentserver.__app_name__)
-
     # Wrap launch in a finally block to ensure all threads get to complete, even those created for logging
     try:
         # Configure logging
+        root_logger.warning('Reconfiguring logging, if this hangs there may be a configuration issue')
         logging.config.dictConfig(app_config['logging'])
 
-        # Disable select loggers
-        root_logger.disabled = False
-        logging.getLogger("urllib3").setLevel(logging.INFO)
-        logging.getLogger("pyvisa").setLevel(logging.INFO)
-        logging.getLogger("transitions.core").setLevel(logging.INFO)
-        logging.getLogger("pymodbus").setLevel(logging.INFO)
-
-        # Setup pushover if enabled
-        if enable_pushover:
-            if 'pushover.api_token' in app_config:
-                notify_title = app_config.get('pushover.title', default=experimentserver.__app_name__)
-
-                notify_handler = PushoverNotificationHandler(notify_title, app_config.get('pushover.api_token', True),
-                                                             app_config.get('pushover.user_key', True),
-                                                             app_config.get('pushover.user_device'))
-
-                root_logger.parent.addHandler(notify_handler)
-            else:
-                root_logger.info('No Pushover API key provided')
-
         # Log module version
-        root_logger.info(f"Launching: {experimentserver.__app_name__} {experimentserver.__version__}")
+        root_logger.info(f"Launching: {experimentserver.__app_name__} v{experimentserver.__version__}")
         root_logger.info(f"Developers: {', '.join(experimentserver.__credits__)}")
 
         root_logger.info(f"Command: {' '.join(sys.argv)}")
@@ -127,7 +103,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
             root_logger.warning(f"This python interpreter has not been tested! Tested interpreters: CPython")
 
         # Dump configuration
-        root_logger.info(f"Configuration:\n{yaml.dump(app_config.dump())}")
+        # root_logger.info(f"Configuration:\n{dump(app_config.dump())}")
 
         # If procedure is specified, add to the configuration
         if procedure_path is not None:
@@ -155,32 +131,6 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
 
         # Setup database connections
         for database_identifier, database_connect_args in app_config['database'].items():
-            # Expand URL into individual settings
-            if 'url' in database_connect_args:
-                database_connect_url = database_connect_args.pop('url')
-
-                database_connect_url_match = REGEX_DATABASE_URL.match(database_connect_url)
-
-                if database_connect_url_match is None:
-                    raise experimentserver.ApplicationException(f"Malformed database URL ({database_connect_url})")
-
-                if len(database_connect_url_match[1]) > 0:
-                    database_connect_args['ssl'] = True
-                    database_connect_args['port'] = 443
-                else:
-                    database_connect_args['ssl'] = False
-                    database_connect_args['port'] = 80
-
-                if len(database_connect_url_match[3]) > 0:
-                    database_connect_args['port'] = int(database_connect_url_match[3])
-
-                database_connect_args['host'] = database_connect_url_match[2]
-                database_connect_args['path'] = database_connect_url_match[4] or ''
-
-                # Strip trailing slash
-                if database_connect_args['path'].endswith('/'):
-                    database_connect_args['path'] = database_connect_args['path'][:-1]
-
             # Strip empty values
             database_connect_args = {k: v for k, v in database_connect_args.items() if v != ''}
 
@@ -195,7 +145,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
                 MeasurementTarget.measurement_target_remap(exporter_source, database_target)
 
         app_metadata_string = '\n'.join((f"    {k!s}: {v!s}" for k, v in app_metadata.items()))
-        root_logger.info(f"Started\nMetadata:\n{app_metadata_string}", event=True, notify=True)
+        root_logger.info(f"Startup\nGlobal metadata:\n{app_metadata_string}")
 
         # Append git hash if available
         try:
@@ -210,7 +160,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
 
         # Dump requirements versions
         for module_name, module_version in dependencies.items():
-            root_logger.info(f"Library: {module_name} {module_version}")
+            root_logger.info(f"Module: {module_name} {module_version}")
 
         root_logger.debug('Registering exit handler')
         atexit.register(__exit_handler, root_logger)
@@ -238,7 +188,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
 
                 try:
                     # Create hardware object
-                    hardware_inst = class_instance_from_dict(hardware_inst_config, device)
+                    hardware_inst = instance_from_dict(hardware_inst_config, device)
 
                     root_logger.info(f"Loaded: {hardware_inst} (author: {hardware_inst.get_author()})")
 
@@ -273,12 +223,14 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
             # Run main application
             start_server(app_config, app_metadata, user_metadata)
 
-            root_logger.info(f"Stopped, total runtime: {datetime.now() - time_startup!s}", notify=True, event=True)
+            root_logger.info(f"Stopped, total runtime: {datetime.now() - time_startup!s}")
 
             if url is not None:
                 root_logger.info(f"Completed Grafana URL "
                                  f"{url.format(int(1000 * time_startup.timestamp()), int(1000 * time.time()))}",
                                  notify=True)
+
+            return experimentserver.EXIT_SUCCESS
         finally:
             # Cleanup managers
             for manager_inst in manager_list.values():
@@ -311,7 +263,7 @@ def main(debug: bool, enable_pushover: bool, config_paths: typing.List[str], cli
         root_logger.info(f"Threads stopped")
 
         for thread in threading.enumerate():
-            root_logger.warning(f"Remaining thread: {thread!r}", event=False)
+            root_logger.warning(f"Remaining thread: {thread!r}")
 
         root_logger.info('Done')
 
@@ -323,8 +275,6 @@ parser = argparse.ArgumentParser(description=f"{experimentserver.__app_name__} {
 
 parser.add_argument('config', default=[config_default], help='YAML configuration file', nargs='*')
 parser.add_argument('--debug', action='store_true', dest='debug', help='Enable debug mode')
-parser.add_argument('--no-pushover', action='store_false', dest='pushover', help='Disable automatic Pushover '
-                                                                                 'notifications')
 parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata ags (key=value)')
 
 parser.add_argument('-p', '--procedure', dest='procedure', help='Load and validate specified procedure on startup')
@@ -340,10 +290,8 @@ if app_args.tag is not None:
 
         if len(arg_tag_split) != 2:
             print(f"Invalid tag argument \"{arg_tag}\", should follow the format key=value")
-            exit(EXIT_ERROR_ARGUMENTS)
+            exit(experimentserver.EXIT_ERROR_ARGUMENTS)
 
         app_tags[arg_tag_split[0]] = arg_tag_split[1]
 
-main(app_args.debug, app_args.pushover, app_args.config, app_tags, app_args.procedure)
-
-exit(EXIT_SUCCESS)
+exit(main(app_args.debug, app_args.config, app_tags, app_args.procedure))

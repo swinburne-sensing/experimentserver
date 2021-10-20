@@ -3,33 +3,35 @@
 logging: !include logging.yaml
 
 url:
-  grafana: !envopt GRAFANA_URL
+  grafana: !env GRAFANA_URL
 
 database:
   default:
-    url: !env INFLUXDB_V2_URL
-    org: !env INFLUXDB_V2_ORG
-    token: !env INFLUXDB_V2_TOKEN
-    bucket: !env INFLUXDB_V2_BUCKET
+    url: !envreq INFLUXDB_V2_URL
+    org: !envreq INFLUXDB_V2_ORG
+    token: !envreq INFLUXDB_V2_TOKEN
+    bucket: !envreq INFLUXDB_V2_BUCKET
 
 hardware: !include '{config_path}/hardware.yaml;C:/GasSensing/config/hardware.yaml'
 
 remap: []
 
-procedure:
+procedure_metadata:
   # Default configuration for procedures
-  pulse:
-    experiment: 'Unlabelled Experiment'
-    sample: 'Unlabelled Sample'
+  led_current: ''
+  led_optical_power: ''
+  led_wavelength: ''
+  experiment: 'Unlabelled Experiment'
+  sample: 'Unlabelled Sample'
 
 pushover:
   title: !format '{app_name} {system_hostname}'
-  api_token: !envopt PUSHOVER_API_KEY
-  user_key: !envopt PUSHOVER_USER_KEY
-  user_device: !envopt PUSHOVER_USER_DEVICE
+  api_token: !env PUSHOVER_API_KEY
+  user_key: !env PUSHOVER_USER_KEY
+  user_device: !env PUSHOVER_USER_DEVICE
 
 server:
-  host: !envopt EXPERIMENTSERVER_HOST 0.0.0.0
-  port: !envopt EXPERIMENTSERVER_PORT 5000
+  host: !env EXPERIMENTSERVER_HOST 0.0.0.0
+  port: !env EXPERIMENTSERVER_PORT 5000
 
 ...

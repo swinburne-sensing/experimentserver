@@ -10,6 +10,7 @@ import pyvisa
 import pyvisa.constants
 import pyvisa.errors
 import pyvisa.resources.messagebased
+from experimentlib.logging.classes import Logged
 from transitions import EventData
 
 from .core import Hardware
@@ -17,7 +18,6 @@ from .enum import HardwareEnum
 from ..error import CommunicationError, ExternalError
 from ..metadata import TYPE_PARAMETER_DICT
 from ...data.unit import to_unit, Quantity
-from experimentserver.util.logging import LoggerObject
 
 
 # Disable pyvisa logging (avoids duplication)
@@ -43,7 +43,7 @@ class VISAExternalError(ExternalError):
 class VISAHardware(Hardware, metaclass=abc.ABCMeta):
     """ Base class for instruments relying upon the VISA communication layer. """
 
-    class VISATransaction(LoggerObject):
+    class VISATransaction(Logged):
         """
         Internal wrapper class for VISA transactions protected by a lock. Manages error checking and rate limiting.
         """
@@ -52,7 +52,10 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         _transaction_number_lock = threading.RLock()
 
         def __init__(self, parent: VISAHardware, timeout: typing.Optional[float], error_check: bool, error_raise: bool):
-            super().__init__(logger_name_postfix='[' + parent.get_hardware_identifier() + ']')
+            # Unique identifier for transaction
+            self._transaction_number = self._get_number()
+
+            Logged.__init__(self, f"{parent.get_hardware_identifier()}:{self._transaction_number}")
 
             # Handle to parent object
             self._parent = parent
@@ -63,9 +66,6 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             # Error check enabled flag
             self._error_check = error_check
             self._error_raise = error_raise
-
-            # Unique identifier for transaction
-            self._number = self._get_number()
 
             # Command cache for debugging
             self._command_history: typing.List[str] = []
@@ -85,7 +85,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             if self._parent._visa_resource is None:
                 raise VISACommunicationError('Resource not available')
 
-            self.get_logger().debug(f"Transaction #{self._number} opened")
+            self.logger().comm('Opened')
 
             # Override timeout
             if self._timeout is not None:
@@ -107,11 +107,11 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
                     self._timeout_enter = None
 
-                raise VISACommunicationError(f"Exception in transaction #{self._number} (history: "
+                raise VISACommunicationError(f"Exception in transaction #{self._transaction_number} (history: "
                                              f"{command_history})") from exc_val
 
             if len(self._command_history) > 0 and self._error_check:
-                self.get_logger().debug(f"Transaction #{self._number} checking errors")
+                self.logger().comm('Error check')
 
                 error_buffer = []
                 error_message = None
@@ -135,7 +135,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                     if self._error_raise:
                         raise VISAExternalError(error_message)
                     else:
-                        self.get_logger().warning(error_message)
+                        self.logger().warning(error_message)
 
             # Restore timeout
             if self._timeout_enter is not None:
@@ -145,7 +145,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
             self._command_history = []
 
-            self.get_logger().debug(f"Transaction #{self._number} closed")
+            self.logger().comm('Closed')
 
         # VISA command formatting
         @staticmethod
@@ -195,8 +195,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                     delay = self._parent._visa_rate_limit - (time.time() - self._parent._visa_comm_timestamp)
 
                     if delay > 0:
-                        # self.get_logger().debug(f"Rate limited, waiting {delay} s")
-                        self.sleep(delay, 'visa rate limit')
+                        self.sleep(delay, 'VISA rate limit')
                 try:
                     result = func(self, *args, **kwargs)
 
@@ -229,7 +228,8 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 # Restore timeout
                 self._parent._visa_resource.timeout = original_timeout
 
-            self.get_logger().info(f"Flushed \"{flushed_buffer}\" from resource")
+            if len(flushed_buffer) > 0:
+                self.logger().comm(f"Flushed \"{flushed_buffer}\" from VISA resource read buffer")
 
         @__visa_command_wrapper
         def write(self, command: str, *format_args, visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
@@ -251,9 +251,9 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             self._command_history.append(f"w:\"{command}\"")
 
             if len(visa_kwargs) == 0:
-                self.get_logger().debug(f"Transaction #{self._number} write {command!r}")
+                self.logger().comm(f"Write {command!r}")
             else:
-                self.get_logger().debug(f"Transaction #{self._number} write {command!r} (args: {visa_kwargs!s})")
+                self.logger().comm(f"Write {command!r} (args: {visa_kwargs!s})")
 
             return self._parent._visa_resource.write(command, **visa_kwargs)
 
@@ -279,11 +279,9 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             self._command_history.append(f"wb:\"{command}\"")
 
             if len(visa_kwargs) == 0:
-                self.get_logger().debug(f"Transaction #{self._number} write binary {command!r} (payload: "
-                                        f"{payload!r})")
+                self.logger().comm(f"Write binary {command!r} (payload: {payload!r})")
             else:
-                self.get_logger().debug(f"Transaction #{self._number} write binary {command!r} (payload: "
-                                        f"{payload!r}) (args: {visa_kwargs!s})")
+                self.logger().comm(f"Write binary {command!r} (payload: {payload!r}) (args: {visa_kwargs!s})")
 
             return self._parent._visa_resource.write_binary_values(command, payload, **visa_kwargs)
 
@@ -309,20 +307,20 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             if command is None:
                 if binary:
                     cmd_type = 'rb'
-                    cmd_description = 'read binary'
+                    cmd_description = 'Read binary'
                 elif raw:
                     cmd_type = 'rr'
-                    cmd_description = 'read raw'
+                    cmd_description = 'Read raw'
                 else:
                     cmd_type = 'r'
-                    cmd_description = 'read'
+                    cmd_description = 'Read'
             else:
                 if binary:
                     cmd_type = 'qb'
-                    cmd_description = 'query binary'
+                    cmd_description = 'Query binary'
                 else:
                     cmd_type = 'q'
-                    cmd_description = 'query'
+                    cmd_description = 'Query'
 
                 command = self._visa_format_command(command, format_args, format_kwargs)
 
@@ -330,10 +328,9 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 #     command = command.format(*format_args, **format_kwargs)
 
             if len(visa_kwargs) == 0:
-                self.get_logger().debug(f"Transaction #{self._number} {cmd_description}: {command!r}")
+                self.logger().comm(f"{cmd_description}: {command!r}")
             else:
-                self.get_logger().debug(f"Transaction #{self._number} {cmd_description}: {command!r} "
-                                        f"(args: {visa_kwargs!r})")
+                self.logger().comm(f"{cmd_description}: {command!r} (args: {visa_kwargs!r})")
 
             if command is None:
                 self._command_history.append(cmd_type)
@@ -353,7 +350,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 else:
                     response = self._parent._visa_resource.query(command, delay=self._parent._visa_delay).strip()
 
-            self.get_logger().debug(f"Transaction #{self._number} response {response!r}")
+            self.logger().comm(f"Response {response!r}")
 
             return response
 
@@ -419,7 +416,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
                 # time.sleep(1)
 
-                cls.get_class_logger().info(f"VISA library: {cls.__resource_manager.visalib}")
+                cls.logger().info(f"VISA library: {cls.__resource_manager.visalib}")
 
         return cls.__resource_manager
 
@@ -446,19 +443,19 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
     def _visa_disconnect(self):
         if self._visa_resource is None:
-            self.get_logger().warning('VISA resource must be connected before requesting disconnect')
+            self.logger().warning('VISA resource must be connected before requesting disconnect')
             return
 
         # Close resource
         try:
             self._visa_resource.close()
         except pyvisa.errors.VisaIOError as exc:
-            self.get_logger().warning('VISA IO error occurred during resource release', event=False, exc_info=exc)
+            self.logger().warning('VISA IO error occurred during resource release', exc_info=exc)
 
         # Free resource
         self._visa_resource = None
 
-        self.get_logger().info(f"Released VISA resource {self._visa_address}")
+        self.logger().info(f"Released VISA resource {self._visa_address}")
 
     @classmethod
     def _visa_resource_configure(cls, resource):
@@ -469,10 +466,10 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         super(VISAHardware, self).transition_connect(event)
 
         if self._visa_resource is not None:
-            self.get_logger().warning('Resource already connected, disconnecting')
+            self.logger().warning('Resource already connected, disconnecting')
             self._visa_disconnect()
 
-        self.get_logger().debug(f"Opening resource \"{self._visa_address}\" (args: {self._visa_open_args!r})")
+        self.logger().comm(f"Open resource \"{self._visa_address}\" (args: {self._visa_open_args!r})")
 
         try:
             resource = self.get_visa_resource_manager().open_resource(self._visa_address, **self._visa_open_args)
@@ -498,7 +495,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
         self._visa_resource = resource
 
-        self.get_logger().info(f"Acquired VISA resource {self._visa_address}")
+        self.logger().info(f"Acquired VISA resource {self._visa_address}")
 
         # Clear existing data
         self._visa_resource.clear()
@@ -508,12 +505,12 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
         # Clear existing errors
         with self.visa_transaction(error_check=False) as transaction:
-            self.get_logger().debug('Clearing existing errors from queue')
+            self.logger().comm('Clearing existing errors from queue')
 
             error = self._get_visa_error(transaction)
 
             while error is not None:
-                self.get_logger().warning(f"Existing instrument errors found: {error}")
+                self.logger().warning(f"Existing instrument errors found: {error}")
                 error = self._get_visa_error(transaction)
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:

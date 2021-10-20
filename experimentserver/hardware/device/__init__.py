@@ -1,4 +1,4 @@
-from experimentserver.util.module import import_submodules
+from experimentlib.util.module import import_submodules
 
 
 # Import submodules automatically

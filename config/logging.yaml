@@ -2,36 +2,85 @@
 ---
 version: 1
 disable_existing_loggers: False
+objects:
+  pushover_queue:
+    class: queue.Queue
+    maxsize: 4
+
+filters:
+  notify_filter:
+    (): experimentlib.logging.filters.only_notify_factory
+
 formatters:
   console_format:
     format: "%(asctime)s [%(levelname).1s] %(threadName)s@%(filename)s %(name)s: %(message)s"
     datefmt: "%y%m%d %H:%M:%S"
   file_format:
-    format: "%(asctime)s [%(levelname)s] %(threadName)s@%(filename)s:%(lineno)d %(name)s: %(message)s"
+    format: "%(asctime)s.%(msecs)03d [%(levelname)s] %(threadName)s@%(filename)s:%(lineno)d %(name)s: %(message)s"
     datefmt: "%Y/%m/%d %H:%M:%S"
+
 handlers:
   stdout_handler:
-    class: experimentserver.util.console.ColoramaStreamHandler
+    class: experimentlib.logging.handlers.console.ColoramaStreamHandler
     formatter: console_format
     level: INFO
     stream: ext://sys.stdout
+
   debug_file_handler:
     class: logging.handlers.TimedRotatingFileHandler
     filename: !format "{temp_path}/experimentserver.log"
     when: "D"
     formatter: file_format
-    level: DEBUG
+    level: TRACE
     encoding: "utf-8"
     backupCount: 3
+
   instance_file_handler:
     class: logging.FileHandler
     formatter: file_format
     level: INFO
-    filename: !format "{root_path}/log/run_{date}_{time}.log"
+    filename: !format "{root_path}/log/run_{datetime}.log"
     encoding: "utf-8"
-  database_event_handler:
-    class: experimentserver.util.logging.event.DatabaseEventHandler
-root:
-  level: DEBUG
-  handlers: [stdout_handler, debug_file_handler, instance_file_handler]
-...
+
+  database_handler:
+    class: experimentlib.logging.handlers.db.InfluxDBHandler
+    name: !format "{app_name}"
+    client_args:
+      url: !envreq INFLUXDB_V2_URL
+      token: !envreq INFLUXDB_V2_TOKEN
+      org: !envreq INFLUXDB_V2_ORG
+    bucket:
+      DEBUG: !envreq INFLUXDB_V2_BUCKET_LOG_DEBUG
+      INFO: !envreq INFLUXDB_V2_BUCKET_LOG
+
+  pushover_handler:
+    class: experimentlib.logging.handlers.push.PushoverHandler
+    level: INFO
+    filters:
+      - notify_filter
+    api_token: !env PUSHOVER_API_KEY
+    user_key: !env PUSHOVER_USER_KEY
+    title: !format "{app_name}"
+
+  pushover_queue_handler:
+    class: experimentlib.logging.handlers.QueueListenerHandler
+    queue: cfg://objects.pushover_queue
+    handlers:
+      - cfg://handlers.pushover_handler
+
+loggers:
+  root:
+    level: NOTSET
+    handlers: [stdout_handler, debug_file_handler, instance_file_handler, database_handler, pushover_queue_handler]
+
+  # Silence some built-in loggers
+  urllib3:
+    level: INFO
+  urllib3.connectionpool:
+    level: INFO
+  pyvisa:
+    level: INFO
+  transitions.core:
+    level: INFO
+  pymodbus:
+    level: INFO

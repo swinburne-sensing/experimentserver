@@ -1,2 +1,0 @@
-FORMAT_TIMESTAMP = '%Y-%m-%d %H:%M:%S'
-FORMAT_TIMESTAMP_FILENAME = '%Y%m%d_%H%M%S'

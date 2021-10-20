@@ -4,13 +4,11 @@ import os
 import socket
 import tempfile
 import threading
-import time
 import typing
 
-import yaml
+from experimentlib.file import yaml
 
 import experimentserver
-from experimentserver.util.logging import LoggerObject
 
 
 _TYPING_NODE = typing.Dict[str, typing.Any]
@@ -75,7 +73,13 @@ class ConfigManager(object):
         :return:
         """
         with open(filename) as file:
-            content = yaml.load(file, YAMLShortcutLoader)
+            content = yaml.load(file, format_kwargs={
+                'app_name': f"{experimentserver.__app_name__} v{experimentserver.__version__}",
+                'app_path': experimentserver.APP_PATH,
+                'config_path': experimentserver.CONFIG_PATH,
+                'root_path': os.path.abspath(os.path.join(experimentserver.APP_PATH, '..')),
+                'temp_path': tempfile.gettempdir()
+            })
 
         self.update(content)
 
@@ -187,114 +191,3 @@ class ConfigManager(object):
             node = [cls._create_node(x) if type(x) is dict else x for x in node]
 
         return node
-
-
-class YAMLShortcutLoader(yaml.SafeLoader, LoggerObject):
-    def __init__(self, stream):
-        if type(stream) is not str:
-            self._root = os.path.split(stream.name)[0]
-        else:
-            self._root = None
-
-        yaml.SafeLoader.__init__(self, stream=stream)
-        LoggerObject.__init__(self)
-
-    @classmethod
-    def _format_node(cls, node, parse_str=None):
-        if parse_str is None:
-            parse_str = node.value
-
-        fields = get_system_metadata()
-
-        # Find home directory
-        user_path = os.path.expanduser('~')
-
-        # Add custom fields
-        fields.update({
-            'app_path': experimentserver.APP_PATH,
-            'config_path': experimentserver.CONFIG_PATH,
-            'user_path': user_path,
-            'root_path': os.path.abspath(os.path.join(experimentserver.APP_PATH, '..')),
-            'temp_path': tempfile.gettempdir(),
-            'date': time.strftime('%Y%m%d'),
-            'time': time.strftime('%H%M%S')
-        })
-
-        # Add environment variables
-        for env_var, env_val in os.environ.items():
-            fields['env_' + env_var.lower()] = env_val
-
-        try:
-            return parse_str.format(**fields)
-        except IndexError:
-            raise ConfigurationError(f"Configuration error in node \"{node.tag} {node.value}\" from "
-                                     f"{node.start_mark.name} line {node.start_mark.line}: invalid field format")
-        except KeyError as exc:
-            raise ConfigurationError(f"Configuration error in node \"{node.tag} {node.value}\" from "
-                                     f"{node.start_mark.name} line {node.start_mark.line}: field {exc!s} not found")
-        except Exception as exc:
-            raise ConfigurationError(f"Configuration error in node \"{node.tag} {node.value}\" from "
-                                     f"{node.start_mark.name} line {node.start_mark.line}: unhandled exception") \
-                from exc
-
-    def loader_include(self, node):
-        if self._root is None:
-            raise ConfigurationError('Cannot include files when loading from string')
-
-        filename_abs = None
-
-        for include_path in node.value.split(';'):
-            # From http://stackoverflow.com/questions/528281/how-can-i-include-an-yaml-file-inside-another
-            filename = self._format_node(node, include_path)
-
-            filename_abs = os.path.join(self._root, filename)
-            filename_abs = os.path.abspath(filename_abs)
-
-            if os.path.isfile(filename_abs):
-                self.get_logger().info(f"Include {filename_abs}")
-                break
-            else:
-                self.get_logger().info(f"Include not found {filename_abs}")
-
-        assert filename_abs is not None
-
-        with open(filename_abs) as f:
-            include_data = yaml.load(f, YAMLShortcutLoader)
-
-            return include_data
-
-    @staticmethod
-    def loader_env(_, node):
-        node_list = node.value.split(' ', 1)
-
-        while len(node_list) > 0:
-            node_val = node_list.pop(0)
-
-            if node_val in os.environ:
-                return os.environ[node.value]
-
-        node_list_str = '", "'.join(node_list)
-        raise ConfigurationError(f"No environment variable from list \"{node_list_str}\" defined")
-
-    @staticmethod
-    def loader_env_optional(_, node):
-        node = node.value.split(' ', 1)
-
-        if node[0] not in os.environ:
-            if len(node) == 1:
-                return None
-            else:
-                return node[1]
-
-        return os.environ[node[0]]
-
-    def loader_format(self, node):
-        return self._format_node(node)
-
-
-YAMLShortcutLoader.add_constructor('!include', YAMLShortcutLoader.loader_include)
-YAMLShortcutLoader.add_constructor('!inc', YAMLShortcutLoader.loader_include)
-YAMLShortcutLoader.add_constructor('!env', YAMLShortcutLoader.loader_env)
-YAMLShortcutLoader.add_constructor('!envopt', YAMLShortcutLoader.loader_env_optional)
-YAMLShortcutLoader.add_constructor('!env_optional', YAMLShortcutLoader.loader_env_optional)
-YAMLShortcutLoader.add_constructor('!format', YAMLShortcutLoader.loader_format)

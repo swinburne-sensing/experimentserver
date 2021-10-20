@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import typing
 
+from experimentlib.data.gas import Mixture
 from transitions import EventData
 from pymodbus.client.sync import ModbusTcpClient
 from pymodbus.constants import Endian
 from pymodbus.payload import BinaryPayloadBuilder, BinaryPayloadDecoder
 
-from .. import Hardware, HardwareInitError, CommunicationError, ParameterError
-from ...data import Measurement, MeasurementGroup, TYPE_UNIT, to_unit, get_gas, calc_gcf, units, Quantity
+from .. import Hardware, CommunicationError, ParameterError
+from ...data import Measurement, MeasurementGroup, TYPE_UNIT, to_unit, units, Quantity
 
 
 __author__ = 'Chris Harrison'
@@ -25,44 +26,15 @@ class MCMassFlowController(Hardware):
 
     REGISTER_SET_FLOW_SETPOINT = 1010
 
-    def __init__(self, identifier: str, host: str, composition: typing.Dict[str, str], **kwargs):
-        super(MCMassFlowController, self).__init__(identifier, **kwargs)
+    def __init__(self, identifier: str, host: str, composition: typing.Mapping[str, str], **kwargs):
+        Hardware.__init__(self, identifier, **kwargs)
 
         # Address
         self._host = host
 
         # Gas composition
-        self._composition = {}
-
-        balance_gas = None
-        overall_concentration = 1
-
-        for gas, concentration in composition.items():
-            # Parse gas
-            gas = get_gas(gas)
-
-            # Parse concentration
-            if concentration.lower() == 'balance' or concentration is None:
-                if balance_gas is not None:
-                    raise HardwareInitError('Multiple balance gases specified')
-
-                balance_gas = gas
-            else:
-                concentration = to_unit(concentration, 'dimensionless', allow_none=False)
-
-                # Check if gas is possible
-                overall_concentration -= concentration
-
-                if overall_concentration < 0:
-                    raise HardwareInitError('Gas composition concentrations exceed 100%')
-
-                self._composition[gas] = concentration
-
-        # Fill remaining concentration with balance gas
-        if balance_gas is not None and overall_concentration > 0:
-            self._composition[balance_gas] = to_unit(overall_concentration, 'dimensionless')
-
-        self._gcf = calc_gcf(list(self._composition.keys()), list(self._composition.values()))
+        self._composition = Mixture.from_dict(composition)
+        self._gcf = self._composition.gcf
 
         # Start with sane defaults (from factory)
         self._alicat_mass_flow_unit = units.sccm
@@ -131,7 +103,7 @@ class MCMassFlowController(Hardware):
         if response.isError():
             raise CommunicationError(f"Error during ModbusTCP input register read from {address}: \"{response!s}\"")
 
-        self.get_logger().debug(f"Input register read {address} response: {response.registers!s}")
+        self.logger().debug(f"Input register read {address} response: {response.registers!s}")
 
         decoder = BinaryPayloadDecoder.fromRegisters(response.registers, byteorder=Endian.Big, wordorder=Endian.Big)
         value = decoder.decode_32bit_float()
@@ -162,7 +134,7 @@ class MCMassFlowController(Hardware):
         if response.isError():
             raise CommunicationError(f"Error during ModbusTCP register write to {address}: \"{response!s}\"")
 
-        self.get_logger().info(f"Set mass flow rate: {flow!s}")
+        self.logger().info(f"Set mass flow rate: {flow!s}")
 
     def get_mass_flow(self) -> Quantity:
         return to_unit(self._modbus_read_input_float(self.REGISTER_GET_MASS_FLOW), self._alicat_mass_flow_unit,

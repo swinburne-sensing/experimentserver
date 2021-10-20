@@ -5,21 +5,23 @@ from datetime import datetime, timedelta
 
 import transitions
 import yaml
+from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE
+from experimentlib.util.iterate import flatten_list
+from experimentlib.util.time import now
 
-from .. import ApplicationException
-from .control import ProcedureState, ProcedureTransition
-from .file import YAMLProcedureLoader
+from experimentserver import ApplicationException
+from experimentserver.protocol.control import ProcedureState, ProcedureTransition
+from .file import YAMLProcedureLoader, HEADER
 from .stage import BaseStage, TYPE_STAGE
 from ..config import ConfigManager
 from ..data import TYPE_TAG_DICT, Measurement
 from ..data.measurement import dynamic_field_time_delta
 from ..hardware import HardwareManager, HardwareState, HardwareTransition
-from ..util.constant import FORMAT_TIMESTAMP
 from ..util.state import ManagedStateMachine
 from ..util.uniqueid import hex_str
 
 
-class ProcedureConfigurationError(ApplicationException):
+class ProcedureLoadError(ApplicationException):
     pass
 
 
@@ -34,19 +36,19 @@ class Procedure(ManagedStateMachine):
     _MINIMUM_RUN_PERIOD = 0.1
 
     # Export version indicator
-    _EXPORT_VERSION = 1
-    _EXPORT_COMPATIBILITY = 1,
+    _EXPORT_VERSION = 2
+    _EXPORT_COMPATIBILITY = 2,
 
-    def __init__(self, uid: typing.Optional[str] = None,
+    def __init__(self, stages: typing.List[BaseStage], metadata: TYPE_TAG_DICT, uid: typing.Optional[str] = None,
                  config: typing.Union[None, ConfigManager, typing.Dict[str, typing.Any]] = None,
-                 hardware: typing.Optional[typing.Sequence[str]] = None,
-                 metadata: typing.Optional[TYPE_TAG_DICT] = None,
-                 stages: typing.Optional[typing.List[BaseStage]] = None):
+                 hardware: typing.Optional[typing.Sequence[str]] = None):
         """ Create new Procedure instance.
 
-        :param uid:
-        :param metadata:
         :param stages:
+        :param metadata:
+        :param uid:
+        :param config:
+        :param hardware:
         """
         # Setup state machine
         super(Procedure, self).__init__(None, self, ProcedureState, ProcedureTransition, ProcedureState.SETUP)
@@ -68,8 +70,14 @@ class Procedure(ManagedStateMachine):
         # Additional hardware
         self._procedure_hardware = hardware or []
 
-        # Metadata tied to stage
-        self._procedure_metadata = metadata or {}
+        # Metadata tied to procedure
+        self._procedure_metadata = metadata
+
+        if 'experiment' not in self._procedure_metadata:
+            raise ProcedureLoadError('Procedure must provide an experiment label in metadata')
+
+        if 'sample' not in self._procedure_metadata:
+            raise ProcedureLoadError('Procedure must provide a sample label in metadata')
 
         # Stage storage
         self._procedure_stages: typing.List[BaseStage] = stages or []
@@ -97,7 +105,7 @@ class Procedure(ManagedStateMachine):
     def add_stage(self, stage_class: typing.Type[TYPE_STAGE], index: typing.Optional[int] = None,
                   **stage_kwargs) -> typing.NoReturn:
         if self.get_state().is_valid():
-            raise ProcedureConfigurationError('Procedure is read-only once validated')
+            raise ProcedureLoadError('Procedure is read-only once validated')
 
         # Create stage
         stage_kwargs['config'] = self._procedure_config
@@ -112,24 +120,24 @@ class Procedure(ManagedStateMachine):
 
     def add_hardware(self, identifier: str) -> typing.NoReturn:
         if self.get_state().is_valid():
-            raise ProcedureConfigurationError('Procedure is read-only once validated')
+            raise ProcedureLoadError('Procedure is read-only once validated')
 
         if identifier not in self._procedure_hardware:
             self._procedure_hardware.append(identifier)
 
     def remove_stage(self, index: int) -> typing.NoReturn:
         if self.get_state().is_valid():
-            raise ProcedureConfigurationError('Procedure is read-only once validated')
+            raise ProcedureLoadError('Procedure is read-only once validated')
 
         with self._procedure_stages_lock:
             if index < 0 or index >= len(self._procedure_stages):
-                raise ProcedureConfigurationError(f"Stage index {index} is outside valid range")
+                raise ProcedureLoadError(f"Stage index {index} is outside valid range")
 
             self._procedure_stages.pop(index)
 
     def remove_hardware(self, identifier: str) -> typing.NoReturn:
         if self.get_state().is_valid():
-            raise ProcedureConfigurationError('Procedure is read-only once validated')
+            raise ProcedureLoadError('Procedure is read-only once validated')
 
         if identifier in self._procedure_hardware:
             self._procedure_hardware.remove(identifier)
@@ -236,7 +244,7 @@ class Procedure(ManagedStateMachine):
     # Event handling
     def _procedure_validate(self, _: transitions.EventData):
         if len(self._procedure_stages) == 0:
-            raise ProcedureConfigurationError('Procedure is empty')
+            raise ProcedureLoadError('Procedure is empty')
 
         # Validate stages
         for stage in self._procedure_stages:
@@ -274,7 +282,7 @@ class Procedure(ManagedStateMachine):
     def _procedure_start(self, _: transitions.EventData):
         # Connect required hardware
         for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            self.get_logger().info(f"Connecting {hardware_identifier}")
+            self.logger().info(f"Connecting {hardware_identifier}")
 
             # Check current state
             hardware_state = hardware_manager.get_state()
@@ -288,7 +296,7 @@ class Procedure(ManagedStateMachine):
 
         # Configure
         for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            self.get_logger().info(f"Configuring {hardware_identifier}")
+            self.logger().info(f"Configuring {hardware_identifier}")
 
             # Check current state
             hardware_state = hardware_manager.get_state()
@@ -301,7 +309,7 @@ class Procedure(ManagedStateMachine):
                 hardware_manager.queue_transition(HardwareTransition.CONFIGURE, block=False, raise_exception=False)
 
         for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            self.get_logger().info(f"Starting {hardware_identifier}")
+            self.logger().info(f"Starting {hardware_identifier}")
 
             # Check current state
             hardware_state = hardware_manager.get_state()
@@ -329,12 +337,12 @@ class Procedure(ManagedStateMachine):
 
                 raise ProcedureRuntimeError(f"{hardware_identifier} failed to start")
 
-            self.get_logger().debug(f"{hardware_identifier} ready")
+            self.logger().debug(f"{hardware_identifier} ready")
 
         # Add procedure metadata
         with Measurement.metadata_global_lock:
             Measurement.add_global_tags({
-                'procedure_time': time.strftime(FORMAT_TIMESTAMP),
+                'procedure_time': now(),
                 'procedure_stage_index': 0,
                 'procedure_state': 'running'
             })
@@ -342,8 +350,8 @@ class Procedure(ManagedStateMachine):
             # Notify for start
             completion_datetime = datetime.now() + self.get_procedure_duration()
 
-            self.get_logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
-                                   f"{completion_datetime.strftime(FORMAT_TIMESTAMP)}", event=True, notify=True)
+            self.logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
+                               f"{completion_datetime.strftime(FORMAT_TIMESTAMP_CONSOLE)}", event=True, notify=True)
 
             Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(datetime.now()))
 
@@ -359,7 +367,7 @@ class Procedure(ManagedStateMachine):
             # Indicate procedure paused in metadata
             Measurement.add_global_tag('procedure_state', 'paused')
 
-        self.get_logger().info(f"Procedure {self._procedure_uid} paused", event=True, notify=True)
+        self.logger().info(f"Procedure {self._procedure_uid} paused", event=True)
 
     def _procedure_resume(self, _: transitions.EventData):
         with Measurement.metadata_global_lock:
@@ -368,7 +376,7 @@ class Procedure(ManagedStateMachine):
 
             Measurement.add_global_tag('procedure_state', 'running')
 
-        self.get_logger().info(f"Procedure {self._procedure_uid} resumed", event=True, notify=True)
+        self.logger().info(f"Procedure {self._procedure_uid} resumed", event=True)
 
     def _procedure_stop(self, _: transitions.EventData):
         with Measurement.metadata_global_lock:
@@ -381,11 +389,11 @@ class Procedure(ManagedStateMachine):
             # Restore metadata
             Measurement.flush_global_metadata()
 
-        self.get_logger().info(f"Procedure {self._procedure_uid} stopped", event=True, notify=True)
+        self.logger().info(f"Procedure {self._procedure_uid} stopped", event=True, notify=True)
 
     def _stage_next(self, _: transitions.EventData):
         # Queue next stage
-        self.get_logger().info('Skip to next stage', event=True)
+        self.logger().info('Skip to next stage', event=True)
 
         # self._procedure_stage_next = self._procedure_stage_current + 1
 
@@ -396,7 +404,7 @@ class Procedure(ManagedStateMachine):
 
     def _stage_previous(self, _: transitions.EventData):
         # Queue previous stage
-        self.get_logger().info('Jump to previous stage', event=True)
+        self.logger().info('Jump to previous stage', event=True)
 
         self._procedure_stage_next = self._procedure_stage_current - 1
 
@@ -407,7 +415,7 @@ class Procedure(ManagedStateMachine):
 
     def _stage_repeat(self, _: transitions.EventData):
         # Queue current stage
-        self.get_logger().info('Repeat current stage', event=True)
+        self.logger().info('Repeat current stage', event=True)
 
         self._procedure_stage_next = self._procedure_stage_current
 
@@ -415,14 +423,14 @@ class Procedure(ManagedStateMachine):
 
     def _stage_finish(self, _: transitions.EventData):
         # Queue completion after current stage
-        self.get_logger().info('Complete current stage then finish', event=True)
+        self.logger().info('Complete current stage then finish', event=True)
 
         self._procedure_stage_next = None
 
     def _stage_goto(self, event: transitions.EventData):
         self._procedure_stage_next = int(event.args[0])
 
-        self.get_logger().info(f'Queue next stage {self._procedure_stage_next}', event=True)
+        self.logger().info(f'Queue next stage {self._procedure_stage_next}', event=True)
 
         if self._procedure_stage_next >= len(self._procedure_stages):
             self._procedure_stage_next = len(self._procedure_stages) - 1
@@ -453,14 +461,15 @@ class Procedure(ManagedStateMachine):
         target_version = data.pop('version')
 
         if target_version not in cls._EXPORT_COMPATIBILITY:
-            raise ProcedureConfigurationError(f"Data structure could not be imported, version {target_version} not in "
-                                              f"compatibility list ({', '.join(map(str, cls._EXPORT_COMPATIBILITY))})")
+            raise ProcedureLoadError(f"Data structure could not be imported, precedure version "
+                                     f"{target_version} not in compatibility list "
+                                     f"({', '.join(map(str, cls._EXPORT_COMPATIBILITY))})")
 
-        target_class = data.pop('class')
+        target_class = data.pop('class', 'Procedure')
 
         if target_class != cls.__name__:
-            raise ProcedureConfigurationError(f"Procedure class {target_class} does not match expected class "
-                                              f"{cls.__name__}")
+            raise ProcedureLoadError(f"Procedure class {target_class} does not match expected class "
+                                     f"{cls.__name__}")
 
         procedure_config = ConfigManager()
 
@@ -471,7 +480,7 @@ class Procedure(ManagedStateMachine):
         procedure_stages = []
 
         # Instantiate stages from data
-        for stage_data in target_stages:
+        for stage_data in flatten_list(target_stages):
             procedure_stages.append(BaseStage.stage_import(procedure_config, stage_data))
 
         # Create procedure class
@@ -481,7 +490,7 @@ class Procedure(ManagedStateMachine):
 
         return procedure
 
-    def procedure_export(self, as_str: bool = False) -> typing.Dict[str, typing.Any]:
+    def procedure_export(self, include_header: bool = True) -> typing.Dict[str, typing.Any]:
         """ Export Procedure to a dict.
 
         :return: dict
@@ -505,10 +514,10 @@ class Procedure(ManagedStateMachine):
             for stage in self._procedure_stages:
                 procedure['stages'].append(stage.stage_export())
 
-        if as_str:
-            return yaml.dump(procedure)
+        if include_header:
+            return HEADER + yaml.dump(procedure)
         else:
-            return procedure
+            return yaml.dump(procedure)
 
     def _thread_manager(self) -> typing.NoReturn:
         entry_time = time.time()
@@ -553,8 +562,8 @@ class Procedure(ManagedStateMachine):
                                 self._procedure_stage_next = None
 
                         self._procedure_stage_advance = False
-            except (ProcedureConfigurationError, ProcedureRuntimeError):
-                self.get_logger().exception('Unhandled error in procedure')
+            except (ProcedureLoadError, ProcedureRuntimeError):
+                self.logger().exception('Unhandled error in procedure')
 
                 # Transition to error state
                 ProcedureTransition.ERROR.apply(self)

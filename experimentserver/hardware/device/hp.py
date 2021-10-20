@@ -91,7 +91,7 @@ class HP34401AMultimeter(SCPIHardware):
         if msg is not None:
             # Truncate long messages
             if len(msg) > 20:
-                cls.get_class_logger().warning(f"Truncating message to 20 characters (original: {msg})")
+                cls.logger().warning(f"Truncating message to 20 characters (original: {msg})")
                 msg = msg[:20]
 
             transaction.write('DISP:TEXT {}', msg)
@@ -195,4 +195,4 @@ class HP34401AMultimeter(SCPIHardware):
                 super().transition_connect(event)
                 break
             except Exception:
-                self.get_logger().exception(f"Exception on connect attempt {attempt + 1}")
+                self.logger().exception(f"Exception on connect attempt {attempt + 1}")

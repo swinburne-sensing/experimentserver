@@ -1,11 +1,11 @@
 import typing
 
 import flask
+from experimentlib.util.classes import get_subclasses
 
 from .web import WebServer
 from ..hardware import Hardware, HardwareTransition
 from ..hardware.manager import HardwareManager
-from ..util.module import get_all_subclasses
 
 
 def _render_list(items: typing.List[typing.Any]) -> str:
@@ -24,7 +24,7 @@ def _render_html(ui: WebServer, page: str, **kwargs):
     hardware_class_list = []
 
     # Generate list of hardware classes
-    for hardware_class in get_all_subclasses(Hardware):
+    for hardware_class in get_subclasses(Hardware):
         class_fqn = hardware_class.__module__ + '.' + hardware_class.__qualname__
 
         # Strip module name

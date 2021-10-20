@@ -199,7 +199,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
             self._scpi_reset_post(transaction)
 
             # Log instrument identifier
-            self.get_logger().info(f"SCPI ID: {self.scpi_get_identifier(transaction)}")
+            self.logger().info(f"SCPI ID: {self.scpi_get_identifier(transaction)}")
 
         with self.visa_transaction(error_raise=False) as transaction:
             try:
@@ -212,7 +212,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 self.scpi_display(transaction)
             except SCPIDisplayUnavailable:
                 # If no display is available then skip
-                self.get_logger().warning('Unable to display instrument identifier', event=False)
+                self.logger().warning('Unable to display instrument identifier')
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None):
         with self.visa_transaction(error_check=False) as transaction:
@@ -221,7 +221,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 self.scpi_display(transaction, 'Disconnected')
             except SCPIDisplayUnavailable:
                 # If no display is available then skip
-                self.get_logger().warning('Unable to display disconnect message', event=False)
+                self.logger().warning('Unable to display disconnect message')
 
         super().transition_disconnect(event)
 
@@ -231,6 +231,6 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 self.scpi_display(transaction, 'Error')
             except (VISAExternalError, VISACommunicationError, SCPIDisplayUnavailable):
                 # If no display is available then skip
-                self.get_logger().warning('Unable to display error message', event=False)
+                self.logger().warning('Unable to display error message')
 
         super().transition_error(event)

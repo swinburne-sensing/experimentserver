@@ -5,6 +5,8 @@
 *.dll
 *.pdb
 
+experimentserver/interface/linkam/license.py
+
 .idea/ansibleVaultSettings.xml
 
 # Testing files

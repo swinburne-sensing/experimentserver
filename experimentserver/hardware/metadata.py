@@ -10,8 +10,8 @@ import typing_inspect
 from .base.enum import HardwareEnum
 from .error import MeasurementError, ParameterError
 from experimentserver.util.metadata import BoundMetadataCall, OrderedMetadata
-from experimentserver.data import Quantity, Measurement, MeasurementGroup, TYPE_MEASUREMENT, TYPE_MEASUREMENT_LIST, \
-    TYPE_FIELD_DICT
+from experimentserver.data import Quantity, Measurement, MeasurementGroup, TYPE_MEASUREMENT_RETURN, \
+    TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT
 
 
 class _MeasurementMetadata(OrderedMetadata):
@@ -139,7 +139,7 @@ class _ParameterMetadata(OrderedMetadata):
 CALLABLE_PARAMETER = typing.Callable[..., typing.NoReturn]
 
 # Measurement methods may return a dict, a single measurement, or a sequence of measurements
-CALLABLE_MEASUREMENT = typing.Callable[[], TYPE_MEASUREMENT]
+CALLABLE_MEASUREMENT = typing.Callable[[], TYPE_MEASUREMENT_RETURN]
 TYPE_PARAMETER_DICT = typing.MutableMapping[str, typing.Dict[str, typing.Any]]
 TYPE_PARAMETER_COMMAND = typing.Union[None, TYPE_PARAMETER_DICT, typing.List[TYPE_PARAMETER_DICT]]
 TYPE_PARAMETER_VALID_DICT = typing.MutableMapping[_ParameterMetadata, functools.partial]

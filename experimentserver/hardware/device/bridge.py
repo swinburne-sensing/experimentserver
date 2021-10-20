@@ -1,12 +1,12 @@
 import typing
 from datetime import datetime, timedelta
 
+from experimentlib.data.gas import GasProperties, registry
 from transitions import EventData
 
 from ..base.serial import SerialStringHardware
 from ..metadata import TYPE_PARAMETER_DICT
 from ...data import TYPE_FIELD_DICT, MeasurementGroup, Measurement
-from ...data.gas import get_gas
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
@@ -15,12 +15,12 @@ __email__ = 'cjharrison@swin.edu.au'
 class GasAlanyzer(SerialStringHardware):
     _ZERO_PERIOD = timedelta(seconds=60)
 
-    _GAS_CHANNELS = [
-        (get_gas('carbon-monoxide'), 0.01, 'pct'),
-        (get_gas('hexane'), 1e-6, 'ppm'),
-        (get_gas('carbon-dioxide'), 0.01, 'pct'),
-        (get_gas('oxygen'), 0.01, 'pct'),
-        (get_gas('nitric-oxides'), 1e-6, 'ppm')
+    _CHANNEL_PROPERTIES: typing.List[typing.Tuple[GasProperties, float, str]] = [
+        (registry['carbon-monoxide'], 0.01, 'pct'),
+        (registry['hexane'], 1e-6, 'ppm'),
+        (registry['carbon-dioxide'], 0.01, 'pct'),
+        (registry['oxygen'], 0.01, 'pct'),
+        (registry['nitric-oxides'], 1e-6, 'ppm')
     ]
 
     def __init__(self, identifier: str, port: str, parameters: typing.Optional[TYPE_PARAMETER_DICT] = None):
@@ -76,7 +76,7 @@ class GasAlanyzer(SerialStringHardware):
 
     @SerialStringHardware.register_parameter(description='Trigger zero')
     def zero(self):
-        self.get_logger().info('Zeroing', event=True)
+        self.logger().info('Zeroing', event=True)
 
         self.command_zero()
 
@@ -136,33 +136,33 @@ class GasAlanyzer(SerialStringHardware):
         if payload.startswith('#DAT'):
             payload_fields = payload.split(',')
 
-            if len(payload_fields) == 1 + len(self._GAS_CHANNELS) + 4:
+            if len(payload_fields) == 1 + len(self._CHANNEL_PROPERTIES) + 4:
                 # Drop start field
                 payload_fields.pop(0)
 
                 # Parse gas concentrations
-                for gas in self._GAS_CHANNELS:
+                for channel_prop in self._CHANNEL_PROPERTIES:
                     # Parse float and apply scaling
-                    concentration = float(payload_fields.pop(0)) * gas[1]
+                    concentration = float(payload_fields.pop(0)) * channel_prop[1]
 
                     gas_tag = {
-                        'label': gas[0].label,
-                        'formula': gas[0].formula,
-                        'scale': gas[2]
+                        'label': channel_prop[0].name,
+                        'formula': channel_prop[0].symbol,
+                        'scale': channel_prop[2]
                     }
 
                     gas_tag.update(tags)
 
                     measurements.append(Measurement(self, MeasurementGroup.GAS, {
                         'concentration': concentration
-                    }, received, gas_tag))
+                    }, received, tags=gas_tag))
 
                 # Parse additional metadata fields
                 internal_temp = float(payload_fields.pop(0))
 
                 measurements.append(Measurement(self, MeasurementGroup.TEMPERATURE, {
                     'internal': internal_temp
-                }, received, tags))
+                }, received, tags=tags))
 
                 # Parse combustion data
                 comb_lambda = float(payload_fields.pop(0))
@@ -173,8 +173,8 @@ class GasAlanyzer(SerialStringHardware):
                     'lambda': comb_lambda,
                     'afr': comb_afr,
                     'efficiency': comb_efficiency
-                }, received, tags))
+                }, received, tags=tags))
             else:
-                self.get_logger().warning(f"Expected 10 fields in Bridge Analyzer data, received {len(payload_fields)}")
+                self.logger().warning(f"Expected 10 fields in Bridge Analyzer data, received {len(payload_fields)}")
 
         return measurements

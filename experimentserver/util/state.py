@@ -62,7 +62,7 @@ class ManagedStateMachine(CallbackThread):
         :param initial_state:
         :param queued_transitions:
         """
-        super(ManagedStateMachine, self).__init__(name, self._thread_manager, run_final=True)
+        CallbackThread.__init__(self, name, self._thread_manager, run_final=True)
         
         # Store model and types
         self._model = model
@@ -165,7 +165,7 @@ class ManagedStateMachine(CallbackThread):
             raise ManagedStateMachineError('State machine thread not running')
 
         with self._state_lock:
-            self.get_logger().info(f"Queueing transition {transition} ({'blocking' if block else 'non-blocking'})")
+            self.logger().info(f"Queueing transition {transition} ({'blocking' if block else 'non-blocking'})")
             self._transition_pending_queue.append((transition, args, kwargs))
 
             if block:
@@ -173,7 +173,7 @@ class ManagedStateMachine(CallbackThread):
                 error = self.get_error(timeout, raise_exception)
 
                 if error is not None:
-                    self.get_logger().warning(f"Exception thrown during transition", exc_info=error)
+                    self.logger().warning(f"Exception thrown during transition", exc_info=error)
 
                 return self.get_state()
             else:
@@ -190,7 +190,7 @@ class ManagedStateMachine(CallbackThread):
         # Clear pending transitions
         while len(self._transition_pending_queue) > 0:
             (queued_transition, _, _) = self._transition_pending_queue.pop(0)
-            self.get_logger().warning(f"Discarding pending transition {queued_transition.value}")
+            self.logger().warning(f"Discarding pending transition {queued_transition.value}")
 
     def _process_transition(self) -> typing.Tuple[bool, ManagedState]:
         """ Handle pending transitions.
@@ -219,8 +219,8 @@ class ManagedStateMachine(CallbackThread):
                         queued_kwargs = queued_kwargs or {}
                         queued_kwargs_str = ', '.join((f"{k}={v}" for k, v in queued_kwargs.items()))
 
-                        self.get_logger().info(f"Performing transition {queued_transition.value} from {state.value} "
-                                               f"(args: {queued_args_str}, kwargs: {queued_kwargs_str})")
+                        self.logger().info(f"Performing transition {queued_transition.value} from {state.value} "
+                                           f"(args: {queued_args_str}, kwargs: {queued_kwargs_str})")
 
                         # Attempt to apply requested transition
                         try:
@@ -240,10 +240,10 @@ class ManagedStateMachine(CallbackThread):
                                 state_queue.append(current_state)
                 finally:
                     if len(state_queue) > 1:
-                        self.get_logger().info(f"State updated {' -> '.join((x.value for x in state_queue))}")
+                        self.logger().info(f"State updated {' -> '.join((x.value for x in state_queue))}")
                         state_change = True
                     else:
-                        self.get_logger().debug('State unchanged')
+                        self.logger().debug('State unchanged')
 
                     state = current_state
 

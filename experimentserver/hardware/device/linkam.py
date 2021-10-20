@@ -1,11 +1,14 @@
+import os.path
 import typing
 
 from transitions import EventData
+from experimentlib.data.humidity import abs_to_rel, rel_to_abs, rel_to_dew, unit_abs
 
 from ..base.core import Hardware, ParameterError
-from ...data import Measurement, MeasurementGroup, TYPE_UNIT, TYPE_UNIT_OPTIONAL, TYPE_MEASUREMENT_LIST, to_unit
-from ...data.humidity import abs_to_rel, rel_to_abs, rel_to_dew, UNIT_ABS_HUMID
-from ...interface.linkam import LinkamSDK, StageValueType
+from experimentserver.data import Measurement, MeasurementGroup, TYPE_UNIT, TYPE_UNIT_OPTIONAL, TYPE_MEASUREMENT_LIST, \
+    to_unit
+from experimentserver.interface.linkam import LinkamSDK, StageValueType, SDK_PATH
+from experimentserver.interface.linkam.license import fetch_license
 
 
 __author__ = 'Chris Harrison'
@@ -33,6 +36,13 @@ class T96Controller(Hardware):
 
         self._sdk_log_path = sdk_log_path
         self._sdk_license_path = sdk_license_path
+
+        # Generate temporary license file if none is provided
+        if self._sdk_license_path is None:
+            license_path = os.path.join(SDK_PATH, 'Linkam.lsk')
+
+            with open(license_path, 'wb') as license_file:
+                fetch_license(license_file)
 
         # Load Linkam SDK
         self._sdk = LinkamSDK(self._sdk_log_path, self._sdk_license_path, sdk_debug)
@@ -71,10 +81,10 @@ class T96Controller(Hardware):
             }))
 
             if not self._has_heater:
-                self.get_logger().warning('Heater connected')
+                self.logger().warning('Heater connected')
                 self._has_heater = True
         elif self._has_heater:
-            self.get_logger().error('Heater disconnected')
+            self.logger().error('Heater disconnected')
             self._has_heater = False
 
         if controller.flags.humidityReady:
@@ -104,8 +114,8 @@ class T96Controller(Hardware):
                     humidity_fields['stage_dew'] = rel_to_dew(humidity_fields['stage_rh_temperature'],
                                                               humidity_fields['stage_rh'])
                 else:
-                    self.get_logger().debug("Zero relative humidity")
-                    humidity_fields['stage_abs'] = to_unit(0, UNIT_ABS_HUMID)
+                    self.logger().debug("Zero relative humidity")
+                    humidity_fields['stage_abs'] = to_unit(0, unit_abs)
                                                           
                 # RH at room temperature
                 if self._humidity_room_temp is not None:
@@ -116,16 +126,16 @@ class T96Controller(Hardware):
                         'stage_room_temperature': self._humidity_room_temp
                     }
             except (ValueError, NotImplementedError):
-                self.get_logger().warning(f"Error during humidity calculation: {humidity_fields}")
+                self.logger().warning(f"Error during humidity calculation: {humidity_fields}")
                 # raise
 
             payload.append(Measurement(self, MeasurementGroup.HUMIDITY, humidity_fields, tags=humidity_tags))
 
             if not self._has_humidity:
-                self.get_logger().warning('Humidity measurements available')
+                self.logger().warning('Humidity measurements available')
                 self._has_humidity = True
         elif self._has_humidity:
-            self.get_logger().error('Humidity measurement no longer available')
+            self.logger().error('Humidity measurement no longer available')
             self._has_humidity = False
 
         return payload
@@ -177,32 +187,32 @@ class T96Controller(Hardware):
         self._handle = self._sdk.connect_usb()
 
         # Get metadata
-        self.get_logger().info(f"Controller name: {self._handle.get_controller_name()}")
-        self.get_logger().info(f"Controller serial: {self._handle.get_controller_serial()}")
-        self.get_logger().info(f"Controller hardware version: {self._handle.get_controller_hardware_version()}")
-        self.get_logger().info(f"Controller firmware version: {self._handle.get_controller_firmware_version()}")
+        self.logger().info(f"Controller name: {self._handle.get_controller_name()}")
+        self.logger().info(f"Controller serial: {self._handle.get_controller_serial()}")
+        self.logger().info(f"Controller hardware version: {self._handle.get_controller_hardware_version()}")
+        self.logger().info(f"Controller firmware version: {self._handle.get_controller_firmware_version()}")
 
-        self.get_logger().info(f"Humidity sensor name: {self._handle.get_humidity_controller_sensor_name()}")
-        self.get_logger().info(f"Humidity sensor serial: {self._handle.get_humidity_controller_sensor_serial()}")
-        self.get_logger().info(f"Humidity sensor hardware version: "
-                               f"{self._handle.get_humidity_controller_sensor_hardware_version()}")
+        self.logger().info(f"Humidity sensor name: {self._handle.get_humidity_controller_sensor_name()}")
+        self.logger().info(f"Humidity sensor serial: {self._handle.get_humidity_controller_sensor_serial()}")
+        self.logger().info(f"Humidity sensor hardware version: "
+                           f"{self._handle.get_humidity_controller_sensor_hardware_version()}")
 
-        self.get_logger().info(f"Stage name: {self._handle.get_stage_name()}")
-        self.get_logger().info(f"Stage serial: {self._handle.get_stage_serial()}")
-        self.get_logger().info(f"Stage hardware version: {self._handle.get_stage_hardware_version()}")
-        self.get_logger().info(f"Stage firmware version: {self._handle.get_stage_firmware_version()}")
+        self.logger().info(f"Stage name: {self._handle.get_stage_name()}")
+        self.logger().info(f"Stage serial: {self._handle.get_stage_serial()}")
+        self.logger().info(f"Stage hardware version: {self._handle.get_stage_hardware_version()}")
+        self.logger().info(f"Stage firmware version: {self._handle.get_stage_firmware_version()}")
 
         controller = self._handle.get_controller_config()
 
         if controller.flags.supportsHeater:
-            self.get_logger().info(f"Heating supported")
+            self.logger().info(f"Heating supported")
             self._has_heater = True
 
         if controller.flags.lnpReady:
-            self.get_logger().info(f"Cooling supported")
+            self.logger().info(f"Cooling supported")
 
         if controller.flags.humidityReady:
-            self.get_logger().info(f"Humidity supported")
+            self.logger().info(f"Humidity supported")
             self._has_humidity = True
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:

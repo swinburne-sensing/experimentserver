@@ -10,12 +10,12 @@ import xml.etree.ElementTree as ElementTree
 from datetime import datetime, timedelta
 
 import requests
+from experimentlib.data.gas import Mixture
 from transitions import EventData
 import urllib3.exceptions
 
-from .. import Hardware, HardwareInitError, CommunicationError, ParameterError, MeasurementUnavailable
-from ...data import Measurement, MeasurementGroup, TYPE_MEASUREMENT_LIST, TYPE_UNIT, TYPE_UNIT_OPTIONAL, to_unit, \
-    get_gas, calc_gcf
+from .. import Hardware, CommunicationError, ParameterError, MeasurementUnavailable
+from ...data import Measurement, MeasurementGroup, TYPE_MEASUREMENT_LIST, TYPE_UNIT, TYPE_UNIT_OPTIONAL, to_unit
 from ...util.java import remap_javascript_dict, JavaScriptParseException
 from ...util.thread import CallbackThread
 
@@ -128,7 +128,7 @@ class GE50MassFlowController(Hardware):
         :param composition: gas composition dict, gas names as keys, concentrations as values
         :param pressure: default working pressure
         """
-        super(GE50MassFlowController, self).__init__(identifier, **kwargs)
+        Hardware.__init__(self, identifier, **kwargs)
 
         # HTTP properties
         self._host = host
@@ -141,37 +141,8 @@ class GE50MassFlowController(Hardware):
         self._min_flow = None
 
         # Gas composition
-        self._composition = {}
-
-        balance_gas = None
-        overall_concentration = 1
-
-        for gas, concentration in composition.items():
-            # Parse gas
-            gas = get_gas(gas)
-
-            # Parse concentration
-            if concentration.lower() == 'balance' or concentration is None:
-                if balance_gas is not None:
-                    raise HardwareInitError('Multiple balance gases specified')
-
-                balance_gas = gas
-            else:
-                concentration = to_unit(concentration, 'dimensionless', allow_none=False)
-
-                # Check if gas is possible
-                overall_concentration -= concentration
-
-                if overall_concentration < 0:
-                    raise HardwareInitError('Gas composition concentrations exceed 100%')
-
-                self._composition[gas] = concentration
-
-        # Fill remaining concentration with balance gas
-        if balance_gas is not None and overall_concentration > 0:
-            self._composition[balance_gas] = to_unit(overall_concentration, 'dimensionless')
-
-        self._gcf = calc_gcf(list(self._composition.keys()), list(self._composition.values()))
+        self._composition = Mixture.from_dict(composition)
+        self._gcf = self._composition.gcf
 
         # Lock to prevent multiple access
         self._http_lock = threading.RLock()
@@ -197,7 +168,7 @@ class GE50MassFlowController(Hardware):
         """
         url = self._get_url(path)
 
-        self.get_logger().debug_transaction(f"Request: {url}")
+        self.logger().debug_transaction(f"Request: {url}")
 
         with self._http_lock:
             post_req = requests.post(url, data=data, headers=headers, timeout=self._HTTP_TIMEOUT)
@@ -209,7 +180,7 @@ class GE50MassFlowController(Hardware):
             except IOError as exc:
                 raise MFCHTTPError('IO error occurred while communicating with MFC') from exc
 
-            self.get_logger().debug_transaction(f"Response: {post_req}")
+            self.logger().debug_transaction(f"Response: {post_req}")
 
             return post_req
 
@@ -320,7 +291,7 @@ class GE50MassFlowController(Hardware):
         with self._setup_lock():
             self._fetch_url('configure_html_zero', {'SUBMIT_FLOW': 'Zero Flow'})
 
-        self.get_logger().info('Auto zero complete')
+        self.logger().info('Auto zero complete')
 
     # Parameters
     @Hardware.register_parameter(description='Target gas flow rate')
@@ -343,13 +314,13 @@ class GE50MassFlowController(Hardware):
 
         # Throw warnings if flow is outside recommended limits
         if flow_rate > self._max_flow:
-            self.get_logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) exceeds maximum "
-                                      f"flow ({self._max_flow})")
+            self.logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) exceeds maximum "
+                                  f"flow ({self._max_flow})")
         elif flow_rate != 0 and flow_rate < self._min_flow:
-            self.get_logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) below recommended "
-                                      f"minimum flow of {self._min_flow}", notify=True)
+            self.logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) below recommended "
+                                  f"minimum flow of {self._min_flow}", notify=True)
 
-        self.get_logger().info(f"Setting flow rate: {flow_rate_raw} (adjusted: {flow_rate})")
+        self.logger().info(f"Setting flow rate: {flow_rate_raw} (adjusted: {flow_rate})")
 
         self._fetch_url('flow_setpoint_html', data={'iobuf.setpoint_unit': flow_rate.magnitude})
 
@@ -397,13 +368,13 @@ class GE50MassFlowController(Hardware):
         self._max_flow = to_unit(metadata_gas['flow_scale_maximum'], metadata_gas['flow_scale_unit'])
         self._min_flow = self._max_flow * self._FLOW_LOWER_BOUND
 
-        self.get_logger().info(f"Model: {metadata_device['id_model']}")
-        self.get_logger().info(f"Serial: {metadata_device['id_serial']}")
-        self.get_logger().info(f"Firmware: {metadata_network['firmware_version']}")
-        self.get_logger().info(f"MAC address: {metadata_network['network_mac_address']}")
-        self.get_logger().info(f"Calibrated: {metadata_gas['calibration_date'].strftime('%Y-%m-%d')}")
-        self.get_logger().info(f"Maximum flow: {self._max_flow}")
-        self.get_logger().info(f"Minimum flow: {self._min_flow}")
+        self.logger().info(f"Model: {metadata_device['id_model']}")
+        self.logger().info(f"Serial: {metadata_device['id_serial']}")
+        self.logger().info(f"Firmware: {metadata_network['firmware_version']}")
+        self.logger().info(f"MAC address: {metadata_network['network_mac_address']}")
+        self.logger().info(f"Calibrated: {metadata_gas['calibration_date'].strftime('%Y-%m-%d')}")
+        self.logger().info(f"Maximum flow: {self._max_flow}")
+        self.logger().info(f"Minimum flow: {self._min_flow}")
 
         # Configure trace read, the MKS web interface sends more fields but this seems to be the only one that matters
         config_trace = {
@@ -527,7 +498,8 @@ class GE50MassFlowController(Hardware):
                     if xml_field_prop[n][3] != 1:
                         fields[xml_field_prop[n][0] + '_raw'] = to_unit(xml_field_value[n], **xml_field_prop[n][2])
 
-                    data_payload.append(Measurement(self, xml_field_prop[n][1], fields, payload_timestamp, data_tags))
+                    data_payload.append(Measurement(self, xml_field_prop[n][1], fields, payload_timestamp,
+                                                    tags=data_tags))
 
                 # Make space in the buffer
                 while self._trace_buffer.full():

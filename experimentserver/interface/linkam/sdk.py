@@ -3,17 +3,18 @@ from __future__ import annotations
 import os
 import threading
 
+from experimentlib.file.path import add_path
+from experimentlib.logging.classes import Logged
+
 import experimentserver
-from .license import generate_license
+from .license import fetch_license
 from .interface import *
 from experimentserver.data.unit import to_unit, is_unit
-from experimentserver.util.path import add_path
-from experimentserver.util.logging import LoggerObject
 
 
 # Locate SDK files and add to system path
-_SDK_PATH = os.path.dirname(os.path.abspath(__file__))
-add_path(_SDK_PATH)
+SDK_PATH = os.path.dirname(os.path.abspath(__file__))
+add_path(SDK_PATH)
 
 
 class LinkamSDKError(experimentserver.ApplicationException):
@@ -24,10 +25,10 @@ class LinkamConnectionError(LinkamSDKError):
     pass
 
 
-class LinkamSDK(LoggerObject):
+class LinkamSDK(Logged):
     """ Wrapper for Linkam SDK. """
 
-    class LinkamConnection(LoggerObject):
+    class LinkamConnection(Logged):
         """ Wrapper for connection to Linkam controller. """
 
         def __init__(self, parent: LinkamSDK, handle: CommsHandle):
@@ -183,20 +184,20 @@ class LinkamSDK(LoggerObject):
 
         release = 'debug' if debug else 'release'
 
-        dll_path = os.path.join(_SDK_PATH, f"LinkamSDK_{release}.dll")
+        dll_path = os.path.join(SDK_PATH, f"LinkamSDK_{release}.dll")
 
         if log_path is None:
-            log_path = os.path.join(_SDK_PATH, 'Linkam.log')
+            log_path = os.path.join(SDK_PATH, 'Linkam.log')
 
         self._log_path = log_path
         log_path = log_path.encode()
 
         # Generate temporary license file if none is provided
         if license_path is None:
-            license_path = os.path.join(_SDK_PATH, 'Linkam.lsk')
+            license_path = os.path.join(SDK_PATH, 'Linkam.lsk')
 
             with open(license_path, 'wb') as license_file:
-                generate_license(license_file)
+                fetch_license(license_file)
 
         # This might be a little crazy, but the Linkam SDK crashes occasionally (maybe 1 out of every 100 loads) and
         # it looks like it's because the library attempts to open the license file before it's written. This delay
@@ -234,7 +235,7 @@ class LinkamSDK(LoggerObject):
         if not self._sdk.linkamInitialiseSDK(log_path, license_path, False):
             raise LinkamSDKError('Failed to initialize Linkam SDK')
 
-        self.get_logger().info(f"Initialized Linkam SDK {self.get_version()}")
+        self.logger().info(f"Initialized Linkam SDK {self.get_version()}")
 
         # Configure default logging
         self.set_logging_level(LoggingLevel.MINIMAL)

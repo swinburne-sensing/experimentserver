@@ -1,4 +1,4 @@
-from .base.core import Hardware, TYPE_HARDWARE
+from .base.core import Hardware, HardwareIdentifierError, TYPE_HARDWARE
 from .base.enum import HardwareEnum
 from .base.visa import VISAHardware, VISACommunicationError, VISAExternalError
 from .base.scpi import SCPIHardware, SCPIDisplayUnavailable

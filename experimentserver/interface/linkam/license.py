@@ -54,8 +54,8 @@ def _license_hex_str(data: bytes) -> typing.List[str]:
     return [f"{sum(x):04X}" for x in segments]
 
 
-def generate_license(license_file: typing.BinaryIO, host_key: typing.Optional[typing.List[str]] = None,
-                     options: typing.Optional[LicenseOptions] = None) -> typing.NoReturn:
+def fetch_license(license_file: typing.BinaryIO, host_key: typing.Optional[typing.List[str]] = None,
+                  options: typing.Optional[LicenseOptions] = None):
     if options is None:
         options = LicenseOptions.FLAG_EVALUATION | LicenseOptions.FLAG_SDK
 

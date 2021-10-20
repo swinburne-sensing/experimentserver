@@ -11,7 +11,7 @@ import typing
 
 
 __app_name__ = 'experimentserver'
-__version__ = '0.4.0'
+__version__ = '1.0.0'
 
 __author__ = 'Chris Harrison'
 __credits__ = ['Chris Harrison']
@@ -19,7 +19,12 @@ __credits__ = ['Chris Harrison']
 __maintainer__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
 
-__status__ = 'Development'
+__status__ = 'Production'
+
+
+# Exit codes
+EXIT_SUCCESS = 0
+EXIT_ERROR_ARGUMENTS = -1
 
 
 # Application root path
