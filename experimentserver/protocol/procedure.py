@@ -1,24 +1,24 @@
 import threading
 import time
 import typing
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import transitions
 import yaml
 from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE
 from experimentlib.util.iterate import flatten_list
+from experimentlib.util.generate import hex_str
 from experimentlib.util.time import now
 
 from experimentserver import ApplicationException
 from experimentserver.protocol.control import ProcedureState, ProcedureTransition
 from .file import YAMLProcedureLoader, HEADER
 from .stage import BaseStage, TYPE_STAGE
-from ..config import ConfigManager
-from ..data import TYPE_TAG_DICT, Measurement
-from ..data.measurement import dynamic_field_time_delta
-from ..hardware import HardwareManager, HardwareState, HardwareTransition
-from ..util.state import ManagedStateMachine
-from ..util.uniqueid import hex_str
+from experimentserver.config import ConfigManager, ConfigNode
+from experimentserver.hardware.control import HardwareState, HardwareTransition
+from experimentserver.hardware.manager import HardwareManager
+from experimentserver.measurement import T_TAG_MAP, Measurement, dynamic_field_time_delta
+from experimentserver.util.state import ManagedStateMachine
 
 
 class ProcedureLoadError(ApplicationException):
@@ -39,7 +39,7 @@ class Procedure(ManagedStateMachine):
     _EXPORT_VERSION = 2
     _EXPORT_COMPATIBILITY = 2,
 
-    def __init__(self, stages: typing.List[BaseStage], metadata: TYPE_TAG_DICT, uid: typing.Optional[str] = None,
+    def __init__(self, stages: typing.List[BaseStage], metadata: T_TAG_MAP, uid: typing.Optional[str] = None,
                  config: typing.Union[None, ConfigManager, typing.Dict[str, typing.Any]] = None,
                  hardware: typing.Optional[typing.Sequence[str]] = None):
         """ Create new Procedure instance.
@@ -50,11 +50,11 @@ class Procedure(ManagedStateMachine):
         :param config:
         :param hardware:
         """
-        # Setup state machine
-        super(Procedure, self).__init__(None, self, ProcedureState, ProcedureTransition, ProcedureState.SETUP)
-
-        # Stage ID
+        # Procedure ID
         self._procedure_uid = uid or hex_str()
+
+        ManagedStateMachine.__init__(self, self._procedure_uid, self, ProcedureState, ProcedureTransition,
+                                     ProcedureState.SETUP)
 
         # Shared configuration
         if config is None or type(config) is not ConfigManager:
@@ -71,6 +71,9 @@ class Procedure(ManagedStateMachine):
         self._procedure_hardware = hardware or []
 
         # Metadata tied to procedure
+        if isinstance(metadata, ConfigNode):
+            metadata = dict(metadata)
+
         self._procedure_metadata = metadata
 
         if 'experiment' not in self._procedure_metadata:
@@ -348,12 +351,12 @@ class Procedure(ManagedStateMachine):
             })
 
             # Notify for start
-            completion_datetime = datetime.now() + self.get_procedure_duration()
+            completion_datetime = now() + self.get_procedure_duration()
 
             self.logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
                                f"{completion_datetime.strftime(FORMAT_TIMESTAMP_CONSOLE)}", event=True, notify=True)
 
-            Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(datetime.now()))
+            Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(now()))
 
             # Enter first stage
             initial_stage = self._procedure_stages[self._procedure_stage_current]

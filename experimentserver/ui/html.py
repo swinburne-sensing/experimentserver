@@ -4,8 +4,9 @@ import flask
 from experimentlib.util.classes import get_subclasses
 
 from .web import WebServer
-from ..hardware import Hardware, HardwareTransition
-from ..hardware.manager import HardwareManager
+from experimentserver.hardware.base.core import Hardware
+from experimentserver.hardware.control import HardwareTransition
+from experimentserver.hardware.manager import HardwareManager
 
 
 def _render_list(items: typing.List[typing.Any]) -> str:

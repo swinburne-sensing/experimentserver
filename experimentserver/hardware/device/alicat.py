@@ -3,13 +3,15 @@ from __future__ import annotations
 import typing
 
 from experimentlib.data.gas import Mixture
+from experimentlib.data.unit import registry, Quantity, parse, T_PARSE_QUANTITY
 from transitions import EventData
 from pymodbus.client.sync import ModbusTcpClient
 from pymodbus.constants import Endian
 from pymodbus.payload import BinaryPayloadBuilder, BinaryPayloadDecoder
 
-from .. import Hardware, CommunicationError, ParameterError
-from ...data import Measurement, MeasurementGroup, TYPE_UNIT, to_unit, units, Quantity
+from experimentserver.hardware.base.core import Hardware
+from experimentserver.hardware.error import CommunicationError, ParameterError
+from experimentserver.measurement import Measurement, MeasurementGroup
 
 
 __author__ = 'Chris Harrison'
@@ -37,9 +39,9 @@ class MCMassFlowController(Hardware):
         self._gcf = self._composition.gcf
 
         # Start with sane defaults (from factory)
-        self._alicat_mass_flow_unit = units.sccm
-        self._alicat_pressure_unit = units.psi
-        self._alicat_temperature_unit = units.degC
+        self._alicat_mass_flow_unit = registry.sccm
+        self._alicat_pressure_unit = registry.psi
+        self._alicat_temperature_unit = registry.degC
 
         self._modbus_client = ModbusTcpClient(host)
 
@@ -71,12 +73,8 @@ class MCMassFlowController(Hardware):
     def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         pass
 
-    def get_gas_mix_label(self) -> str:
-        return ', '.join([gas.get_concentration_label(concentration) for gas, concentration in
-                          self._composition.items()])
-
     @Hardware.register_parameter(description='Target gas flow rate')
-    def set_flow_rate(self, flow_rate_raw: TYPE_UNIT):
+    def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY):
         self.set_mass_flow_setpoint(flow_rate_raw)
 
     @Hardware.register_measurement(description='Get reading', force=True)
@@ -85,7 +83,7 @@ class MCMassFlowController(Hardware):
             'flow_actual': self.get_mass_flow(),
             'flow_target': self.get_mass_flow_setpoint()
         }, tags={
-            'gas_mixture': self.get_gas_mix_label()
+            'gas_mixture': str(self._composition)
         })
 
         self.sleep(0.25, 'rate limit')
@@ -105,6 +103,7 @@ class MCMassFlowController(Hardware):
 
         self.logger().debug(f"Input register read {address} response: {response.registers!s}")
 
+        # noinspection PyArgumentEqualDefault
         decoder = BinaryPayloadDecoder.fromRegisters(response.registers, byteorder=Endian.Big, wordorder=Endian.Big)
         value = decoder.decode_32bit_float()
 
@@ -113,8 +112,8 @@ class MCMassFlowController(Hardware):
     def get_mass_flow_setpoint(self) -> Quantity:
         return Quantity(self._modbus_read_input_float(self.REGISTER_GET_FLOW_SETPOINT), self._alicat_mass_flow_unit)
 
-    def set_mass_flow_setpoint(self, flow: units.TYPE_VALUE):
-        flow = to_unit(flow, units.sccm)
+    def set_mass_flow_setpoint(self, flow: T_PARSE_QUANTITY):
+        flow = parse(flow, registry.sccm)
 
         # Apply gas correction factor
         flow = flow / self._gcf
@@ -122,8 +121,9 @@ class MCMassFlowController(Hardware):
         if flow.magnitude < 0:
             raise ParameterError(f"Mass flow rate setpoint must be positive (got: {flow})")
 
-        flow = flow.m_as(units.sccm)
+        flow = flow.m_as(registry.sccm)
 
+        # noinspection PyArgumentEqualDefault
         builder = BinaryPayloadBuilder(byteorder=Endian.Big, wordorder=Endian.Big)
         builder.add_32bit_float(flow)
         payload = builder.to_registers()
@@ -137,5 +137,5 @@ class MCMassFlowController(Hardware):
         self.logger().info(f"Set mass flow rate: {flow!s}")
 
     def get_mass_flow(self) -> Quantity:
-        return to_unit(self._modbus_read_input_float(self.REGISTER_GET_MASS_FLOW), self._alicat_mass_flow_unit,
-                       apply_round=2)
+        return parse(self._modbus_read_input_float(self.REGISTER_GET_MASS_FLOW), self._alicat_mass_flow_unit,
+                     mag_round=2)

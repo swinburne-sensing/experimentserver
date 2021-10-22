@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 
 from transitions import EventData
 
-from .. import SerialHardware, SerialJSONHardware
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
 from ..metadata import TYPE_PARAMETER_DICT
-from ...data import TYPE_FIELD_DICT, Measurement, MeasurementGroup
+from experimentserver.hardware.base.serial import SerialHardware, SerialJSONHardware
+from experimentserver.measurement import T_FIELD_MAP, Measurement, MeasurementGroup
 
 
 __author__ = 'Chris Harrison'
@@ -106,7 +106,7 @@ class GenericSerial(SerialHardware):
 
     @SerialHardware.register_measurement(description='Fetch raw data', measurement_group=MeasurementGroup.RAW,
                                          force=True)
-    def receive(self) -> TYPE_FIELD_DICT:
+    def receive(self) -> T_FIELD_MAP:
         if not self._enable_receive:
             self.sleep(1, 'rate limit, receive disabled')
             return {}
@@ -199,7 +199,7 @@ class ValveController(SerialHardware):
 
         with self._serial_lock.lock():
             # Send command
-            self._serial_port.write(channel.get_command().encode())
+            self._serial_port.write(channel.command_value.encode())
 
             # Wait for response
             response = self._serial_port.read_until()
@@ -209,7 +209,7 @@ class ValveController(SerialHardware):
 
     @SerialHardware.register_measurement(description='Valve position', measurement_group=MeasurementGroup.VALVE,
                                          force=True)
-    def get_position(self) -> TYPE_FIELD_DICT:
+    def get_position(self) -> T_FIELD_MAP:
         # Slow down sample rate
         self.sleep(1, 'rate limit, infrequent change')
 

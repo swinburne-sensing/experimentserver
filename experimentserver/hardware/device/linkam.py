@@ -3,12 +3,12 @@ import typing
 
 from transitions import EventData
 from experimentlib.data.humidity import abs_to_rel, rel_to_abs, rel_to_dew, unit_abs
+from experimentlib.data.unit import T_PARSE_QUANTITY, parse, registry
 
 from ..base.core import Hardware, ParameterError
-from experimentserver.data import Measurement, MeasurementGroup, TYPE_UNIT, TYPE_UNIT_OPTIONAL, TYPE_MEASUREMENT_LIST, \
-    to_unit
 from experimentserver.interface.linkam import LinkamSDK, StageValueType, SDK_PATH
 from experimentserver.interface.linkam.license import fetch_license
+from experimentserver.measurement import T_MEASUREMENT_SEQUENCE, Measurement, MeasurementGroup
 
 
 __author__ = 'Chris Harrison'
@@ -20,7 +20,7 @@ class T96Controller(Hardware):
 
     _REFRESH_PERIOD = 0.25
 
-    def __init__(self, *args, humidity_room_temp: TYPE_UNIT_OPTIONAL = None, sdk_debug: bool = False,
+    def __init__(self, *args, humidity_room_temp: typing.Optional[T_PARSE_QUANTITY] = None, sdk_debug: bool = False,
                  sdk_log_path: typing.Optional[str] = None, sdk_license_path: typing.Optional[str] = None, **kwargs):
         """ Create new instance.
 
@@ -32,7 +32,7 @@ class T96Controller(Hardware):
         super(T96Controller, self).__init__(*args, **kwargs)
 
         # Room temperature for humidity calculations
-        self._humidity_room_temp = to_unit(humidity_room_temp, 'degC')
+        self._humidity_room_temp = parse(humidity_room_temp, registry.degC) if humidity_room_temp is not None else None
 
         self._sdk_log_path = sdk_log_path
         self._sdk_license_path = sdk_license_path
@@ -53,7 +53,7 @@ class T96Controller(Hardware):
         self._has_humidity = False
 
     @Hardware.register_measurement(description='Temperature/humidity measurements', force=True)
-    def measure(self) -> TYPE_MEASUREMENT_LIST:
+    def measure(self) -> T_MEASUREMENT_SEQUENCE:
         assert self._handle is not None
 
         # Delay since Linkam only produces measurements data every ~0.1s
@@ -66,8 +66,8 @@ class T96Controller(Hardware):
 
         if controller.flags.supportsHeater:
             payload.append(Measurement(self, MeasurementGroup.TEMPERATURE, {
-                'heater_temperature_ch1': to_unit(self._handle.get_value(StageValueType.HEATER1_TEMP), 'degC',
-                                                  apply_round=2),
+                'heater_temperature_ch1': parse(self._handle.get_value(StageValueType.HEATER1_TEMP), registry.degC,
+                                                mag_round=2),
                 # 'heater_temperature_ch2': self._handle.get_value(StageValueType.HEATER2_TEMP),
                 # 'heater_temperature_ch3': self._handle.get_value(StageValueType.HEATER3_TEMP),
                 # 'heater_temperature_ch4': self._handle.get_value(StageValueType.HEATER4_TEMP),
@@ -75,9 +75,9 @@ class T96Controller(Hardware):
                 'heater_temperature_setpoint': self._handle.get_value(StageValueType.HEATER_SETPOINT),
                 'heater_output_ch1': round(self._handle.get_value(StageValueType.HEATER1_POWER), 2),
                 # 'heater_output_ch2': self._handle.get_value(StageValueType.HEATER2_POWER),
-                'heater_voltage': to_unit(program_state.voltage, 'volt', apply_round=3),
-                'heater_current': to_unit(program_state.current, 'amp', apply_round=3),
-                'heater_power': to_unit(program_state.pwm, 'watt', apply_round=3)
+                'heater_voltage': parse(program_state.voltage, registry.V, mag_round=3),
+                'heater_current': parse(program_state.current, registry.A, mag_round=3),
+                'heater_power': parse(program_state.pwm, registry.W, mag_round=3)
             }))
 
             if not self._has_heater:
@@ -91,13 +91,13 @@ class T96Controller(Hardware):
             humidity = self._handle.get_humidity_details()
 
             humidity_fields = {
-                'stage_rh': to_unit(humidity.rh, 'pct', apply_round=2),
-                'stage_rh_temperature': to_unit(humidity.rhTemp, 'degC', apply_round=2),
-                'stage_rh_setpoint': to_unit(humidity.rhSetpoint, 'pct'),
-                'generator_rh': to_unit(humidity.tubePercent, 'pct', apply_round=2),
-                'generator_rh_setpoint': to_unit(humidity.rhSetpoint, 'pct'),
-                'water_temperature': to_unit(humidity.waterTemp, 'degC', apply_round=2),
-                'water_temperature_setpoint': to_unit(humidity.waterSetpoint, 'degC'),
+                'stage_rh': parse(humidity.rh, registry.pct, mag_round=2),
+                'stage_rh_temperature': parse(humidity.rhTemp, registry.degC, mag_round=2),
+                'stage_rh_setpoint': parse(humidity.rhSetpoint, registry.pct),
+                'generator_rh': parse(humidity.tubePercent, registry.pct, mag_round=2),
+                'generator_rh_setpoint': parse(humidity.rhSetpoint, registry.pct),
+                'water_temperature': parse(humidity.waterTemp, registry.degC, mag_round=2),
+                'water_temperature_setpoint': parse(humidity.waterSetpoint, registry.degC),
                 # 'generator_column': humidity.status.flags.colSel,
                 # 'generator_drying': humidity.status.flags.dessicantDryMode,
                 # 'generator_running': humidity.status.flags.started
@@ -115,7 +115,7 @@ class T96Controller(Hardware):
                                                               humidity_fields['stage_rh'])
                 else:
                     self.logger().debug("Zero relative humidity")
-                    humidity_fields['stage_abs'] = to_unit(0, unit_abs)
+                    humidity_fields['stage_abs'] = parse(0, unit_abs)
                                                           
                 # RH at room temperature
                 if self._humidity_room_temp is not None:
@@ -145,17 +145,17 @@ class T96Controller(Hardware):
         if not self._has_humidity:
             raise ParameterError('Humidity not supported')
 
-        humidity = to_unit(humidity, 'pct', magnitude=True) * 100
+        humidity = parse(humidity, registry.pct).magnitude * 100
 
         if not self._handle.set_value(StageValueType.HUMIDITY_SETPOINT, humidity):
             raise ParameterError('Cannot configure humidity set point')
 
     @Hardware.register_parameter(description='Stage temperature (0 = off)')
-    def set_temperature(self, temperature: TYPE_UNIT):
+    def set_temperature(self, temperature: T_PARSE_QUANTITY):
         if not self._has_heater:
             raise ParameterError('Heating not supported')
 
-        temperature = to_unit(temperature, 'degC', magnitude=True)
+        temperature = parse(temperature, registry.degC).magnitude
 
         if temperature > 0:
             if not self._handle.set_value(StageValueType.HEATER_SETPOINT, temperature):
@@ -167,11 +167,11 @@ class T96Controller(Hardware):
             self._handle.enable_heater(False)
 
     @Hardware.register_parameter(description='Stage temperature ramp rate')
-    def set_temperature_ramp(self, rate: TYPE_UNIT):
+    def set_temperature_ramp(self, rate: T_PARSE_QUANTITY):
         if not self._has_heater:
             raise ParameterError('Heating not supported')
 
-        rate = to_unit(rate, 'degC/min', magnitude=True)
+        rate = parse(rate, 'degC/min').magnitude
 
         if not self._handle.set_value(StageValueType.HEATER_RATE, rate):
             raise ParameterError('Cannot configure temperature ramp rate')

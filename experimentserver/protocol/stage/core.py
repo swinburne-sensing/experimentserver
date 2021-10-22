@@ -1,18 +1,20 @@
 import typing
 from datetime import datetime, timedelta
 
+from experimentlib.data.unit import T_PARSE_TIMEDELTA, parse_timedelta
 from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE
+from experimentlib.util.time import now
 
 from . import BaseStage
-from ...config import ConfigManager
-from ...data import TYPE_TAG_DICT, TYPE_TIME, Measurement, to_timedelta
+from experimentserver.config import ConfigManager
+from experimentserver.measurement import T_TAG_MAP, Measurement
 
 
 class Delay(BaseStage):
-    def __init__(self, config: ConfigManager, interval: TYPE_TIME, uid: typing.Optional[str] = None,
-                 metadata: typing.Optional[TYPE_TAG_DICT] = None, sync_minute: bool = False):
+    def __init__(self, config: ConfigManager, interval: T_PARSE_TIMEDELTA, uid: typing.Optional[str] = None,
+                 metadata: typing.Optional[T_TAG_MAP] = None, sync_minute: bool = False):
         # Convert interval
-        self._delay_interval = to_timedelta(interval)
+        self._delay_interval: timedelta = parse_timedelta(interval)
         self._delay_sync_minute = sync_minute
 
         metadata = metadata or {}
@@ -36,7 +38,7 @@ class Delay(BaseStage):
         if self._delay_exit_timestamp is None:
             return self.get_stage_duration()
 
-        duration = self._delay_exit_timestamp - datetime.now()
+        duration = self._delay_exit_timestamp - now()
 
         if duration.total_seconds() > 0:
             return duration
@@ -62,15 +64,15 @@ class Delay(BaseStage):
                            f"{self._delay_exit_timestamp.strftime(FORMAT_TIMESTAMP_CONSOLE)}")
 
         # Add tag
-        Measurement.add_global_tag('delay_interval', self._delay_interval.total_seconds())
+        Measurement.add_global_tag('delay_interval', self._delay_interval)
 
     def stage_run(self) -> bool:
         # Test for stage completion
-        return datetime.now() < self._delay_exit_timestamp
+        return now() < self._delay_exit_timestamp
 
     def stage_resume(self) -> typing.NoReturn:
         # Update resume timestamp
-        self._sync_delay_exit_timestamp(datetime.now() - self._stage_pause_timestamp)
+        self._sync_delay_exit_timestamp(now() - self._stage_pause_timestamp)
 
         super(Delay, self).stage_resume()
 
@@ -105,7 +107,7 @@ class Delay(BaseStage):
 
 class Pause(BaseStage):
     def __init__(self, config: ConfigManager, uid: typing.Optional[str] = None,
-                 metadata: typing.Optional[TYPE_TAG_DICT] = None):
+                 metadata: typing.Optional[T_TAG_MAP] = None):
         super(Pause, self).__init__(config, uid, metadata=metadata)
 
     def stage_enter(self) -> typing.NoReturn:

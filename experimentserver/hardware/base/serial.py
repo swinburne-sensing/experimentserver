@@ -4,13 +4,14 @@ import typing
 from datetime import datetime
 
 import serial
+from experimentlib.util.time import now
 from transitions import EventData
 
 from .core import Hardware
 from ..error import CommunicationError
 from ..metadata import TYPE_PARAMETER_DICT
-from ...data import Measurement, MeasurementTarget
 from ...util.thread import CallbackThread, ThreadLock, QueueThread, ThreadException
+from experimentserver.measurement import Measurement, MeasurementTarget
 
 
 class SerialHardware(Hardware, metaclass=abc.ABCMeta):
@@ -141,7 +142,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
 
                 # Place in consumer queue
                 try:
-                    self._thread_payload_consumer.append((payload, datetime.now()))
+                    self._thread_payload_consumer.append((payload, now()))
                 except ThreadException:
                     self.logger().warning('Payload consumer thread not running')
 

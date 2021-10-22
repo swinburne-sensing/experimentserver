@@ -6,6 +6,10 @@ class HardwareError(ApplicationException):
     pass
 
 
+class HardwareIdentifierError(HardwareError):
+    pass
+
+
 class HardwareInitError(HardwareError):
     """ Exception thrown during initialisation. """
     pass

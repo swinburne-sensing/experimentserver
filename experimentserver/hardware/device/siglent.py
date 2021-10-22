@@ -1,11 +1,12 @@
 import typing
 
+from experimentlib.data.unit import registry, parse
 from transitions import EventData
 
 from ..base.scpi import SCPIHardware, SCPIDisplayUnavailable
 from ..base.visa import VISAHardware, TYPE_ERROR
-from ...data import Measurement, MeasurementGroup, to_unit
 from ..error import CommunicationError
+from experimentserver.measurement import Measurement, MeasurementGroup
 
 
 __author__ = 'Chris Harrison'
@@ -45,10 +46,10 @@ class SDGWaveformGenerator(SCPIHardware):
         fields = dict(zip(result[::2], result[1::2]))
 
         values = {
-            'frequency': to_unit(fields['FRQ'].lower().replace('hz', 'Hz'), 'Hz'),
-            'duty': to_unit(fields['DUTY'], 'percent'),
-            'width_positive': to_unit(fields['PW'].lower(), 's'),
-            'width_negative': to_unit(fields['NW'].lower(), 's')
+            'frequency': parse(fields['FRQ'].lower().replace('hz', 'Hz'), registry.Hz),
+            'duty': parse(fields['DUTY'], registry.pct),
+            'width_positive': parse(fields['PW'].lower(), registry.s),
+            'width_negative': parse(fields['NW'].lower(), registry.s)
         }
 
         tags = {

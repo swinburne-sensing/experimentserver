@@ -1,9 +1,10 @@
 import typing
 
+from experimentlib.data.unit import registry, parse
 from transitions import EventData
 
 from ..base.serial import SerialHardware
-from ...data import Measurement, MeasurementGroup, to_unit
+from experimentserver.measurement import Measurement, MeasurementGroup
 
 
 __author__ = 'Chris Harrison'
@@ -24,7 +25,7 @@ class FieldMasterGSPowerMeter(SerialHardware):
 
     @SerialHardware.register_parameter(description='Configure wavelength')
     def set_wavelength(self, wavelength: float):
-        wavelength = to_unit(wavelength, 'nm').to('m').magnitude
+        wavelength = parse(wavelength, registry.nm).to(registry.m).magnitude
 
         # Configure wavelength
         with self._serial_lock.lock():
@@ -42,8 +43,8 @@ class FieldMasterGSPowerMeter(SerialHardware):
         self.logger().debug(f"Read power: {power}")
         self.logger().debug(f"Read wavelength: {wavelength}")
 
-        power = to_unit(power, 'W')
-        wavelength = to_unit(wavelength, 'm')
+        power = parse(power, registry.W)
+        wavelength = parse(wavelength, registry.m)
 
         self.logger().debug(f"Parsed power: {power}")
         self.logger().debug(f"Parsed wavelength: {wavelength}")

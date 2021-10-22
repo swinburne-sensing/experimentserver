@@ -2,14 +2,14 @@ import enum
 import re
 import typing
 
+from experimentlib.data.unit import T_PARSE_QUANTITY, registry, parse
 from transitions import EventData
 
 from ..error import CommunicationError, ExternalError
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
 from ..base.scpi import SCPIHardware
 from ..base.visa import TYPE_ERROR, VISAHardware
-from ...data.unit import to_unit, TYPE_UNIT, TYPE_UNIT_OPTIONAL
-from experimentserver.data.measurement import Measurement, MeasurementGroup
+from experimentserver.measurement import Measurement, MeasurementGroup
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
@@ -48,8 +48,8 @@ class PowerSupplyChannel(HardwareEnum):
             cls.CHANNEL3: 'CH3'
         }
 
-    @staticmethod
-    def get_tag_name() -> str:
+    @property
+    def tag_name(self) -> str:
         return 'supply_channel'
 
     @classmethod
@@ -137,9 +137,10 @@ class DP832PowerSupply(SCPIHardware):
             transaction.write(':OUTP {},{}', channel, enable)
 
     @SCPIHardware.register_parameter(description='Set output current limit', order=40, primary_key=['channel'])
-    def set_ocp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: TYPE_UNIT_OPTIONAL = None):
+    def set_ocp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel],
+                current: typing.Optional[T_PARSE_QUANTITY] = None):
         channel = PowerSupplyChannel.from_input(channel)
-        current = to_unit(current, 'amp', magnitude=True)
+        current = parse(current, registry.A).magnitude if current is not None else current
 
         with self.visa_transaction() as transaction:
             if current is not None:
@@ -149,9 +150,10 @@ class DP832PowerSupply(SCPIHardware):
                 transaction.write(':OUTP:OCP {},OFF', channel)
 
     @SCPIHardware.register_parameter(description='Set output voltage limit', order=40, primary_key=['channel'])
-    def set_ovp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], voltage: TYPE_UNIT_OPTIONAL = None):
+    def set_ovp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel],
+                voltage: typing.Optional[T_PARSE_QUANTITY] = None):
         channel = PowerSupplyChannel.from_input(channel)
-        voltage = to_unit(voltage, 'volt', magnitude=True)
+        voltage = parse(voltage, registry.V).magnitude if voltage is not None else None
 
         with self.visa_transaction() as transaction:
             if voltage is not None:
@@ -161,17 +163,17 @@ class DP832PowerSupply(SCPIHardware):
                 transaction.write(':OUTP:OVP {},OFF', channel)
 
     @SCPIHardware.register_parameter(description='Set output voltage', primary_key=['channel'])
-    def set_voltage(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], voltage: TYPE_UNIT):
+    def set_voltage(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], voltage: T_PARSE_QUANTITY):
         channel = PowerSupplyChannel.from_input(channel)
-        voltage = to_unit(voltage, 'volt', magnitude=True)
+        voltage = parse(voltage, registry.V).magnitude
 
         with self.visa_transaction() as transaction:
             transaction.write(':SOUR{}:VOLT {}', channel, voltage)
 
     @SCPIHardware.register_parameter(description='Set output voltage', primary_key=['channel'])
-    def set_current(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: TYPE_UNIT):
+    def set_current(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: T_PARSE_QUANTITY):
         channel = PowerSupplyChannel.from_input(channel)
-        current = to_unit(current, 'amp', magnitude=True)
+        current = parse(current, 'amp').magnitude
 
         with self.visa_transaction() as transaction:
             transaction.write(':SOUR{}:CURR {}', channel, current)
@@ -217,16 +219,16 @@ class DP832PowerSupply(SCPIHardware):
                 raise RigolError(f"Unexpected response to channel mode query: {channel_mode}")
 
             status.append(Measurement(self, MeasurementGroup.SUPPLY, {
-                    'voltage': to_unit(channel_status_split[0], 'volt', apply_round=3),
-                    'voltage_setpoint': to_unit(channel_setting_split[1], 'volt', apply_round=3),
-                    'voltage_limit': to_unit(channel_ovp, 'volt', apply_round=3),
-                    'current': to_unit(channel_status_split[1], 'amp', apply_round=3),
-                    'current_setpoint': to_unit(channel_setting_split[2], 'amp', apply_round=3),
-                    'current_limit': to_unit(channel_ocp, 'volt', apply_round=3),
-                    'power': to_unit(channel_status_split[2], 'watt', apply_round=3),
+                    'voltage': parse(channel_status_split[0], registry.V, mag_round=3),
+                    'voltage_setpoint': parse(channel_setting_split[1], registry.V, mag_round=3),
+                    'voltage_limit': parse(channel_ovp, registry.V, mag_round=3),
+                    'current': parse(channel_status_split[1], 'amp', mag_round=3),
+                    'current_setpoint': parse(channel_setting_split[2], 'amp', mag_round=3),
+                    'current_limit': parse(channel_ocp, registry.V, mag_round=3),
+                    'power': parse(channel_status_split[2], 'watt', mag_round=3),
                     'mode': channel_mode
                 }, tags={
-                    PowerSupplyChannel.get_tag_name(): channel.get_tag_value(),
+                    channel.tag_name: channel,
                     'channel_enable': channel_enable,
                     'channel_mode': channel_mode
                 })

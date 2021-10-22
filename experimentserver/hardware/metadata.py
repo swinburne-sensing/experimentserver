@@ -3,15 +3,11 @@ from __future__ import annotations
 import functools
 import inspect
 import typing
-from datetime import datetime, timedelta
 
-import typing_inspect
-
-from .base.enum import HardwareEnum
 from .error import MeasurementError, ParameterError
 from experimentserver.util.metadata import BoundMetadataCall, OrderedMetadata
-from experimentserver.data import Quantity, Measurement, MeasurementGroup, TYPE_MEASUREMENT_RETURN, \
-    TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT
+from experimentserver.measurement import T_FIELD_MAP, T_MEASUREMENT_RETURN, T_MEASUREMENT_SEQUENCE, Measurement, \
+    MeasurementGroup
 
 
 class _MeasurementMetadata(OrderedMetadata):
@@ -39,12 +35,12 @@ class _MeasurementMetadata(OrderedMetadata):
         return_annotation = inspect.signature(method).return_annotation
 
         if return_annotation != 'Measurement' and return_annotation != Measurement and \
-                return_annotation != TYPE_MEASUREMENT_LIST and return_annotation != 'TYPE_MEASUREMENT_LIST' and \
-                return_annotation != TYPE_FIELD_DICT:
+                return_annotation != T_MEASUREMENT_SEQUENCE and return_annotation != 'T_MEASUREMENT_SEQUENCE' and \
+                return_annotation != T_FIELD_MAP and return_annotation != 'T_FIELD_MAP':
             raise MeasurementError(f"Registered measurement method {method!r} must provide compatible "
                                    f"return annotation")
 
-        if return_annotation == TYPE_FIELD_DICT and measurement_group is None:
+        if return_annotation == T_FIELD_MAP and measurement_group is None:
             raise MeasurementError('Registered measurement methods that return a dict must provide a '
                                    'MeasurementGroup')
 
@@ -92,54 +88,54 @@ class _ParameterMetadata(OrderedMetadata):
 
         return super().bind(target, **kwargs)
 
-    def export(self) -> typing.Dict[str, typing.Union[str, typing.Dict[int, str]]]:
-        """
-
-        :return:
-        """
-        method_desc = {}
-
-        # Get method arguments
-        method_args = dict(inspect.signature(self.method).parameters)
-
-        for arg_name, arg_properties in method_args.items():
-            # Ignore self
-            if arg_name == 'self':
-                continue
-
-            # Search for preferred types, default to strings
-            method_desc[arg_name] = 'str'
-
-            for arg_type in typing_inspect.get_args(arg_properties.annotation):
-                if issubclass(arg_type, HardwareEnum):
-                    # Override with enum
-                    method_desc[arg_name] = {x.value: x.get_description() for x in arg_type}
-                    break
-                elif arg_type is Quantity:
-                    # Override with quantity
-                    method_desc[arg_name] = 'unit'
-                    break
-                elif arg_type is datetime:
-                    # Override with date/time
-                    method_desc[arg_name] = 'time'
-                    break
-                elif arg_type is timedelta:
-                    # Override with time delta
-                    method_desc[arg_name] = 'timedelta'
-                    break
-                elif arg_type is bool:
-                    # Override with boolean
-                    method_desc[arg_name] = 'bool'
-                    break
-
-        return method_desc
+    # def export(self) -> typing.Dict[str, typing.Union[str, typing.Dict[int, str]]]:
+    #     """
+    #
+    #     :return:
+    #     """
+    #     method_desc = {}
+    #
+    #     # Get method arguments
+    #     method_args = dict(inspect.signature(self.method).parameters)
+    #
+    #     for arg_name, arg_properties in method_args.items():
+    #         # Ignore self
+    #         if arg_name == 'self':
+    #             continue
+    #
+    #         # Search for preferred types, default to strings
+    #         method_desc[arg_name] = 'str'
+    #
+    #         for arg_type in typing_inspect.get_args(arg_properties.annotation):
+    #             if issubclass(arg_type, HardwareEnum):
+    #                 # Override with enum
+    #                 method_desc[arg_name] = {x.value: x.get_description() for x in arg_type}
+    #                 break
+    #             elif arg_type is Quantity:
+    #                 # Override with quantity
+    #                 method_desc[arg_name] = 'unit'
+    #                 break
+    #             elif arg_type is datetime:
+    #                 # Override with date/time
+    #                 method_desc[arg_name] = 'time'
+    #                 break
+    #             elif arg_type is timedelta:
+    #                 # Override with time delta
+    #                 method_desc[arg_name] = 'timedelta'
+    #                 break
+    #             elif arg_type is bool:
+    #                 # Override with boolean
+    #                 method_desc[arg_name] = 'bool'
+    #                 break
+    #
+    #     return method_desc
 
 
 # Parameter callable
 CALLABLE_PARAMETER = typing.Callable[..., typing.NoReturn]
 
 # Measurement methods may return a dict, a single measurement, or a sequence of measurements
-CALLABLE_MEASUREMENT = typing.Callable[[], TYPE_MEASUREMENT_RETURN]
+CALLABLE_MEASUREMENT = typing.Callable[[], T_MEASUREMENT_RETURN]
 TYPE_PARAMETER_DICT = typing.MutableMapping[str, typing.Dict[str, typing.Any]]
 TYPE_PARAMETER_COMMAND = typing.Union[None, TYPE_PARAMETER_DICT, typing.List[TYPE_PARAMETER_DICT]]
 TYPE_PARAMETER_VALID_DICT = typing.MutableMapping[_ParameterMetadata, functools.partial]

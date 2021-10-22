@@ -11,18 +11,21 @@ import threading
 import time
 import typing
 import sys
-from datetime import datetime
 
-from experimentlib.file.git import get_git_hash
-from experimentlib.logging import basic_logging, get_logger, DEBUG, INFO
+from yaml import dump
+from experimentlib.file.git import get_git_hash, GitError
+from experimentlib.logging import basic_logging, get_logger, shutdown, DEBUG, INFO
 from experimentlib.util.classes import instance_from_dict
+from experimentlib.util.time import now
 
 import experimentserver
 import experimentserver.util.thread
 from experimentserver.config import ConfigManager
-from experimentserver.data.measurement import Measurement, MeasurementTarget
+from experimentserver.measurement import Measurement, MeasurementTarget
 from experimentserver.database import setup_database
-from experimentserver.hardware import Hardware, device, HardwareManager
+from experimentserver.hardware import device
+from experimentserver.hardware.base.core import Hardware
+from experimentserver.hardware.manager import HardwareManager
 from experimentserver.server import start_server
 from experimentserver.versions import dependencies, python_version_tested
 
@@ -50,7 +53,7 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
     :param cli_tags: dict containing additional metadata tags
     :param procedure_path:
     """
-    time_startup = datetime.now()
+    time_startup = now()
 
     # Initial logging setup
     basic_logging(level=DEBUG if debug else INFO)
@@ -77,6 +80,10 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
         print("An error occurred while attempting to load application configuration.")
         raise
 
+    # Dump configuration
+    if debug:
+        root_logger.debug(f"Configuration:\n{dump(app_config.dump())}")
+
     # Wrap launch in a finally block to ensure all threads get to complete, even those created for logging
     try:
         # Configure logging
@@ -101,9 +108,6 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
 
         if platform.python_implementation() != 'CPython':
             root_logger.warning(f"This python interpreter has not been tested! Tested interpreters: CPython")
-
-        # Dump configuration
-        # root_logger.info(f"Configuration:\n{dump(app_config.dump())}")
 
         # If procedure is specified, add to the configuration
         if procedure_path is not None:
@@ -155,7 +159,7 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
                 root_logger.info(f"git hash: {git_hash}")
             else:
                 root_logger.info('git commit hash not available')
-        except OSError:
+        except GitError:
             root_logger.info('git not available')
 
         # Dump requirements versions
@@ -211,11 +215,14 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
             user_metadata = {}
 
             # If URL is available then provide it now
-            url = None
+            grafana_url = app_config.get('url.grafana')
 
-            if 'url.grafana' in app_config and app_config['url.grafana'] is not None and \
-                    len(app_config['url.grafana']) > 0:
-                url = app_config.get('url.grafana').format(int(1000 * time_startup.timestamp()), 'now')
+            if grafana_url is not None and len(grafana_url) > 0:
+                url = app_config.get('url.grafana').format(**{
+                    'from': int(1000 * time_startup.timestamp()),
+                    'to': 'now'
+                })
+
                 root_logger.info(f"Runtime Grafana URL {url}", notify=True)
 
                 user_metadata['grafana_url'] = url
@@ -223,12 +230,15 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
             # Run main application
             start_server(app_config, app_metadata, user_metadata)
 
-            root_logger.info(f"Stopped, total runtime: {datetime.now() - time_startup!s}")
+            root_logger.info(f"Stopped, total runtime: {now() - time_startup!s}")
 
-            if url is not None:
-                root_logger.info(f"Completed Grafana URL "
-                                 f"{url.format(int(1000 * time_startup.timestamp()), int(1000 * time.time()))}",
-                                 notify=True)
+            if grafana_url is not None and len(grafana_url) > 0:
+                url = app_config.get('url.grafana').format(**{
+                    'from': int(1000 * time_startup.timestamp()),
+                    'to': int(1000 * time.time())
+                })
+
+                root_logger.info(f"Completed Grafana URL {url}", notify=True)
 
             return experimentserver.EXIT_SUCCESS
         finally:
@@ -265,7 +275,9 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
         for thread in threading.enumerate():
             root_logger.warning(f"Remaining thread: {thread!r}")
 
-        root_logger.info('Done')
+        root_logger.info('Stopped, wait for 5 secs to allow threads to wrap up')
+        time.sleep(5)
+        shutdown()
 
 
 """ A wrapper for the main function (mostly so we can exit if an argument error is found). """
@@ -294,4 +306,9 @@ if app_args.tag is not None:
 
         app_tags[arg_tag_split[0]] = arg_tag_split[1]
 
-exit(main(app_args.debug, app_args.config, app_tags, app_args.procedure))
+try:
+    exit(main(app_args.debug, app_args.config, app_tags, app_args.procedure))
+except Exception:
+    raise
+finally:
+    exit(experimentserver.EXIT_ERROR_EXCEPTION)

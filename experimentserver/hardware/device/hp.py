@@ -2,14 +2,15 @@ import enum
 import re
 import typing
 
+from experimentlib.data.unit import registry, parse
 from transitions import EventData
 from pyvisa import constants
 
-from ...data import MeasurementGroup, to_unit, Measurement
 from ..error import CommunicationError, MeasurementUnavailable, MeasurementError
 from ..base.scpi import SCPIHardware
 from ..base.visa import VISAHardware, TYPE_ERROR
 from ..base.enum import HardwareEnum, TYPE_ENUM_CAST
+from experimentserver.measurement import Measurement, MeasurementGroup
 
 
 __author__ = 'Chris Harrison'
@@ -166,14 +167,14 @@ class HP34401AMultimeter(SCPIHardware):
         if self._function in (HPMultimeterFunction.VOLTAGE_DC, HPMultimeterFunction.VOLTAGE_AC,
                               HPMultimeterFunction.DIODE):
             return Measurement(self, MeasurementGroup.VOLTAGE, {
-                'voltage': to_unit(measurement_value, 'volt')
+                'voltage': parse(measurement_value, registry.V)
             })
         elif self._function in (HPMultimeterFunction.CURRENT_DC, HPMultimeterFunction.CURRENT_AC):
             return Measurement(self, MeasurementGroup.CURRENT, {
-                'current': to_unit(measurement_value, 'amp')
+                'current': parse(measurement_value, registry.A)
             })
         elif self._function in (HPMultimeterFunction.RESISTANCE_2WIRE, HPMultimeterFunction.RESISTANCE_4WIRE):
-            resistance = to_unit(measurement_value, 'ohm')
+            resistance = parse(measurement_value, registry.ohm)
 
             if resistance.m_as('ohm') > 1e37:
                 raise MeasurementUnavailable('Open circuit')
@@ -183,7 +184,7 @@ class HP34401AMultimeter(SCPIHardware):
             })
         elif self._function == HPMultimeterFunction.FREQUENCY:
             return Measurement(self, MeasurementGroup.FREQUENCY, {
-                'frequency': to_unit(measurement_value, 'Hz')
+                'frequency': parse(measurement_value, registry.Hz)
             })
         else:
             raise MeasurementError(f"Unknown measurement for configured function {self._function!s}")

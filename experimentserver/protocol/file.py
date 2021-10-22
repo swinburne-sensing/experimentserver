@@ -2,12 +2,12 @@ import types
 from collections import ChainMap
 
 import yaml
+from experimentlib.data.unit import registry, Quantity, converter, parse, parse_timedelta
 from experimentlib.file.yaml import ConstructorError
 from experimentlib.util import arg_helper
 from experimentlib.util.generate import hex_str
 
 import experimentserver
-from experimentserver.data.unit import to_unit, to_timedelta, Quantity
 from .stage import BaseStage
 
 HEADER = f"""%YAML 1.2
@@ -31,48 +31,61 @@ HEADER = f"""%YAML 1.2
 #       led_optical_power: '<power> μW'
 #       led_wavelength: '<wavelength> nm'
 #
-#   - Many shortcuts exist to help write your procedure:
-#       - !delay <time>[, <tag>=<value>, <tag>=<value>, ...]
-#           Will wait the specified time before proceeding, can append additional metadata
+#   - Many shortcuts exist to help write your procedure.
+#     Note the command format and use of commas, arguments in square brackets [] are optional.
 #
-#       - !pause [<tag>=<value>, <tag>=<value>, ...]
-#           Pause procedure, will wait forever until manually resumed, can append additional metadata
+#     - !delay <time>[, <tag>=<value>, <tag>=<value>, ...]
+#         Will wait the specified time before proceeding, can append additional metadata
+#         eg:
+#           - !delay 1 hour
+#           - !delay 3 mins, this_is_a_tag=yes it is, another_tag=yes
+#           - !delay 10 sec
+#     
+#     - !pause [<tag>=<value>, <tag>=<value>, ...]
+#         Pause procedure, will wait forever until manually resumed, can append additional metadata
+#         eg:
+#           - !pause
+#     
+#     - !flow <mfc>, <flow rate>
+#         Shortcut to set a flow rate
+#     
+#     - !stage <temperature OR ramp OR humidity OR valve>, <value>
+#         Shortcut to change Linkam stage/generator settings
+#         eg:
+#           - !stage temperature, 30 degC
+#           - !stage ramp, 10 degC/min
+#           - !stage humidity, 30%
+#           - !stage valve, vent
+#           - !stage valve, chamber
+#     
+#     - !interlock
+#         Shortcut to setup interlock for UV or high voltage use
+#         eg:
+#           - !interlock
+#     
+#     - !notify <message>
+#         Send a notification via Pushover (requires paid app and special configuration)
+#         eg:
+#           - !notify Something has happened
+#     
+#     - !pulse <mfc>, <expose flow rate>, <exposure time>, <recovery time>
+#         Optional arguments:
+#           setup_time=<setup time>
+#           balance_mfc=<mfc to use for balance gas, defaults to mfc_air_dry>
+#           total_flow=<total flow rate for exposure, defaults to 200 sccm>
+#           tags=<tag>=<value>, <tag>=<value>, ...
+#           
+#         EXPERIMENTAL NEW COMMAND Automatically calculates flow rate for specified gas.
+#         
+#         eg:
+#           - !pulse mfc_hydrogen, 50 sccm, 30 secs, 1 hour
+#           - !pulse mfc_hydrogen, 200 sccm, 1min, 10min, setup_time:10min, tags:expose_concentration=1%, expose_gas=Hydrogen
+#     
+#     - !set <hardware>, <command>[ <argument>, <argument>, ...]
+#         Manual command, use with caution.
 #
-#       - !flow <mfc>, <flow>
-#          Set MFC flow rate
-#
-#       - !temperature <temperature>
-#          Set Linkam stage temperature setpoint
-#
-#       - !humidity <RH %>
-#           Set Linkam humidity generator setpoint
-#
-#       - !valve <A or B>
-#          Switch the humidity valve to position A (into the chamber) or B (vent)
-#
-#       - !setup <hardware>, <command>, <argument 1>, <argument 2>, ...
-#           Runs a command on a hardware object with otional arguments
-#
-#       - !notify <message>
-#          Send a notification via Pushover (requires paid app and special configuration)
-#       
-#       - !delay_setup <time>, <tag>=<value>, ...
-#          Same as !delay but always sets stage_phase=setup to track exposures
-#
-#       - !delay_expose <time>, <tag>=<value>, ...
-#          Same as !delay but always sets stage_phase=expose to track exposures
-#
-#       - !delay_recover <time>, <tag>=<value>, ...
-#          Same as !delay but always sets stage_phase=recover to track exposures
 
 """
-
-
-def unit_converter(unit: str):
-    def converter(x: str) -> Quantity:
-        return to_unit(x, unit)
-
-    return converter
 
 
 class ProcedureArgumentError(experimentserver.ApplicationException):
@@ -88,7 +101,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
 
     # Argument parser for !delay
     _DELAY_PARSER = arg_helper.SimpleArgParser()
-    _DELAY_PARSER.add_argument('interval', converter=to_timedelta)
+    _DELAY_PARSER.add_argument('interval', converter=converter)
     _DELAY_PARSER.add_argument('tags', converter=arg_helper.parse_pair, default=[], greedy=True, required=False)
 
     # Argument parser for !pause
@@ -97,12 +110,12 @@ class YAMLProcedureLoader(yaml.SafeLoader):
 
     # Argument parser for !stage
     _STAGE_PARSER = arg_helper.SimpleArgParser()
-    _STAGE_PARSER.add_argument('type', converter='lower', values=['temperature', 'humidity', 'valve'])
+    _STAGE_PARSER.add_argument('type', converter='lower', values=['temperature', 'ramp', 'humidity', 'valve'])
     _STAGE_PARSER.add_argument('value')
 
     # Argument parser for !notify
     _NOTIFY_PARSER = arg_helper.SimpleArgParser()
-    _NOTIFY_PARSER.add_argument('message')
+    _NOTIFY_PARSER.add_argument('message', greedy=True)
 
     # Parser for !flow
     _FLOW_PARSER = arg_helper.SimpleArgParser()
@@ -112,12 +125,12 @@ class YAMLProcedureLoader(yaml.SafeLoader):
     # Parser for !pulse
     _PULSE_PARSER = arg_helper.SimpleArgParser()
     _PULSE_PARSER.add_argument('expose_mfc')
-    _PULSE_PARSER.add_argument('expose_flow', converter=unit_converter('sccm'))
-    _PULSE_PARSER.add_argument('expose_time', converter=to_timedelta)
-    _PULSE_PARSER.add_argument('recover_time', converter=to_timedelta)
+    _PULSE_PARSER.add_argument('expose_flow', converter=converter(registry.sccm))
+    _PULSE_PARSER.add_argument('expose_time', converter=parse_timedelta)
+    _PULSE_PARSER.add_argument('recover_time', converter=parse_timedelta)
     _PULSE_PARSER.add_argument('setup_time', required=False)
     _PULSE_PARSER.add_argument('balance_mfc', default='mfc_air_dry', required=False)
-    _PULSE_PARSER.add_argument('total_flow', converter=unit_converter('sccm'), default=to_unit(200, 'sccm'),
+    _PULSE_PARSER.add_argument('total_flow', converter=converter(registry.sccm), default=Quantity(200, registry.sccm),
                                required=False)
     _PULSE_PARSER.add_argument('tags', converter=arg_helper.parse_pair, default=[], greedy=True, required=False)
 
@@ -174,6 +187,16 @@ class YAMLProcedureLoader(yaml.SafeLoader):
                 'parameters': {
                     'linkam': {
                         'set_temperature': args.value
+                    }
+                }
+            }
+        elif args.type == 'ramp':
+            return {
+                'class': 'core.Setup',
+                'version': BaseStage.EXPORT_VERSION,
+                'parameters': {
+                    'linkam': {
+                        'set_temperature_ramp': args.value
                     }
                 }
             }
@@ -236,8 +259,8 @@ class YAMLProcedureLoader(yaml.SafeLoader):
         # Generate unique ID for exposure
         tags['expose_uid'] = hex_str()
 
-        expose_flow = to_unit(args.expose_flow, 'sccm')
-        total_flow = to_unit(args.total_flow, 'sccm')
+        expose_flow = parse(args.expose_flow, registry.sccm)
+        total_flow = parse(args.total_flow, registry.sccm)
 
         setup_tags = tags.copy()
         setup_tags['expose_phase'] = 'setup'
@@ -337,10 +360,27 @@ class YAMLProcedureLoader(yaml.SafeLoader):
 
         return pulse_sequence
 
+    def command_interlock(self, _):
+        return [
+            {
+                'class': 'core.Setup',
+                'version': BaseStage.EXPORT_VERSION,
+                'parameters': {
+                    'rigol': {
+                        'set_voltage': (3, '5V'),
+                        'set_current': (3, '1A'),
+                        'set_output': (3, True)
+                    }
+                }
+            }
+        ]
+
 
 YAMLProcedureLoader.add_constructor('!delay', YAMLProcedureLoader.command_delay)
 YAMLProcedureLoader.add_constructor('!notify', YAMLProcedureLoader.command_notify)
 YAMLProcedureLoader.add_constructor('!pause', YAMLProcedureLoader.command_pause)
 YAMLProcedureLoader.add_constructor('!stage', YAMLProcedureLoader.command_stage)
 YAMLProcedureLoader.add_constructor('!set', YAMLProcedureLoader.command_set)
+YAMLProcedureLoader.add_constructor('!flow', YAMLProcedureLoader.command_flow)
 YAMLProcedureLoader.add_constructor('!pulse', YAMLProcedureLoader.command_pulse)
+YAMLProcedureLoader.add_constructor('!interlock', YAMLProcedureLoader.command_interlock)

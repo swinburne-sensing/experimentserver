@@ -5,12 +5,28 @@ import enum
 import re
 import threading
 import typing
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from experimentlib.data.unit import Quantity
 from experimentlib.logging.classes import LoggedAbstract, Logged
+from experimentlib.util.time import now
 
 import experimentserver
-from .unit import is_unit, TYPE_VALUE
+from experimentserver.hardware.base.enum import HardwareEnum
+
+
+# Type definitions
+T_FIELD_NAME = str
+T_FIELD_VALUE = typing.Union[str, int, float, bool, Quantity]
+
+T_DYNAMIC_FIELD = typing.Callable[['Measurement'], T_FIELD_VALUE]
+
+T_TAG_NAME = str
+T_TAG_VALUE = typing.Union[str, int, bool, datetime, timedelta, Quantity, HardwareEnum]
+
+T_FIELD_MAP = typing.Mapping[T_FIELD_NAME, T_FIELD_VALUE]
+T_DYNAMIC_FIELD_MAP = typing.MutableMapping[str, T_DYNAMIC_FIELD]
+T_TAG_MAP = typing.Mapping[T_TAG_NAME, T_TAG_VALUE]
 
 
 class MeasurementTargetRemappingException(experimentserver.ApplicationException):
@@ -38,21 +54,22 @@ class Measurement(Logged):
 
     metadata_global_lock = threading.RLock()
 
-    _metadata_global_tags = {}
-    _metadata_global_tags_stack = []
+    _metadata_global_dynamic_fields: typing.MutableMapping[T_FIELD_NAME, T_DYNAMIC_FIELD] = {}
+    _metadata_global_tags: typing.MutableMapping[T_TAG_NAME, T_TAG_VALUE] = {}
 
-    _metadata_global_dynamic_fields: typing.Dict[str, TYPE_DYNAMIC_FIELD] = {}
+    _metadata_global_metadata_stack: typing.List[typing.Tuple[typing.Mapping[T_FIELD_NAME, T_DYNAMIC_FIELD],
+                                                              typing.Mapping[T_TAG_NAME, T_TAG_VALUE]]] = []
 
-    def __init__(self, source: MeasurementSource, measurement_group: MeasurementGroup, fields: TYPE_FIELD_DICT,
+    def __init__(self, source: MeasurementSource, measurement_group: MeasurementGroup, fields: T_FIELD_MAP,
                  timestamp: typing.Optional[datetime] = None,
-                 dynamic_fields: typing.Optional[typing.Mapping[str, TYPE_DYNAMIC_FIELD]] = None,
-                 tags: typing.Optional[TYPE_TAG_DICT] = None):
+                 dynamic_fields: typing.Optional[T_DYNAMIC_FIELD_MAP] = None,
+                 tags: typing.Optional[T_TAG_MAP] = None):
         """ Create new Measurement.
 
         :param source:
         :param measurement_group:
         :param fields:
-        :param timestamp: if None then datetime.now() is used
+        :param timestamp: if None then now() is used
         :param dynamic_fields:
         :param tags:
         """
@@ -61,25 +78,25 @@ class Measurement(Logged):
         self.source = source
         self.measurement_group = measurement_group
         self._fields: typing.Dict[str, typing.Any] = dict(fields)
-        self.timestamp = timestamp or datetime.now()
+        self.timestamp = timestamp or now()
         self._tags: typing.Dict[str, typing.Any] = {}
 
-        dynamic_fields = dict(dynamic_fields) or {}
+        dynamic_fields = dict(dynamic_fields) if dynamic_fields is not None else {}
 
         with self.metadata_global_lock:
             # Default to global tags
             self._tags.update(self._metadata_global_tags)
 
             # Fetch global dynamic fields
-            dynamic_fields.update(self._metadata_global_dynamic_fields.copy())
+            dynamic_fields.update(self._metadata_global_dynamic_fields)
 
         # Overwrite with instance fields and tags
         if tags is not None:
             self._tags.update(tags)
 
         # Append source name to tags
-        self._tags['origin'] = self.source.get_export_source_name()
-        self._tags['origin_class'] = str(self.source.__class__)
+        self._tags['hardware'] = self.source.get_export_source_name()
+        self._tags['hardware_class'] = str(self.source.__class__)
 
         # Apply dynamic fields and tags
         for tag_key, tag_value in self._tags.items():
@@ -89,7 +106,7 @@ class Measurement(Logged):
         for field_key, field_callable in dynamic_fields.items():
             self._fields[field_key] = field_callable(self)
 
-    def add_field(self, name: str, value: TYPE_VALUE):
+    def add_field(self, name: T_FIELD_NAME, value: T_FIELD_VALUE):
         """ TODO
 
         :param name:
@@ -98,14 +115,14 @@ class Measurement(Logged):
         """
         self._fields[name] = value
 
-    def get_fields(self) -> TYPE_FIELD_DICT:
+    def get_fields(self) -> T_FIELD_MAP:
         """ TODO
 
         :return:
         """
         return self._fields.copy()
 
-    def add_tag(self, name: str, value: typing.Any):
+    def add_tag(self, name: T_TAG_NAME, value: T_FIELD_VALUE):
         """
 
         :param name:
@@ -114,7 +131,7 @@ class Measurement(Logged):
         """
         self._tags[name] = value
 
-    def add_tags(self, tags: typing.Dict[str, typing.Any]):
+    def add_tags(self, tags: T_TAG_MAP):
         """
 
         :param tags:
@@ -122,7 +139,7 @@ class Measurement(Logged):
         """
         self._tags.update(tags)
 
-    def get_tags(self) -> TYPE_TAG_DICT:
+    def get_tags(self) -> T_TAG_MAP:
         """ TODO
 
         :return:
@@ -156,15 +173,16 @@ class Measurement(Logged):
         raise ValueError(f"{item} not a valid field or tag")
 
     def __str__(self) -> str:
-        fields = {k: f"{v}" if is_unit(v) else v for k, v in self._fields.items()}
+        fields = {k: str(v) for k, v in self._fields.items()}
+        tags = {k: str(v) for k, v in self._tags.items()}
 
         return f"Measurement(source={self.source.get_export_source_name()}, " \
                f"measurement_group={self.measurement_group}, fields={fields}, " \
                f"timestamp={self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}, " \
-               f"tags={self._tags})"
+               f"tags={tags})"
 
     @classmethod
-    def add_global_dynamic_field(cls, name: str, callback: TYPE_DYNAMIC_FIELD) -> typing.NoReturn:
+    def add_global_dynamic_field(cls, name: str, callback: T_DYNAMIC_FIELD) -> typing.NoReturn:
         """ TODO
 
         :param name:
@@ -176,7 +194,7 @@ class Measurement(Logged):
             cls.logger().info(f"Registered global dynamic field {name} = {callback!r}")
 
     @classmethod
-    def add_global_tag(cls, tag, value) -> typing.NoReturn:
+    def add_global_tag(cls, tag: str, value: T_TAG_VALUE) -> typing.NoReturn:
         """ TODO
 
         :param tag:
@@ -188,7 +206,7 @@ class Measurement(Logged):
             cls.logger().info(f"Registered global tag {tag} = {value!r}")
 
     @classmethod
-    def add_global_tags(cls, tags: TYPE_TAG_DICT) -> typing.NoReturn:
+    def add_global_tags(cls, tags: T_TAG_MAP) -> typing.NoReturn:
         """ TODO
 
         :param tags:
@@ -205,30 +223,30 @@ class Measurement(Logged):
     def push_global_metadata(cls) -> typing.NoReturn:
         """ Pop metadata stack (save current metadata). """
         with cls.metadata_global_lock:
-            cls._metadata_global_tags_stack.append((cls._metadata_global_dynamic_fields.copy(),
-                                                    cls._metadata_global_tags.copy()))
+            cls._metadata_global_metadata_stack.append((dict(cls._metadata_global_dynamic_fields),
+                                                        dict(cls._metadata_global_tags)))
 
-            cls.logger().info(f"Pushed global tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.logger().info(f"Pushed global tag stack (depth: {len(cls._metadata_global_metadata_stack)})")
 
     @classmethod
     def pop_global_metadata(cls) -> typing.NoReturn:
         """ Pop metadata stack (retrieve previous metadata). """
-        if len(cls._metadata_global_tags_stack) > 0:
+        if len(cls._metadata_global_metadata_stack) > 0:
             return
 
         with cls.metadata_global_lock:
-            (cls._metadata_global_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop()
+            (cls._metadata_global_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_metadata_stack.pop()
 
-            cls.logger().info(f"Popped global tag stack (depth: {len(cls._metadata_global_tags_stack)})")
+            cls.logger().info(f"Popped global tag stack (depth: {len(cls._metadata_global_metadata_stack)})")
 
     @classmethod
     def flush_global_metadata(cls) -> typing.NoReturn:
         """ Clear metadata stack. """
         with cls.metadata_global_lock:
-            if len(cls._metadata_global_tags_stack) > 0:
+            if len(cls._metadata_global_metadata_stack) > 0:
                 (cls._metadata_global_dynamic_fields,
-                 cls._metadata_global_tags) = cls._metadata_global_tags_stack.pop(0)
-                cls._metadata_global_tags_stack.clear()
+                 cls._metadata_global_tags) = cls._metadata_global_metadata_stack.pop(0)
+                cls._metadata_global_metadata_stack.clear()
 
                 cls.logger().info(f"Flushed global tag stack")
 
@@ -347,19 +365,12 @@ class DummyTarget(LoggedAbstract, MeasurementTarget):
 
 
 # Type hinting definitions for measurements
-TYPE_FIELD_DICT = typing.MutableMapping[str, TYPE_VALUE]
-
-TYPE_DYNAMIC_FIELD = typing.Callable[['Measurement'], TYPE_VALUE]
-TYPE_DYNAMIC_FIELD_DICT = typing.MutableMapping[str, TYPE_DYNAMIC_FIELD]
-
-TYPE_TAG_DICT = typing.MutableMapping[str, typing.Any]
-
-TYPE_MEASUREMENT_LIST = typing.Sequence[Measurement]
-TYPE_MEASUREMENT_RETURN = typing.Union[Measurement, TYPE_MEASUREMENT_LIST, TYPE_FIELD_DICT]
+T_MEASUREMENT_SEQUENCE = typing.Sequence[Measurement]
+T_MEASUREMENT_RETURN = typing.Union[Measurement, T_MEASUREMENT_SEQUENCE, T_FIELD_MAP]
 
 
 # Basic dynamic fields
-def dynamic_field_time_delta(initial_time: datetime) -> TYPE_DYNAMIC_FIELD:
+def dynamic_field_time_delta(initial_time: datetime) -> T_DYNAMIC_FIELD:
     def func(measurement: Measurement):
         return (measurement.timestamp - initial_time).total_seconds()
 

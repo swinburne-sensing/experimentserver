@@ -2,11 +2,12 @@ import typing
 from datetime import datetime, timedelta
 
 from experimentlib.data.gas import GasProperties, registry
+from experimentlib.util.time import now
 from transitions import EventData
 
 from ..base.serial import SerialStringHardware
 from ..metadata import TYPE_PARAMETER_DICT
-from ...data import TYPE_FIELD_DICT, MeasurementGroup, Measurement
+from experimentserver.measurement import MeasurementGroup, Measurement
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
@@ -80,26 +81,16 @@ class GasAlanyzer(SerialStringHardware):
 
         self.command_zero()
 
-        self._zero_timeout = datetime.now()
+        self._zero_timeout = now()
 
     @SerialStringHardware.register_parameter(description='Trigger fast zero')
     def zero_fast(self):
         self.command_zero_fast()
 
-        self._zero_timeout = datetime.now()
-
-    @SerialStringHardware.register_measurement(description='Gas concentration', measurement_group=MeasurementGroup.GAS,
-                                               force=True)
-    def get_concentration(self) -> TYPE_FIELD_DICT:
-        # Fetch measurements
-        pass
+        self._zero_timeout = now()
 
     def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         super().transition_connect(event)
-
-        # Fetch serial number
-        with self._serial_lock.lock():
-            pass
 
     # Do nothing during transitions
     def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
@@ -127,10 +118,10 @@ class GasAlanyzer(SerialStringHardware):
         measurements = []
 
         # Generate tags
-        zero_flag = self._zero_timeout is not None and datetime.now() <= (self._zero_timeout + self._ZERO_PERIOD)
+        zero_flag = self._zero_timeout is not None and now() <= (self._zero_timeout + self._ZERO_PERIOD)
 
         tags = {
-            'mode': 'zero' if zero_flag else 'normal'
+            'sensor_operation': 'zero' if zero_flag else 'normal'
         }
 
         if payload.startswith('#DAT'):
@@ -146,9 +137,9 @@ class GasAlanyzer(SerialStringHardware):
                     concentration = float(payload_fields.pop(0)) * channel_prop[1]
 
                     gas_tag = {
-                        'label': channel_prop[0].name,
-                        'formula': channel_prop[0].symbol,
-                        'scale': channel_prop[2]
+                        'gas_label': channel_prop[0].name,
+                        'gas_formula': channel_prop[0].symbol,
+                        'sensor_scale': channel_prop[2]
                     }
 
                     gas_tag.update(tags)

@@ -6,12 +6,14 @@ import flask
 import jinja2
 import transitions
 from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE, FORMAT_TIMESTAMP_FILENAME
+from experimentlib.util.generate import hex_str
+from experimentlib.util.time import now
 
 import experimentserver
-from .web import UserInterfaceError, WebServer
-from ..hardware import HardwareManager, HardwareTransition
-from ..protocol import Procedure, ProcedureTransition
-from ..util.uniqueid import hex_str
+from experimentserver.hardware.control import HardwareTransition
+from experimentserver.hardware.manager import HardwareManager
+from experimentserver.protocol import Procedure, ProcedureTransition
+from experimentserver.ui.web import UserInterfaceError, WebServer
 
 
 class ServerJSONException(experimentserver.ApplicationException):
@@ -123,7 +125,7 @@ def register_json(ui: WebServer):
 
             return f"Procedure valid and ready to start, estimated runtime: {duration!s}"
         elif transition == ProcedureTransition.START:
-            completion = datetime.now() + ui.get_procedure().get_procedure_duration()
+            completion = now() + ui.get_procedure().get_procedure_duration()
 
             return f"Procedure running, estimated completion {completion.strftime(FORMAT_TIMESTAMP_CONSOLE)}"
         elif transition == ProcedureTransition.STOP:
@@ -186,7 +188,7 @@ def register_json(ui: WebServer):
     def procedure_export():
         return {
             'filename': f"procedure-{ui.get_procedure().get_uid()}-"
-                        f"{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml",
+                        f"{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml",
             'content_type': 'application/x-yaml',
             'content': ui.get_procedure().procedure_export()
         }
@@ -227,9 +229,9 @@ def register_json(ui: WebServer):
             ui.logger().info(f"Rendered content:\n{procedure_file_content}")
 
         procedure_store_filename = os.path.join(
-            experimentserver.CONFIG_PATH, f"procedure_upload_{datetime.now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml")
+            experimentserver.CONFIG_PATH, f"procedure_upload_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml")
 
-        with open(procedure_store_filename, 'w') as procedure_store_file:
+        with open(procedure_store_filename, 'w', encoding='utf-8') as procedure_store_file:
             procedure_store_file.write(procedure_file_content)
 
         ui.logger().info(f"Saved prrocedure to: {procedure_store_filename}")

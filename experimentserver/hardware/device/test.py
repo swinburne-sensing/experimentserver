@@ -2,7 +2,7 @@ import typing
 
 from transitions import EventData
 
-from .. import Hardware
+from experimentserver.hardware.base.core import Hardware
 
 # Author tag for support purposes
 __author__ = 'Chris Harrison'

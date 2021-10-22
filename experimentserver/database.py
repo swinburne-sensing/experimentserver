@@ -3,12 +3,15 @@ from datetime import datetime, timedelta, timezone
 
 import influxdb_client
 import urllib3
+from experimentlib.data.gas import GasProperties, Component, Mixture
+from experimentlib.data.unit import Quantity, registry, parse
 from experimentlib.logging.classes import LoggedAbstract
+from experimentlib.util.time import get_localzone
 from influxdb_client.client.write_api import ASYNCHRONOUS
 
 import experimentserver
-from experimentserver.data import to_unit, Quantity
-from experimentserver.data.measurement import Measurement, MeasurementTarget
+from experimentserver.hardware.base.enum import HardwareEnum
+from experimentserver.measurement import Measurement, MeasurementTarget
 
 
 # Suppress HTTPS warnings
@@ -48,33 +51,55 @@ class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
             self.write_api = None
 
     def _record(self, measurement: Measurement) -> typing.NoReturn:
-        point = influxdb_client.Point(measurement.measurement_group.value).time(measurement.timestamp)
+        point = influxdb_client.Point(measurement.measurement_group.value).time(
+            measurement.timestamp)
 
         # Add fields
         for field, value in measurement.get_fields().items():
+            if isinstance(value, Quantity):
+                if value.is_compatible_with('degC'):
+                    # Get magnitude in degrees celcius
+                    value = value.m_as('degC')
+                else:
+                    # Get magnitude in base units
+                    value = value.to_base_units().magnitude
+            elif not any((isinstance(value, t) for t in (bool, int, float, str))):
+                raise DatabaseError(f"Field {field} has unsupported value type (repr: {value!r}, type: {type(value)})")
+
             point.field(field, value)
 
         # Convert tags to strings
         for tag, value in measurement.get_tags().items():
-            if isinstance(value, bool):
+            if isinstance(value, str):
+                # Already OK
+                pass
+            elif isinstance(value, float):
+                raise DatabaseError(f"Tag {tag} has floating point value {value}, convert to string or Quantity for "
+                                    f"storage")
+            elif isinstance(value, bool):
                 # InfluxDB style boolean
                 value = 'true' if value else 'false'
-            elif isinstance(value, Quantity):
-                value = str(value)
             elif isinstance(value, timedelta):
-                value = str(to_unit(value.total_seconds(), 's'))
+                value = str(parse(value.total_seconds(), registry.s))
             elif isinstance(value, datetime):
                 # Add UTC referenced tag
                 point.tag(tag + '_utc', value.astimezone(timezone.utc).isoformat())
 
-                value = value.isoformat()
+                # Use local time for tag value
+                value = value.astimezone(get_localzone()).isoformat()
+            elif any(isinstance(value, t) for t in (int, HardwareEnum, GasProperties, Component, Mixture, Quantity)):
+                # Known safe conversion to string
+                value = str(value)
             elif not isinstance(value, str):
                 self.logger().warning(f"Casting tag {tag} (repr: {value!r}, type: {type(value)}) to string")
                 value = str(value)
+            else:
+                raise DatabaseError(f"Tag {tag} has unexpected type (repr: {value!r}, type: {type(value)})")
 
             if len(value) > 0:
                 point.tag(tag, value)
 
+        self.logger().trace(f"Writing {measurement} as {point.to_line_protocol()}")
         self.write_api.write(self.bucket, record=point)
 
 

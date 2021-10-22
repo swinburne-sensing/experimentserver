@@ -1,17 +1,19 @@
 import abc
 import collections
 import typing
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from experimentlib.data.unit import T_PARSE_TIMEDELTA, parse_timedelta
+from experimentlib.util.time import now
 from transitions import EventData
 
-from experimentserver.data import to_timedelta
 from .hp import HP34401AMultimeter
 from .keithley import MultimeterDAQ6510, Picoammeter6487
-from ..base.core import Hardware, TYPE_PARAMETER_DICT, TYPE_TAG_DICT, TYPE_HARDWARE, TYPE_DYNAMIC_FIELD_DICT
+from ..base.core import Hardware, TYPE_PARAMETER_DICT, TYPE_HARDWARE
 from ..error import ParameterError
 from ..metadata import TYPE_PARAMETER_COMMAND
 from ...util import metadata as metadata
+from experimentserver.measurement import T_DYNAMIC_FIELD_MAP, T_TAG_MAP
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
@@ -142,8 +144,8 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Selecting channel {channel}")
 
     @Hardware.register_parameter(description='Time to make measurements from selected channel')
-    def set_channel_duration(self, duration: typing.Any):
-        duration = to_timedelta(duration)
+    def set_channel_duration(self, duration: T_PARSE_TIMEDELTA):
+        duration = parse_timedelta(duration)
 
         with self._measurement_lock:
             if duration.total_seconds() > 0:
@@ -163,8 +165,8 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Set channel repeat to {self._channel_repeat}")
 
     @Hardware.register_parameter(description='Time to make measurements from selected channel')
-    def set_channel_duration(self, duration: typing.Any):
-        duration = to_timedelta(duration)
+    def set_channel_duration(self, duration: T_PARSE_TIMEDELTA):
+        duration = parse_timedelta(duration)
 
         with self._measurement_lock:
             if duration.total_seconds() > 0:
@@ -175,8 +177,8 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Set channel duration to {self.set_channel_duration}")
 
     @Hardware.register_parameter(description='Delay before commencing measurements after channel switch')
-    def set_post_channel_delay(self, delay: typing.Any):
-        delay = to_timedelta(delay)
+    def set_post_channel_delay(self, delay: T_PARSE_TIMEDELTA):
+        delay = parse_timedelta(delay)
 
         with self._measurement_lock:
             if delay.total_seconds() > 0:
@@ -186,8 +188,8 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         self.logger().info(f"Set post-channel switch delay to {self._post_channel_delay}")
 
-    def produce_measurement(self, extra_dynamic_fields: typing.Optional[TYPE_DYNAMIC_FIELD_DICT] = None,
-                            extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
+    def produce_measurement(self, extra_dynamic_fields: typing.Optional[T_DYNAMIC_FIELD_MAP] = None,
+                            extra_tags: typing.Optional[T_TAG_MAP] = None) -> bool:
         extra_tags = extra_tags or {}
 
         measurement_flag = False
@@ -225,7 +227,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                     self.logger().debug(f"Channel {channel} closed")
 
                     # Start timing
-                    channel_time = datetime.now()
+                    channel_time = now()
 
                     self.post_channel_close(channel)
 
@@ -245,7 +247,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
                         # Stop when enough measurements made
                         if self._channel_duration is not None:
-                            if (datetime.now() - channel_time) > self._channel_duration:
+                            if (now() - channel_time) > self._channel_duration:
                                 self.logger().trace('Enough duration')
                                 channel_active = False
                         elif self._channel_repeat > 1:

@@ -11,13 +11,16 @@ from datetime import datetime, timedelta
 
 import requests
 from experimentlib.data.gas import Mixture
+from experimentlib.data.unit import T_PARSE_QUANTITY, Quantity, registry, parse
+from experimentlib.util.time import now
 from transitions import EventData
 import urllib3.exceptions
 
-from .. import Hardware, CommunicationError, ParameterError, MeasurementUnavailable
-from ...data import Measurement, MeasurementGroup, TYPE_MEASUREMENT_LIST, TYPE_UNIT, TYPE_UNIT_OPTIONAL, to_unit
-from ...util.java import remap_javascript_dict, JavaScriptParseException
-from ...util.thread import CallbackThread
+from experimentserver.hardware.base.core import Hardware
+from experimentserver.hardware.error import CommunicationError, ParameterError, MeasurementUnavailable
+from experimentserver.measurement import T_MEASUREMENT_SEQUENCE, Measurement, MeasurementGroup
+from experimentserver.util.java import remap_javascript_dict, JavaScriptParseException
+from experimentserver.util.thread import CallbackThread
 
 
 __author__ = 'Chris Harrison'
@@ -63,22 +66,22 @@ class GE50MassFlowController(Hardware):
     _EVID_MAP = {
         # Measured flow
         'EVID_0': _EVIDValue('flow_actual', 'Actual flow rate', MeasurementGroup.MFC,
-                             {'default_unit': 'sccm', 'apply_round': 2}, apply_gcf=True),
+                             {'to_unit': 'sccm', 'mag_round': 2}, apply_gcf=True),
 
         # Flow setpoint
         'EVID_1': _EVIDValue('flow_target', 'Target flow rate', MeasurementGroup.MFC,
-                             {'default_unit': 'sccm', 'apply_round': 1}, apply_gcf=True),
+                             {'to_unit': 'sccm', 'mag_round': 1}, apply_gcf=True),
 
         # Valve current
         'EVID_2': _EVIDValue('current_valve', 'Valve current', MeasurementGroup.DEBUG, {'default_unit': 'mA'}, False),
 
         # Valve temperature
         'EVID_3': _EVIDValue('temperature_valve', 'Valve temperature', MeasurementGroup.TEMPERATURE,
-                             {'default_unit': 'degC', 'apply_round': 2}),
+                             {'to_unit': 'degC', 'mag_round': 2}),
 
         # Always zero?
         'EVID_4': _EVIDValue('current_valve_minimum', 'Minimum valve current (?)', MeasurementGroup.DEBUG,
-                             {'default_unit': 'mA'}, False),
+                             {'to_unit': 'mA'}, False),
 
         # Something proportional to flow rate
         'EVID_5': _EVIDValue('evid5', 'Unknown 5', MeasurementGroup.DEBUG, None, False),
@@ -119,7 +122,7 @@ class GE50MassFlowController(Hardware):
     _TRACE_NAME = 'XXX'
 
     def __init__(self, identifier: str, host: str, composition: typing.Dict[str, str], port: int = 80,
-                 pressure: TYPE_UNIT_OPTIONAL = None, sample_period: float = 0.25, **kwargs):
+                 pressure: typing.Optional[T_PARSE_QUANTITY] = None, sample_period: float = 0.25, **kwargs):
         """
 
         :param identifier: passed to parent
@@ -136,12 +139,12 @@ class GE50MassFlowController(Hardware):
         self._sample_period = sample_period
 
         # Gas properties
-        self._pressure = to_unit(pressure, 'psi')
-        self._max_flow = None
-        self._min_flow = None
+        self._pressure: typing.Optional[Quantity] = parse(pressure, registry.psi) if pressure is not None else None
+        self._max_flow: typing.Optional[Quantity] = None
+        self._min_flow: typing.Optional[Quantity] = None
 
         # Gas composition
-        self._composition = Mixture.from_dict(composition)
+        self._composition: Mixture = Mixture.from_dict(composition)
         self._gcf = self._composition.gcf
 
         # Lock to prevent multiple access
@@ -168,7 +171,7 @@ class GE50MassFlowController(Hardware):
         """
         url = self._get_url(path)
 
-        self.logger().debug_transaction(f"Request: {url}")
+        self.logger().trace(f"Request: {url}")
 
         with self._http_lock:
             post_req = requests.post(url, data=data, headers=headers, timeout=self._HTTP_TIMEOUT)
@@ -180,7 +183,7 @@ class GE50MassFlowController(Hardware):
             except IOError as exc:
                 raise MFCHTTPError('IO error occurred while communicating with MFC') from exc
 
-            self.logger().debug_transaction(f"Response: {post_req}")
+            self.logger().trace(f"Response: {post_req}")
 
             return post_req
 
@@ -196,7 +199,7 @@ class GE50MassFlowController(Hardware):
         except KeyError as exc:
             raise MFCResponseParserError(f"Key not found in response from MFC: {js_code.text!r}") from exc
 
-    def get_composition(self):
+    def get_composition(self) -> Mixture:
         return self._composition
 
     # Fetching methods
@@ -260,7 +263,7 @@ class GE50MassFlowController(Hardware):
         })
 
     @Hardware.register_measurement(description='Flow measurements', force=True)
-    def get_trace_data(self) -> TYPE_MEASUREMENT_LIST:
+    def get_trace_data(self) -> T_MEASUREMENT_SEQUENCE:
         try:
             return self._trace_buffer.get(timeout=1)
         except queue.Empty:
@@ -295,11 +298,11 @@ class GE50MassFlowController(Hardware):
 
     # Parameters
     @Hardware.register_parameter(description='Target gas flow rate')
-    def set_flow_rate(self, flow_rate_raw: TYPE_UNIT):
+    def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY):
         # Enable digital control
         self.set_config_control(True)
 
-        flow_rate_raw = to_unit(flow_rate_raw, self._max_flow.units)
+        flow_rate_raw = parse(flow_rate_raw, registry.sccm)
 
         # Apply gas correction factor
         flow_rate = flow_rate_raw / self._gcf
@@ -309,14 +312,19 @@ class GE50MassFlowController(Hardware):
                                        f"range")
 
         # Force really low flow rates to be zero
-        if flow_rate < to_unit('0.1 sccm'):
-            flow_rate = to_unit(0, self._max_flow.units)
+        if flow_rate < parse(0.1, registry.sccm):
+            flow_rate = parse(0, registry.sccm)
 
         # Throw warnings if flow is outside recommended limits
-        if flow_rate > self._max_flow:
+        if self._max_flow is None:
+            self.logger().error('Unable to check maximum flow rate, not defined')
+        elif flow_rate > self._max_flow:
             self.logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) exceeds maximum "
                                   f"flow ({self._max_flow})")
-        elif flow_rate != 0 and flow_rate < self._min_flow:
+
+        if self._min_flow is None:
+            self.logger().error('Unable to check minimum flow rate, not defined')
+        elif 0 < flow_rate < self._min_flow:
             self.logger().warning(f"Requested flow rate {flow_rate_raw} (adjusted: {flow_rate}) below recommended "
                                   f"minimum flow of {self._min_flow}", notify=True)
 
@@ -325,8 +333,8 @@ class GE50MassFlowController(Hardware):
         self._fetch_url('flow_setpoint_html', data={'iobuf.setpoint_unit': flow_rate.magnitude})
 
     @Hardware.register_parameter(description='Working pressure')
-    def set_pressure(self, pressure: TYPE_UNIT):
-        pressure = to_unit(pressure, 'psi', magnitude=True)
+    def set_pressure(self, pressure: T_PARSE_QUANTITY):
+        pressure = parse(pressure, registry.psi).magnitude
 
         if pressure <= 0:
             raise ParameterError(self, f"Requested operating pressure {pressure} is outside valid range")
@@ -348,12 +356,8 @@ class GE50MassFlowController(Hardware):
     def get_hardware_class_description() -> str:
         return 'MKS GE50A Mass Flow Controller'
 
-    def get_gas_mix_label(self) -> str:
-        return ', '.join([gas.get_concentration_label(concentration) for gas, concentration in
-                          self._composition.items()])
-
     def get_hardware_instance_description(self) -> str:
-        return f"{self.get_gas_mix_label()} via {self.get_hardware_class_description()} " \
+        return f"{self._composition!s} via {self.get_hardware_class_description()} " \
                f"({self.get_hardware_identifier()} at {self._host}:{self._port})"
 
     # Event handlers
@@ -365,7 +369,7 @@ class GE50MassFlowController(Hardware):
         metadata_network = self.get_metadata_network()
         metadata_gas = self.get_metadata_gas()
 
-        self._max_flow = to_unit(metadata_gas['flow_scale_maximum'], metadata_gas['flow_scale_unit'])
+        self._max_flow = parse(metadata_gas['flow_scale_maximum'], metadata_gas['flow_scale_unit'])
         self._min_flow = self._max_flow * self._FLOW_LOWER_BOUND
 
         self.logger().info(f"Model: {metadata_device['id_model']}")
@@ -439,7 +443,7 @@ class GE50MassFlowController(Hardware):
     def _thread_trace_consumer_callback(self):
         # Generate tags for payloads
         data_tags = {
-            'gas_mixture': self.get_gas_mix_label(),
+            'gas_mixture': str(self._composition),
             'source_ip': f"{self._host}:{self._port}"
         }
 
@@ -456,7 +460,7 @@ class GE50MassFlowController(Hardware):
 
         try:
             for payload in request_read.raw.read_chunked():
-                payload_timestamp = datetime.now()
+                payload_timestamp = now()
 
                 # Check exit flag
                 if self._thread_trace_consumer.thread_stop_requested():
@@ -492,11 +496,11 @@ class GE50MassFlowController(Hardware):
 
                 for n in range(len(xml_field)):
                     fields = {
-                        xml_field_prop[n][0]: to_unit(xml_field_value[n], **xml_field_prop[n][2]) * xml_field_prop[n][3]
+                        xml_field_prop[n][0]: parse(xml_field_value[n], **xml_field_prop[n][2]) * xml_field_prop[n][3]
                     }
 
                     if xml_field_prop[n][3] != 1:
-                        fields[xml_field_prop[n][0] + '_raw'] = to_unit(xml_field_value[n], **xml_field_prop[n][2])
+                        fields[xml_field_prop[n][0] + '_raw'] = parse(xml_field_value[n], **xml_field_prop[n][2])
 
                     data_payload.append(Measurement(self, xml_field_prop[n][1], fields, payload_timestamp,
                                                     tags=data_tags))

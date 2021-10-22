@@ -104,7 +104,7 @@ class OrderedMetadata(Metadata):
         self.order = order
 
     def __lt__(self, other):
-        assert issubclass(other.__class__, self.__class__)
+        assert isinstance(other, self.__class__)
 
         return self.order < other.order
 
@@ -132,12 +132,12 @@ def get_metadata(target: typing.Any, class_filter: typing.Optional[typing.Type[T
         metadata = attrib.metadata
 
         # Check against class filter
-        if issubclass(metadata.__class__, class_filter):
+        if isinstance(metadata, class_filter):
             metadata = typing.cast(Metadata, metadata)
             metadata_list[attrib_name] = metadata
 
     # If ordered metadata then return ordered dict
-    if all((issubclass(x.__class__, OrderedMetadata) for x in metadata_list.values())):
+    if all((isinstance(x, OrderedMetadata) for x in metadata_list.values())):
         # noinspection PyTypeChecker
         return collections.OrderedDict(sorted(metadata_list.items(), key=lambda x: x[1]))
 

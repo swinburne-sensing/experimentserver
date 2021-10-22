@@ -12,9 +12,10 @@ from experimentlib.util.time import now
 
 from experimentserver import ApplicationException
 from experimentserver.config import ConfigManager
-from experimentserver.data import TYPE_TAG_DICT, Measurement
-from experimentserver.data.measurement import dynamic_field_time_delta
-from experimentserver.hardware import HardwareIdentifierError, HardwareManager, HardwareTransition, ParameterError
+from experimentserver.measurement import T_TAG_MAP, Measurement, dynamic_field_time_delta
+from experimentserver.hardware.base.core import HardwareIdentifierError, ParameterError
+from experimentserver.hardware.control import HardwareTransition
+from experimentserver.hardware.manager import HardwareManager
 from experimentserver.hardware.metadata import BoundMetadataCall, TYPE_PARAMETER_DICT
 
 
@@ -33,12 +34,12 @@ class BaseStage(LoggedAbstract):
         until flagging completion. Stages can be exported to/imported from dict objects. """
 
     # Export version indicator
-    EXPORT_VERSION = 2
-    _EXPORT_COMPATIBILITY = 2,
+    EXPORT_VERSION = 1
+    _EXPORT_COMPATIBILITY = 1,
 
     def __init__(self, config: ConfigManager, uid: typing.Optional[str] = None,
                  parameters: typing.Optional[TYPE_PARAMETER_DICT] = None,
-                 metadata: typing.Optional[TYPE_TAG_DICT] = None, has_duration: bool = True):
+                 metadata: typing.Optional[T_TAG_MAP] = None, has_duration: bool = True):
         """ Create new Stage instance.
 
         :param config:
@@ -106,7 +107,7 @@ class BaseStage(LoggedAbstract):
             return timedelta()
 
         if self._stage_enter_timestamp is not None:
-            remaining = self.get_stage_duration() - (datetime.now() - self._stage_enter_timestamp)
+            remaining = self.get_stage_duration() - (now() - self._stage_enter_timestamp)
 
             if remaining.total_seconds() > 0:
                 return remaining
@@ -190,7 +191,7 @@ class BaseStage(LoggedAbstract):
         self.logger().debug('Entering stage')
 
         # Save entry time
-        self._stage_enter_timestamp = datetime.now()
+        self._stage_enter_timestamp = now()
 
         if self._has_duration:
             # Apply stage metadata
@@ -203,7 +204,7 @@ class BaseStage(LoggedAbstract):
                     'stage_time': now()
                 })
 
-                Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(datetime.now()))
+                Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(now()))
 
                 if len(self._stage_metadata) > 0:
                     Measurement.add_global_tags(self._stage_metadata)
@@ -219,7 +220,7 @@ class BaseStage(LoggedAbstract):
         self.logger().debug('Pausing stage')
 
         # Save pause timestamp
-        self._stage_pause_timestamp = datetime.now()
+        self._stage_pause_timestamp = now()
 
     @abc.abstractmethod
     def stage_run(self) -> bool:
@@ -277,7 +278,7 @@ class BaseStage(LoggedAbstract):
         stage = class_ref(**data)
 
         # Check for valid subclass
-        if not issubclass(stage.__class__, cls):
+        if not isinstance(stage, cls):
             raise StageConfigurationError(f"{target_class} not a valid subclass of {cls.__name__}")
 
         return stage

@@ -25,6 +25,7 @@ __status__ = 'Production'
 # Exit codes
 EXIT_SUCCESS = 0
 EXIT_ERROR_ARGUMENTS = -1
+EXIT_ERROR_EXCEPTION = -2
 
 
 # Application root path

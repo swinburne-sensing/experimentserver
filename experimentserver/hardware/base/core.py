@@ -13,18 +13,14 @@ from experimentlib.util.classes import HybridMethod
 from transitions import EventData
 
 import experimentserver.util.metadata as metadata
-from experimentserver import ApplicationException
-from experimentserver.data.measurement import MeasurementSource, Measurement, MeasurementTarget, TYPE_TAG_DICT,\
-    TYPE_DYNAMIC_FIELD_DICT
-from experimentserver.hardware.error import MeasurementError, MeasurementUnavailable, ParameterError, NoResetHandler
+from experimentserver.measurement import T_TAG_MAP, T_DYNAMIC_FIELD_MAP, MeasurementSource, Measurement,\
+    MeasurementTarget
+from experimentserver.hardware.error import HardwareIdentifierError, MeasurementError, MeasurementUnavailable, \
+    ParameterError, NoResetHandler
 from experimentserver.hardware.metadata import TYPE_PARAMETER_DICT, TYPE_PARAMETER_COMMAND, _MeasurementMetadata, \
     _ParameterMetadata
 from experimentserver.util.metadata import BoundMetadataCall
 from experimentserver.util.thread import ThreadLock
-
-
-class HardwareIdentifierError(ApplicationException):
-    pass
 
 
 class Hardware(LoggedAbstract, MeasurementSource):
@@ -251,8 +247,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         self.logger().info(f"Disabled measurement: {name}")
 
-    def produce_measurement(self, extra_dynamic_fields: typing.Optional[TYPE_DYNAMIC_FIELD_DICT] = None,
-                            extra_tags: typing.Optional[TYPE_TAG_DICT] = None) -> bool:
+    def produce_measurement(self, extra_dynamic_fields: typing.Optional[T_DYNAMIC_FIELD_MAP] = None,
+                            extra_tags: typing.Optional[T_TAG_MAP] = None) -> bool:
         """ FIXME TYPE_DYNAMIC_FIELD
 
         :return: True if measurements were produced, False otherwise

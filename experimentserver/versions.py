@@ -4,6 +4,7 @@ from jinja2 import __version__ as __jinja2_version
 from flask import __version__ as __flask_version
 from pint import __version__ as __pint_version
 from pymodbus import __version__ as __pymodbus_version
+# noinspection PyProtectedMember
 from pyvisa import __version__ as __pyvisa_version
 from serial import __version__ as __pyserial_version
 from requests import __version__ as __requests_version

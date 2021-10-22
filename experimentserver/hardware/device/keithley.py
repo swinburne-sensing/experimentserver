@@ -4,15 +4,14 @@ import re
 import typing
 from datetime import timedelta
 
+from experimentlib.data.unit import T_PARSE_TIMEDELTA, T_PARSE_QUANTITY, Quantity, registry, parse, parse_timedelta
 from transitions import EventData
 
-from ...data import TYPE_FIELD_DICT, MeasurementGroup, to_unit, TYPE_UNIT, Quantity, units, Measurement, to_timedelta,\
-    TYPE_TIME
-from ...data.measurement import TYPE_MEASUREMENT_LIST
 from ..error import CommunicationError, ParameterError, MeasurementUnavailable, MeasurementError
 from ..base.scpi import SCPIHardware
 from ..base.visa import VISAHardware, TYPE_ERROR
 from ..base.enum import HardwareEnum
+from experimentserver.measurement import T_FIELD_MAP, T_MEASUREMENT_SEQUENCE, Measurement, MeasurementGroup
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
@@ -37,7 +36,7 @@ class DAQChannelFunction(HardwareEnum):
     def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
         return {
             cls.OPEN: ['open', 'na', 'none'],
-            cls.VOLTAGE_DC: ['v', 'volt', 'volts', 'voltage'],
+            cls.VOLTAGE_DC: ['v', registry.V, 'volts', 'voltage'],
             cls.CURRENT_DC: ['a', 'i', 'amp', 'amps', 'amperage'],
             cls.RESISTANCE_2WIRE: ['r', 'ohm', 'res', 'resistance'],
             # cls.DISTANCE: ['m', 'um', 'length', 'distance']
@@ -210,26 +209,26 @@ class MultimeterDAQ6510(_KeithleyInstrument):
 
     @SCPIHardware.register_measurement(description='DC current (front terminals)',
                                        measurement_group=MeasurementGroup.CURRENT)
-    def get_current(self) -> TYPE_FIELD_DICT:
+    def get_current(self) -> T_FIELD_MAP:
         with self.visa_transaction() as transaction:
             return {
-                'current': to_unit(transaction.query(':MEAS:CURR?'), 'amp')
+                'current': parse(transaction.query(':MEAS:CURR?'), registry.A)
             }
 
     @SCPIHardware.register_measurement(description='AC current (front terminals)',
                                        measurement_group=MeasurementGroup.CURRENT)
-    def get_current_ac(self) -> TYPE_FIELD_DICT:
+    def get_current_ac(self) -> T_FIELD_MAP:
         # Switching to AC measurements can be very slow
         with self.visa_transaction(timeout=6) as transaction:
             return {
-                'current_ac': to_unit(transaction.query(':MEAS:CURR:AC?'), 'amp')
+                'current_ac': parse(transaction.query(':MEAS:CURR:AC?'), registry.A)
             }
 
     @SCPIHardware.register_measurement(description='2-wire resistance (front terminals)',
                                        measurement_group=MeasurementGroup.RESISTANCE)
-    def get_resistance(self) -> TYPE_FIELD_DICT:
+    def get_resistance(self) -> T_FIELD_MAP:
         with self.visa_transaction() as transaction:
-            resistance = to_unit(transaction.query(':MEAS:RES?'), 'ohm')
+            resistance = parse(transaction.query(':MEAS:RES?'), registry.ohm)
 
         if resistance.magnitude > 1e37:
             raise MeasurementUnavailable('Open circuit')
@@ -240,9 +239,9 @@ class MultimeterDAQ6510(_KeithleyInstrument):
 
     @SCPIHardware.register_measurement(description='4-wire resistance (front terminals)',
                                        measurement_group=MeasurementGroup.RESISTANCE)
-    def get_resistance_kelvin(self) -> TYPE_FIELD_DICT:
+    def get_resistance_kelvin(self) -> T_FIELD_MAP:
         with self.visa_transaction() as transaction:
-            resistance = to_unit(transaction.query(':MEAS:FRES?'), 'ohm')
+            resistance = parse(transaction.query(':MEAS:FRES?'), registry.ohm)
 
         if resistance.magnitude > 1e37:
             raise MeasurementUnavailable('Open circuit')
@@ -253,27 +252,27 @@ class MultimeterDAQ6510(_KeithleyInstrument):
 
     @SCPIHardware.register_measurement(description='DC voltage (front terminals)',
                                        measurement_group=MeasurementGroup.VOLTAGE, default=True)
-    def get_voltage(self) -> TYPE_FIELD_DICT:
+    def get_voltage(self) -> T_FIELD_MAP:
         with self.visa_transaction() as transaction:
             return {
-                'voltage': to_unit(transaction.query(':MEAS:VOLT?'), 'volt')
+                'voltage': parse(transaction.query(':MEAS:VOLT?'), registry.V)
             }
 
     @SCPIHardware.register_measurement(description='AC voltage (front terminals)',
                                        measurement_group=MeasurementGroup.VOLTAGE)
-    def get_voltage_ac(self) -> TYPE_FIELD_DICT:
+    def get_voltage_ac(self) -> T_FIELD_MAP:
         # Switching to AC measurements can be very slow
         with self.visa_transaction(timeout=6) as transaction:
             return {
-                'voltage_ac': to_unit(transaction.query(':MEAS:VOLT:AC?'), 'volt')
+                'voltage_ac': parse(transaction.query(':MEAS:VOLT:AC?'), registry.V)
             }
 
     # @SCPIHardware.register_measurement(description='Displacement via Keyence Laser Displacment',
     #                                    measurement_group=MeasurementGroup.POSITION)
-    # def get_distance(self) -> TYPE_FIELD_DICT:
+    # def get_distance(self) -> T_FIELD_MAP:
     #     # Get DC volts and convert
     #     with self.visa_transaction(timeout=6) as transaction:
-    #         voltage = to_unit(transaction.query(':MEAS:VOLT?'), 'volt')
+    #         voltage = to_unit(transaction.query(':MEAS:VOLT?'), registry.V)
     #
     #     distance = to_unit(voltage.magnitude, 'mm')
     #
@@ -338,18 +337,18 @@ class Picoammeter6487(_KeithleyInstrument):
         return not (transaction.query(':SOUR:VOLT:INT:FAIL?') == '1')
 
     @SCPIHardware.register_parameter(description='Measurement range', order=40)
-    def set_measure_range(self, measure_range: TYPE_UNIT):
+    def set_measure_range(self, measure_range: T_PARSE_QUANTITY):
         if type(measure_range) is str and measure_range.lower() == 'auto':
             with self.visa_transaction() as transaction:
                 transaction.write(':RANG:AUTO')
         else:
-            measure_range = to_unit(measure_range, 'amp', magnitude=True)
+            measure_range = parse(measure_range, registry.A).magnitude
 
             with self.visa_transaction() as transaction:
                 transaction.write(":RANG {}", measure_range)
 
     @SCPIHardware.register_parameter(description='Measurement rate', order=40)
-    def set_measure_rate(self, rate: TYPE_UNIT):
+    def set_measure_rate(self, rate: T_PARSE_QUANTITY):
         rate = float(rate)
 
         with self.visa_transaction() as transaction:
@@ -375,15 +374,15 @@ class Picoammeter6487(_KeithleyInstrument):
                 transaction.write(':OHMS OFF')
 
     @SCPIHardware.register_parameter(description='Source current limit', order=40)
-    def set_source_current(self, current: TYPE_UNIT):
-        current = to_unit(current, 'amp', magnitude=True)
+    def set_source_current(self, current: T_PARSE_QUANTITY):
+        current = parse(current, registry.A).magnitude
 
         with self.visa_transaction() as transaction:
             transaction.write(":SOUR:VOLT:ILIM {}", current)
 
     @SCPIHardware.register_parameter(description='Source voltage')
-    def set_source_voltage(self, voltage: TYPE_UNIT):
-        voltage = to_unit(voltage, 'volt', magnitude=True)
+    def set_source_voltage(self, voltage: T_PARSE_QUANTITY):
+        voltage = parse(voltage, registry.V).magnitude
 
         with self.visa_transaction() as transaction:
             # Check output range
@@ -413,10 +412,10 @@ class Picoammeter6487(_KeithleyInstrument):
             transaction.write(":SOUR:VOLT:STAT {}", enable)
 
     @SCPIHardware.register_parameter(description='Source sweep range start, step and stop', order=30)
-    def set_source_sweep(self, start: TYPE_UNIT, step: TYPE_UNIT, stop: TYPE_UNIT):
-        start = to_unit(start, 'volt')
-        step = to_unit(step, 'volt')
-        stop = to_unit(stop, 'volt')
+    def set_source_sweep(self, start: T_PARSE_QUANTITY, step: T_PARSE_QUANTITY, stop: T_PARSE_QUANTITY):
+        start = parse(start, registry.V)
+        step = parse(step, registry.V)
+        stop = parse(stop, registry.V)
 
         self._source_sweep_range = []
         voltage = start
@@ -429,8 +428,8 @@ class Picoammeter6487(_KeithleyInstrument):
         self.logger().info(f"Sweep values: {', '.join(map(str, self._source_sweep_range))}")
 
     @SCPIHardware.register_parameter(description='Source sweep measurement delay')
-    def set_source_sweep_settling(self, settling_time: TYPE_TIME):
-        settling_time = to_timedelta(settling_time)
+    def set_source_sweep_settling(self, settling_time: T_PARSE_TIMEDELTA):
+        settling_time = parse_timedelta(settling_time)
 
         if settling_time.total_seconds() > 0:
             self._settling_time = settling_time
@@ -446,7 +445,7 @@ class Picoammeter6487(_KeithleyInstrument):
         # Fetch reading from instrument
         with self.visa_transaction() as transaction:
             reading = transaction.query(':READ?')
-            source_voltage = to_unit(transaction.query(':SOUR:VOLT?'), 'volt')
+            source_voltage = parse(transaction.query(':SOUR:VOLT?'), registry.V)
             source_enabled = int(transaction.query(':SOUR:VOLT:STAT?'))
 
         # Get reading
@@ -458,9 +457,9 @@ class Picoammeter6487(_KeithleyInstrument):
             reading = reading.lower()
 
         # Parse unit
-        reading = to_unit(reading)
+        reading = parse(reading)
 
-        if self._expect_ohms != (reading.units == units.ohm):
+        if self._expect_ohms != (reading.units == registry.ohm):
             raise MeasurementError('Measurement returned wrong unit')
 
         if abs(reading.magnitude) > pow(10, 36):
@@ -486,7 +485,7 @@ class Picoammeter6487(_KeithleyInstrument):
             })
 
     @SCPIHardware.register_measurement(description='Measure current/resistance across range of source voltages')
-    def get_sweep(self) -> TYPE_MEASUREMENT_LIST:
+    def get_sweep(self) -> T_MEASUREMENT_SEQUENCE:
         measurement_list = []
         sweep_tags = {
             'source_sweep': True

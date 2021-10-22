@@ -60,7 +60,7 @@
                 let link = document.createElement('a');
 
                 link.download = result.data.filename;
-                link.href = 'data:' + result.data.content_type + ';base64,' + btoa(result.data.content);
+                link.href = 'data:' + result.data.content_type + ';base64,' + btoa(unescape(encodeURIComponent(result.data.content)));
                 link.click();
             }, undefined, 'Procedure export failed, check application logs.');
         });

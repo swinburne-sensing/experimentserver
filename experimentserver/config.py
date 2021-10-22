@@ -1,4 +1,5 @@
 import collections
+import collections.abc
 import getpass
 import os
 import socket
@@ -107,7 +108,7 @@ class ConfigManager(object):
             key_set = key.split('.')
 
             for node_key in key_set[:-1]:
-                if not issubclass(type(node), dict) or node_key not in node:
+                if not isinstance(node, collections.abc.Mapping) or node_key not in node:
                     if required:
                         raise KeyError(f"Key node {key} not present in configuration tree ({node_key} not found)")
                     else:
@@ -129,7 +130,7 @@ class ConfigManager(object):
             key_set = key.split('.')
 
             for node_key in key_set[:-1]:
-                if not issubclass(type(node), dict) or node_key not in node:
+                if not isinstance(node, collections.abc.Mapping) or node_key not in node:
                     node[node_key] = self._create_node()
 
                 node = node[node_key]

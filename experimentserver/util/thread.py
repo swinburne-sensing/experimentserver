@@ -35,7 +35,7 @@ class ThreadLock(Logged):
 
         if not locked:
             if not quiet:
-                self.logger().debug_lock('Waiting for lock')
+                self.logger().lock('Waiting for lock')
 
             # Try again with timeout
             locked = self._lock.acquire(timeout=timeout)
@@ -46,7 +46,7 @@ class ThreadLock(Logged):
         self._depth += 1
 
         if not quiet:
-            self.logger().debug_lock(f"Lock {self._identifier} acquired (depth: {self._depth})")
+            self.logger().lock(f"Lock {self._identifier} acquired (depth: {self._depth})")
 
         return True
 
@@ -54,7 +54,7 @@ class ThreadLock(Logged):
         self._depth -= 1
 
         if not quiet:
-            self.logger().debug_lock(f"Lock {self._identifier} released (depth: {self._depth})")
+            self.logger().lock(f"Lock {self._identifier} released (depth: {self._depth})")
 
         self._lock.release()
 
@@ -302,8 +302,8 @@ class CallbackThread(ManagedThread):
         if name is not None:
             name = ':' + name
 
-        super().__init__(thread_name_postfix=name, thread_target=callback, thread_target_args=callback_args or [],
-                         thread_target_kwargs=callback_kwargs or {}, thread_daemon=thread_daemon, run_final=run_final)
+        ManagedThread.__init__(self, callback, callback_args or [], callback_kwargs or {}, thread_name_postfix=name,
+                               thread_daemon=thread_daemon, run_final=run_final)
 
         # Thread stop flag
         self._thread_stop = threading.Event()

@@ -10,6 +10,7 @@ import pyvisa
 import pyvisa.constants
 import pyvisa.errors
 import pyvisa.resources.messagebased
+from experimentlib.data.unit import T_PARSE_UNIT, Quantity, parse
 from experimentlib.logging.classes import Logged
 from transitions import EventData
 
@@ -17,7 +18,6 @@ from .core import Hardware
 from .enum import HardwareEnum
 from ..error import CommunicationError, ExternalError
 from ..metadata import TYPE_PARAMETER_DICT
-from ...data.unit import to_unit, Quantity
 
 
 # Disable pyvisa logging (avoids duplication)
@@ -155,8 +155,8 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             :param x: input variable
             :return: string representation of that variable
             """
-            if issubclass(type(x), HardwareEnum):
-                return x.get_command()
+            if isinstance(x, HardwareEnum):
+                return x.command_value
             elif type(x) is bool:
                 return 'ON' if x else 'OFF'
             elif type(x) is str:
@@ -258,7 +258,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             return self._parent._visa_resource.write(command, **visa_kwargs)
 
         @__visa_command_wrapper
-        def write_binary(self, command: str, payload: typing.Iterable, *format_args,
+        def write_binary(self, command: str, payload: typing.Sequence[typing.Any], *format_args,
                          visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
                          **format_kwargs) -> int:
             """ Write binary payload to VISA resource.
@@ -354,10 +354,10 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
             return response
 
-        def query_unit(self, command: typing.Optional[str], unit: str) -> Quantity:
+        def query_unit(self, command: typing.Optional[str], unit: T_PARSE_UNIT) -> Quantity:
             response = self.query(command)
 
-            return to_unit(response, unit)
+            return parse(response, unit)
 
         __visa_command_wrapper = staticmethod(__visa_command_wrapper)
 
@@ -486,7 +486,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 raise VISACommunicationError(f"Unexpected VISA error occurred during acquisition of "
                                              f"{self._visa_address}") from exc
 
-        if not issubclass(type(resource), pyvisa.resources.messagebased.MessageBasedResource):
+        if not isinstance(resource, pyvisa.resources.messagebased.MessageBasedResource):
             raise VISACommunicationError(self, 'Non-message based VISA resources are unsupported')
 
         # Set optional timeout

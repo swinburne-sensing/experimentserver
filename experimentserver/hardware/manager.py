@@ -8,8 +8,10 @@ from typing import Mapping, MutableMapping, Union
 import transitions
 import wrapt
 
-from . import CommandError, Hardware, HardwareIdentifierError, HardwareError, CommunicationError, ExternalError,\
-    NoResetHandler, HardwareState, HardwareTransition
+from .base.core import Hardware
+from .control import HardwareState, HardwareTransition
+from .error import HardwareError, HardwareIdentifierError, CommunicationError, CommandError, ExternalError, \
+    NoResetHandler
 from experimentserver.util.state import ManagedStateMachine, TYPE_STATE, TYPE_TRANSITION
 from experimentserver.util.thread import LockTimeout
 
@@ -155,7 +157,7 @@ class HardwareManager(ManagedStateMachine):
         super()._handle_transition_exception(initial_state, transition, exc)
 
         # Transition to error state if hardware reported error during transition
-        if issubclass(type(exc), HardwareError):
+        if isinstance(exc, HardwareError):
             HardwareTransition.ERROR.apply(self._hardware)
 
     def _thread_manager(self) -> None:

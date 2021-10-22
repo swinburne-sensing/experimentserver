@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 import threading
 
+from experimentlib.data.unit import parse, Quantity
 from experimentlib.file.path import add_path
 from experimentlib.logging.classes import Logged
 
 import experimentserver
 from .license import fetch_license
 from .interface import *
-from experimentserver.data.unit import to_unit, is_unit
 
 
 # Locate SDK files and add to system path
@@ -143,7 +143,7 @@ class LinkamSDK(Logged):
 
             # If unit is available then encapsulate it
             if value_type.unit is not None:
-                value = to_unit(value, value_type.unit)
+                value = parse(value, value_type.unit)
 
             return value
 
@@ -167,8 +167,8 @@ class LinkamSDK(Logged):
             :return:
             """
             if value_type.unit is not None:
-                n = to_unit(n, value_type.unit, magnitude=True)
-            elif is_unit(n):
+                n = parse(n, value_type.unit).magnitude
+            elif isinstance(n, Quantity):
                 n = n.magnitude
 
             return self._parent._sdk_process_message(Message.SET_VALUE, ('vStageValueType', value_type.value),

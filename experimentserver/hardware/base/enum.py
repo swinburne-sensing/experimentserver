@@ -35,8 +35,8 @@ class HardwareEnum(Enum):
 
         return description_map[self]
 
-    @staticmethod
-    def get_tag_name() -> typing.Optional[str]:
+    @property
+    def tag_name(self) -> typing.Optional[str]:
         """ Provide an optional tag name so this VISAEnum can be used to supply export _tags.
 
         Implementation of this method is optional.
@@ -56,7 +56,7 @@ class HardwareEnum(Enum):
         return None
 
     @property
-    def tag_value(self) -> str:
+    def tag_value(self) -> typing.Any:
         """ Get the tag value for this VISAEnum.
 
         :return: str, int, float
@@ -75,7 +75,7 @@ class HardwareEnum(Enum):
         raise NotImplementedError()
 
     @property
-    def visa_value(self) -> str:
+    def command_value(self) -> str:
         """ Get the command string for this enum.
 
         :return: str representing the enum value in hardware communications
@@ -97,7 +97,7 @@ class HardwareEnum(Enum):
         :raises ValueError: when no match is found
         """
         # Ignore existing enums
-        if issubclass(type(x), HardwareEnum):
+        if isinstance(x, HardwareEnum):
             return x
 
         if type(x) is bytes:
@@ -140,7 +140,7 @@ class HardwareEnum(Enum):
         raise ValueError(f"Unknown VISAEnum string {x}")
 
     def __str__(self):
-        return self.get_description()
+        return self.description
 
 
 TYPE_ENUM = typing.TypeVar('TYPE_ENUM', bound=HardwareEnum)

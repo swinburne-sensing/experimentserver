@@ -7,11 +7,11 @@ from experimentlib.logging.filters import only_event_factory
 from experimentlib.logging.handlers import BufferedHandler
 
 import experimentserver
-from experimentserver.data.measurement import MeasurementSource, TYPE_TAG_DICT, MeasurementTarget, Measurement, \
-    MeasurementGroup
+from experimentserver.measurement import T_TAG_MAP, MeasurementSource, MeasurementTarget, Measurement, MeasurementGroup
 from experimentserver.config import ConfigManager
 from experimentserver.hardware.manager import HardwareError, HardwareManager
 from experimentserver.protocol import Procedure, ProcedureLoadError, ProcedureTransition, ProcedureState
+from experimentserver.protocol.stage.core import Delay
 from experimentserver.util.thread import CallbackThread
 
 
@@ -31,7 +31,7 @@ class UserInterfaceError(experimentserver.ApplicationException):
 class WebServer(LoggedAbstract, MeasurementSource):
     """  """
 
-    def __init__(self, config: ConfigManager, app_metadata: TYPE_TAG_DICT, user_metadata: TYPE_TAG_DICT):
+    def __init__(self, config: ConfigManager, app_metadata: T_TAG_MAP, user_metadata: T_TAG_MAP):
         """
 
         :param config:
@@ -48,7 +48,9 @@ class WebServer(LoggedAbstract, MeasurementSource):
         # Initial procedure using default configuration
         procedure_metadata = config.get('procedure_metadata', default=ConfigManager())
 
-        self._procedure = Procedure(metadata=procedure_metadata, stages=[])
+        self._procedure = Procedure(metadata=procedure_metadata, stages=[
+            Delay(config, '1 min')
+        ])
         self._procedure.thread_start()
 
         # Inject event buffer into logger
@@ -74,11 +76,11 @@ class WebServer(LoggedAbstract, MeasurementSource):
     def get_export_source_name(self) -> str:
         return 'server'
 
-    def get_config(self):
+    def get_config(self) -> ConfigManager:
         return self._config
 
-    def get_metadata(self):
-        metadata = self._app_metadata
+    def get_metadata(self) -> T_TAG_MAP:
+        metadata = dict(self._app_metadata)
         metadata.update(self._user_metadata)
 
         return metadata
