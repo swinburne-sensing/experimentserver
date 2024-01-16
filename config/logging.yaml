@@ -27,13 +27,13 @@ handlers:
     stream: ext://sys.stdout
 
   debug_file_handler:
-    class: logging.handlers.TimedRotatingFileHandler
-    filename: !format "{temp_path}/experimentserver.log"
-    when: "D"
+    class: logging.handlers.RotatingFileHandler
+    filename: !format "{root_path}/log/debug.log"
     formatter: file_format
-    level: TRACE
+    level: NOTSET
     encoding: "utf-8"
-    backupCount: 3
+    maxBytes: 134217728
+    backupCount: 5
 
   instance_file_handler:
     class: logging.FileHandler
@@ -45,12 +45,12 @@ handlers:
   database_handler:
     class: experimentlib.logging.handlers.db.InfluxDBHandler
     name: !format "{app_name}"
+    level: INFO
     client_args:
       url: !envreq INFLUXDB_V2_URL
       token: !envreq INFLUXDB_V2_TOKEN
       org: !envreq INFLUXDB_V2_ORG
     bucket:
-      DEBUG: !envreq INFLUXDB_V2_BUCKET_LOG_DEBUG
       INFO: !envreq INFLUXDB_V2_BUCKET_LOG
 
   pushover_handler:

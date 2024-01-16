@@ -5,7 +5,8 @@
 *.dll
 *.pdb
 
-experimentserver/interface/linkam/license.py
+projects
+license.py
 
 .idea/ansibleVaultSettings.xml
 

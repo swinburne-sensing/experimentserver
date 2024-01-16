@@ -14,11 +14,10 @@ database:
 
 hardware: !include '{config_path}/hardware.yaml;C:/GasSensing/config/hardware.yaml'
 
+remap: {}
+
 procedure_metadata:
   # Default configuration for procedures
-  led_current: ''
-  led_optical_power: ''
-  led_wavelength: ''
   experiment: '_Unlabelled'
   sample: '_Unlabelled'
 
