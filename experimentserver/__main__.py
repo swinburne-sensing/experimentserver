@@ -218,14 +218,18 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
             grafana_url = app_config.get('url.grafana')
 
             if grafana_url is not None and len(grafana_url) > 0:
-                url = app_config.get('url.grafana').format(**{
-                    'from': int(1000 * time_startup.timestamp()),
-                    'to': 'now'
-                })
+                try:
+                    url = app_config.get('url.grafana').format(**{
+                        'from': int(1000 * time_startup.timestamp()),
+                        'to': 'now'
+                    })
 
-                root_logger.info(f"Runtime Grafana URL {url}", notify=True)
+                    root_logger.info(f"Runtime Grafana URL {url}", notify=True)
 
-                user_metadata['grafana_url'] = url
+                    user_metadata['grafana_url'] = url
+                except (KeyError, IndexError):
+                    root_logger.warning(f"Unable to configure Grafana URL "
+                                        f"\"{app_config.get('url.grafana', default='<undefined>')}\"", exc_info=True)
 
             # Run main application
             start_server(app_config, app_metadata, user_metadata)
@@ -281,11 +285,9 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
 
 
 """ A wrapper for the main function (mostly so we can exit if an argument error is found). """
-config_default = os.path.abspath(os.path.join(experimentserver.APP_PATH, '..', 'config/experiment.yaml'))
+parser = argparse.ArgumentParser(description=f"{experimentserver.__app_name__} v{experimentserver.__version__}")
 
-parser = argparse.ArgumentParser(description=f"{experimentserver.__app_name__} {experimentserver.__version__}")
-
-parser.add_argument('config', default=[config_default], help='YAML configuration file', nargs='*')
+parser.add_argument('config', default=[experimentserver.CONFIG_DEFAULT], help='YAML configuration file', nargs='*')
 parser.add_argument('--debug', action='store_true', dest='debug', help='Enable debug mode')
 parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata ags (key=value)')
 

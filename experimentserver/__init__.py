@@ -32,6 +32,8 @@ EXIT_ERROR_EXCEPTION = -2
 APP_PATH = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(os.path.expanduser('~'), f".{__app_name__}")
 
+CONFIG_DEFAULT = os.path.abspath(os.path.join(APP_PATH, '..', 'config/experiment.yaml'))
+
 
 class ApplicationException(Exception):
     def __init__(self, *args, fatal: bool = False):
