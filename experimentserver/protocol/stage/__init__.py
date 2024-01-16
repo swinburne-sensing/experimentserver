@@ -199,9 +199,9 @@ class BaseStage(LoggedAbstract):
                 Measurement.push_global_metadata()
 
                 Measurement.add_global_tags({
-                    'stage_uid': self._stage_uid,
+                    # 'stage_uid': self._stage_uid,
                     'stage_class': self.__class__.__name__,
-                    'stage_time': now()
+                    # 'stage_time': now()
                 })
 
                 Measurement.add_global_dynamic_field('time_delta_stage', dynamic_field_time_delta(now()))
