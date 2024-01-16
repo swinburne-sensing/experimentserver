@@ -31,6 +31,8 @@ class MCMassFlowController(Hardware):
     def __init__(self, identifier: str, host: str, composition: typing.Mapping[str, str], **kwargs):
         Hardware.__init__(self, identifier, **kwargs)
 
+        self._measurement_delay = 0.25
+
         # Address
         self._host = host
 
@@ -42,6 +44,9 @@ class MCMassFlowController(Hardware):
         self._alicat_mass_flow_unit = registry.sccm
         self._alicat_pressure_unit = registry.psi
         self._alicat_temperature_unit = registry.degC
+
+        # Flow rate setpoint
+        self._mass_flow_rate = Quantity(0, registry.sccm)
 
         self._modbus_client = ModbusTcpClient(host)
 
@@ -63,10 +68,10 @@ class MCMassFlowController(Hardware):
         super(MCMassFlowController, self).transition_configure(event)
         
         # Zero flow rate
-        self.set_mass_flow_setpoint(0)
+        self.set_flow_rate(0)
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        self.set_mass_flow_setpoint(0)
+        self.set_flow_rate(0)
         
         super(MCMassFlowController, self).transition_cleanup(event)
 
@@ -75,18 +80,30 @@ class MCMassFlowController(Hardware):
 
     @Hardware.register_parameter(description='Target gas flow rate')
     def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY):
-        self.set_mass_flow_setpoint(flow_rate_raw)
+        flow = parse(flow_rate_raw, registry.sccm)
+
+        # Apply gas correction factor
+        flow = flow / self._gcf
+
+        if flow.magnitude < 0:
+            raise ParameterError(f"Mass flow rate setpoint must be positive (got: {flow})")
+
+        # Save target
+        self._mass_flow_rate = flow
+
+        self.set_mass_flow_setpoint(flow)
 
     @Hardware.register_measurement(description='Get reading', force=True)
     def get_measurement(self) -> Measurement:
+        # Force set target flow rate
+        self.set_mass_flow_setpoint(self._mass_flow_rate)
+
         m = Measurement(self, MeasurementGroup.MFC, {
             'flow_actual': self.get_mass_flow(),
             'flow_target': self.get_mass_flow_setpoint()
         }, tags={
             'gas_mixture': str(self._composition)
         })
-
-        self.sleep(0.25, 'rate limit')
 
         return m
 
@@ -112,15 +129,7 @@ class MCMassFlowController(Hardware):
     def get_mass_flow_setpoint(self) -> Quantity:
         return Quantity(self._modbus_read_input_float(self.REGISTER_GET_FLOW_SETPOINT), self._alicat_mass_flow_unit)
 
-    def set_mass_flow_setpoint(self, flow: T_PARSE_QUANTITY):
-        flow = parse(flow, registry.sccm)
-
-        # Apply gas correction factor
-        flow = flow / self._gcf
-
-        if flow.magnitude < 0:
-            raise ParameterError(f"Mass flow rate setpoint must be positive (got: {flow})")
-
+    def set_mass_flow_setpoint(self, flow: Quantity):
         flow = flow.m_as(registry.sccm)
 
         # noinspection PyArgumentEqualDefault
@@ -134,7 +143,7 @@ class MCMassFlowController(Hardware):
         if response.isError():
             raise CommunicationError(f"Error during ModbusTCP register write to {address}: \"{response!s}\"")
 
-        self.logger().info(f"Set mass flow rate: {flow!s}")
+        self.logger().debug(f"Set mass flow rate: {flow!s}")
 
     def get_mass_flow(self) -> Quantity:
         return parse(self._modbus_read_input_float(self.REGISTER_GET_MASS_FLOW), self._alicat_mass_flow_unit,
