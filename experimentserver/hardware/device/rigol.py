@@ -67,6 +67,8 @@ class DP832PowerSupply(SCPIHardware):
     def __init__(self, *args, output_failsafe: bool = True, **kwargs):
         super(DP832PowerSupply, self).__init__(*args, **kwargs)
 
+        self._measurement_delay = 1.0
+
         # On error attempt to disable output channels
         self._output_failsafe = output_failsafe
 
@@ -180,9 +182,6 @@ class DP832PowerSupply(SCPIHardware):
 
     @SCPIHardware.register_measurement(description='Output manager, voltage and current', force=True)
     def get_supply_state(self) -> typing.Sequence[Measurement]:
-        # Delay slightly to allow for new data
-        self.sleep(1, 'rate limit, infrequent update')
-
         status = []
 
         for channel in PowerSupplyChannel:
