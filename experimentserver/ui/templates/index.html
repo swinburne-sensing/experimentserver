@@ -48,10 +48,11 @@
 
                 if (extension !== 'yaml' && extension !== 'yml' && extension !== 'j2') {
                     notifyError('Upload Error', 'File must have .yaml or .yml extension');
-                    $(this).val(null);
                 } else {
                     load_procedure();
                 }
+
+                $(this).val(null);
             });
 
             $('#procedure-import').click(load_procedure);
@@ -79,7 +80,7 @@
                 <input type="file" id="procedure-import-file" accept="application/x-yaml,.yml,.yaml,.j2">
                 <input class="uk-input uk-form-width-medium uk-form-small" type="text" placeholder="Select file" disabled>
             </div>
-            <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Import procedure from a file; pos: bottom" id="procedure-import"><span uk-icon="icon: upload"></span> Import</button>
+            <!-- <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Import procedure from a file; pos: bottom" id="procedure-import"><span uk-icon="icon: upload"></span> Import</button> -->
             <button class="uk-button uk-button-default uk-button-small" uk-tooltip="title: Export procedure to a file; pos: bottom" id="procedure-export"><span uk-icon="icon: download"></span> Export</button>
         </div>
 
