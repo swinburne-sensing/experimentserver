@@ -114,7 +114,7 @@ class HardwareManager(ManagedStateMachine):
             hardware_state = self._get_state()
 
             try:
-                with self._hardware.hardware_lock():
+                with self._hardware.hardware_lock('force_disconnect'):
                     if hardware_state.is_error():
                         self.logger().error('Hardware in error state during forced disconnect')
 
@@ -191,7 +191,7 @@ class HardwareManager(ManagedStateMachine):
                 # Attempt to reset hardware after timeout
                 self.logger().info('Attempting hardware reset', event=True)
 
-                with self._hardware.hardware_lock():
+                with self._hardware.hardware_lock('_thread_manager'):
                     try:
                         HardwareTransition.RESET.apply(self._hardware)
 
@@ -239,7 +239,7 @@ class HardwareManager(ManagedStateMachine):
 
         # If running then attempt to take measurement
         if current_state.is_running():
-            with self._hardware.hardware_lock():
+            with self._hardware.hardware_lock('_thread_manager'):
                 try:
                     activity_flag |= self._hardware.produce_measurement()
                 except CommandError:

@@ -38,7 +38,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
     _HARDWARE_LUT_LOCK = threading.RLock()
 
     # Timeout to prevent deadlocks
-    _HARDWARE_LOCK_TIMEOUT = 30
+    _HARDWARE_LOCK_TIMEOUT = 60
 
     def __init__(self, identifier: str, parameters: typing.Optional[TYPE_PARAMETER_DICT] = None):
         """ Instantiate Hardware object.
@@ -69,6 +69,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         # Enabled measurement map
         self._measurement_lock = threading.RLock()
         self._measurement: typing.Optional[str, bool] = None
+        self._measurement_delay: typing.Optional[float] = None
 
         # Add to list of instances
         with self._HARDWARE_LUT_LOCK:
@@ -141,14 +142,15 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
     # Instrument lock
     @contextlib.contextmanager
-    def hardware_lock(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
+    def hardware_lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
         """ Acquire exclusive reentrant hardware lock. Checks for any errors when released.
 
+        :param origin:
         :param timeout:
         :param quiet:
         :return: lock depth
         """
-        with self._hardware_lock.lock(timeout, quiet) as depth:
+        with self._hardware_lock.lock(origin, timeout, quiet) as depth:
             yield depth
 
     # Parameter/measurement registration
@@ -261,6 +263,9 @@ class Hardware(LoggedAbstract, MeasurementSource):
             if self._measurement is None:
                 raise MeasurementError('Measurements have not been configured, hardware may be disconnected')
 
+            if self._measurement_delay is not None:
+                self.sleep(self._measurement_delay, 'measurement rate limit')
+
             # Get enabled measurements
             measurement_meta = self.get_hardware_measurement_metadata()
 
@@ -269,7 +274,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
                 if not measurement_enabled and not measurement_meta[measurement].force:
                     measurement_meta.pop(measurement)
 
-            with self.hardware_lock():
+            with self.hardware_lock('produce_measurement'):
                 for meta in measurement_meta.values():
                     # Bind method
                     measurement_method = meta.bind(self)
@@ -398,7 +403,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         if parameter_command is not None:
             with self._parameter_lock:
-                with self.hardware_lock():
+                with self.hardware_lock('_handle_parameter'):
                     # Sort parameters based on order before calling the appropriate method
                     for parameter_call in sorted(parameter_command):
                         # Call bound method
@@ -418,7 +423,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         if parameter_command is not None:
             with self._parameter_lock:
-                with self.hardware_lock():
+                with self.hardware_lock('_buffer_parameters'):
                     # Sort parameters based on order before calling the appropriate method
                     for parameter_call in sorted(parameter_command):
                         # Buffer parameter after successful execution

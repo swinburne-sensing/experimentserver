@@ -94,7 +94,7 @@ class GenericSerial(SerialHardware):
         # Encode command
         cmd = bytes(cmd, "utf-8").decode("unicode_escape").encode()
 
-        with self._serial_lock.lock():
+        with self._serial_lock.lock(f"send:{cmd}"):
             # Send command
             self._serial_port.write(cmd)
 
@@ -111,7 +111,7 @@ class GenericSerial(SerialHardware):
             self.sleep(1, 'rate limit, receive disabled')
             return {}
 
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('receive'):
             response = self._serial_port.read_until()
 
         response = response.strip()
@@ -193,11 +193,13 @@ class ValveController(SerialHardware):
             'baudrate': 115200
         })
 
+        self._measurement_delay = 1
+
     @SerialHardware.register_parameter(description='Valve position')
     def set_position(self, position: typing.Union[TYPE_ENUM_CAST, ValvePosition]):
         channel = ValvePosition.from_input(position)
 
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('set_position'):
             # Send command
             self._serial_port.write(channel.command_value.encode())
 
@@ -210,10 +212,7 @@ class ValveController(SerialHardware):
     @SerialHardware.register_measurement(description='Valve position', measurement_group=MeasurementGroup.VALVE,
                                          force=True)
     def get_position(self) -> T_FIELD_MAP:
-        # Slow down sample rate
-        self.sleep(1, 'rate limit, infrequent change')
-
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('get_position'):
             self._serial_port.write('?'.encode())
             response = self._serial_port.read_until()
             response = response.strip()

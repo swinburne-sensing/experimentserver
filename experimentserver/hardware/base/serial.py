@@ -43,7 +43,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
     def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
         super(SerialHardware, self).transition_connect(event)
 
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('transition_connect'):
             # Open serial port
             try:
                 self.logger().debug(f"Opening serial port using args: {self._serial_args}")
@@ -52,7 +52,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
                 raise CommunicationError(f"Unable to open serial port {self._serial_args['port']}") from exc
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('transition_disconnect'):
             # Close serial port
             self._serial_port.close()
 
@@ -116,7 +116,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
 
         while not self._thread_serial_consumer.thread_stop_requested():
             try:
-                with self._serial_lock.lock():
+                with self._serial_lock.lock('_thread_serial_consumer_callback'):
                     # Break upon disconnection
                     if self._serial_port is None:
                         return
