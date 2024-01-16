@@ -213,7 +213,7 @@ def register_json(ui: WebServer):
 
         if file_ext.lower() == '.j2':
             template_env = jinja2.Environment(
-                loader=jinja2.loaders.PackageLoader('experimentserver.protocol'),
+                loader=jinja2.loaders.DictLoader({}),
                 autoescape=jinja2.select_autoescape()
             )
 
