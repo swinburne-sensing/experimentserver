@@ -1,4 +1,5 @@
 import time
+from logging import LogRecord
 
 import flask
 from experimentlib.logging import get_logger, INFO
@@ -16,8 +17,8 @@ from experimentserver.util.thread import CallbackThread
 
 
 # Suppress werkzeug logging for status updates
-def _filter_werkzeug(record):
-    return '/server/state' not in record.msg
+def _filter_werkzeug(record: LogRecord):
+    return '/server/state' not in record.getMessage()
 
 
 _werkzeug_logger = get_logger('werkzeug')
@@ -52,6 +53,8 @@ class WebServer(LoggedAbstract, MeasurementSource):
             Delay(config, '1 min')
         ])
         self._procedure.thread_start()
+
+        # self._procedure_queue: typing.List[Procedure] = []
 
         # Inject event buffer into logger
         self._event_buffer = BufferedHandler()
