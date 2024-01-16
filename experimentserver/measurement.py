@@ -17,7 +17,7 @@ from experimentserver.hardware.base.enum import HardwareEnum
 
 # Type definitions
 T_FIELD_NAME = str
-T_FIELD_VALUE = typing.Union[str, int, float, bool, Quantity]
+T_FIELD_VALUE = typing.Union[str, int, float, bool, Quantity, timedelta]
 
 T_DYNAMIC_FIELD = typing.Callable[['Measurement'], T_FIELD_VALUE]
 
@@ -372,7 +372,7 @@ T_MEASUREMENT_RETURN = typing.Union[Measurement, T_MEASUREMENT_SEQUENCE, T_FIELD
 # Basic dynamic fields
 def dynamic_field_time_delta(initial_time: datetime) -> T_DYNAMIC_FIELD:
     def func(measurement: Measurement):
-        return (measurement.timestamp - initial_time).total_seconds()
+        return round((measurement.timestamp - initial_time).total_seconds(), 6)
 
     return func
 
