@@ -85,10 +85,9 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         return channel_tags
 
     def _daq_open_all(self):
-        with self._measurement_lock:
-            with self._daq_hardware.visa_transaction() as daq_transaction:
-                # Turn off all relays
-                daq_transaction.write('ROUT:OPEN:ALL')
+        with self._daq_hardware.visa_transaction() as daq_transaction:
+            # Turn off all relays
+            daq_transaction.write('ROUT:OPEN:ALL')
 
         # Switch open time
         self.sleep(self.SWITCH_DELAY, 'contact open time')
