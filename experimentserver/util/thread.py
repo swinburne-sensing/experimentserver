@@ -27,6 +27,9 @@ class ThreadLock(Logged):
         self._timeout_default = timeout_default
         self._lock = threading.RLock()
 
+        self._lock_origin: typing.Optional[str] = None
+        self._lock_origin_lock = threading.RLock()
+
     def acquire(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> bool:
         timeout = timeout or self._timeout_default
 
@@ -41,7 +44,9 @@ class ThreadLock(Logged):
             locked = self._lock.acquire(timeout=timeout)
 
             if not locked:
-                raise LockTimeout(f"Unable to acquire lock {self._identifier} before timeout")
+                with self._lock_origin_lock:
+                    raise LockTimeout(f"Unable to acquire lock {self._identifier} before timeout, held by "
+                                      f"{self._lock_origin}")
 
         self._depth += 1
 
@@ -75,14 +80,23 @@ class ThreadLock(Logged):
             return False
 
     @contextlib.contextmanager
-    def lock(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
+    def lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
         # Get lock
+        self.logger().lock(f"Getting lock for {origin}")
         self.acquire(timeout, quiet)
+
+        with self._lock_origin_lock:
+            self._lock_origin = origin
+
+        self.logger().lock(f"Got lock for {origin}")
 
         try:
             yield self._depth
         finally:
             self.release(quiet)
+
+            with self._lock_origin_lock:
+                self._lock_origin = None
 
 
 class ThreadException(experimentserver.ApplicationException):
