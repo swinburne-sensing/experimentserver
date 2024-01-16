@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import transitions
 import yaml
+from experimentlib.data import unit
 from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE
 from experimentlib.util.iterate import flatten_list
 from experimentlib.util.generate import hex_str
@@ -74,13 +75,28 @@ class Procedure(ManagedStateMachine):
         if isinstance(metadata, ConfigNode):
             metadata = dict(metadata)
 
-        self._procedure_metadata = metadata
+        self._procedure_metadata = {k: v for k, v in metadata.items()}
 
         if 'experiment' not in self._procedure_metadata:
-            raise ProcedureLoadError('Procedure must provide an experiment label in metadata')
+            raise ProcedureLoadError('Missing \"experiment\" value in metadata')
 
         if 'sample' not in self._procedure_metadata:
-            raise ProcedureLoadError('Procedure must provide a sample label in metadata')
+            raise ProcedureLoadError('Missing \"sample\" value in metadata')
+
+        try:
+            if 'led_current' in self._procedure_metadata:
+                self._procedure_metadata['led_current'] = unit.parse(self._procedure_metadata['led_current'],
+                                                                     unit.registry.mA)
+
+            if 'led_optical_power' in self._procedure_metadata:
+                self._procedure_metadata['led_optical_power'] = unit.parse(
+                    self._procedure_metadata['led_optical_power'], unit.registry.uW)
+
+            if 'led_wavelength' in self._procedure_metadata:
+                self._procedure_metadata['led_wavelength'] = unit.parse(self._procedure_metadata['led_wavelength'],
+                                                                        unit.registry.nm)
+        except unit.QuantityParseError as exc:
+            raise ProcedureLoadError('Error while converting value in metadata') from exc
 
         # Stage storage
         self._procedure_stages: typing.List[BaseStage] = stages or []
@@ -154,7 +170,7 @@ class Procedure(ManagedStateMachine):
             return {
                 'uid': self._procedure_uid,
                 'hardware': list(self.get_procedure_hardware()),
-                'metadata': self._procedure_metadata,
+                'metadata': {k: str(v) for k, v in self._procedure_metadata.items()},
                 'config': self._procedure_config.dump(),
                 'stage_current': self._procedure_stage_current,
                 'stage_next': self._procedure_stage_next
