@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 import influxdb_client
 import urllib3
 from experimentlib.data.gas import GasProperties, Component, Mixture
-from experimentlib.data.unit import Quantity, registry, parse
+from experimentlib.data.humidity import unit_abs
+from experimentlib.data.unit import Quantity, registry, parse, dimensionless
 from experimentlib.logging.classes import LoggedAbstract
 from experimentlib.util.time import get_localzone
 from influxdb_client.client.write_api import ASYNCHRONOUS
@@ -24,6 +25,12 @@ class DatabaseError(experimentserver.ApplicationException):
 
 class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
     _INFLUXDB_RETRY = urllib3.Retry()
+
+    _TAG_STR_SAFE = {int, GasProperties, Component, Mixture, Quantity}
+
+    _BASE_UNITS = {unit_abs, registry.sccm, registry.degC, registry.m, registry.V, registry.A, registry.W, registry.ohm,
+                   registry.F, registry.H, registry.Pa}
+    _PASS_UNITS = {registry.delta_degC / registry.min}
 
     def __init__(self, identifier: str, connect_args: typing.MutableMapping[str, typing.Any]):
         self._identifier = identifier
@@ -51,56 +58,112 @@ class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
             self.write_api = None
 
     def _record(self, measurement: Measurement) -> typing.NoReturn:
-        point = influxdb_client.Point(measurement.measurement_group.value).time(
-            measurement.timestamp)
-
-        # Add fields
-        for field, value in measurement.get_fields().items():
-            if isinstance(value, Quantity):
-                if value.is_compatible_with('degC'):
-                    # Get magnitude in degrees celcius
-                    value = value.m_as('degC')
-                else:
-                    # Get magnitude in base units
-                    value = value.to_base_units().magnitude
-            elif not any((isinstance(value, t) for t in (bool, int, float, str))):
-                raise DatabaseError(f"Field {field} has unsupported value type (repr: {value!r}, type: {type(value)})")
-
-            point.field(field, value)
+        point_list: typing.List[influxdb_client.Point] = []
+        tag_dict: typing.Dict[str, str] = {}
 
         # Convert tags to strings
-        for tag, value in measurement.get_tags().items():
-            if isinstance(value, str):
+        for tag_name, tag_value in measurement.get_tags().items():
+            if isinstance(tag_value, str):
                 # Already OK
                 pass
-            elif isinstance(value, float):
-                raise DatabaseError(f"Tag {tag} has floating point value {value}, convert to string or Quantity for "
-                                    f"storage")
-            elif isinstance(value, bool):
+            elif isinstance(tag_value, float):
+                raise DatabaseError(f"Tag {tag_name} has floating point value {tag_value}, convert to string or "
+                                    f"Quantity for storage")
+            elif isinstance(tag_value, bool):
                 # InfluxDB style boolean
-                value = 'true' if value else 'false'
-            elif isinstance(value, timedelta):
-                value = str(parse(value.total_seconds(), registry.s))
-            elif isinstance(value, datetime):
+                tag_value = 'true' if tag_value else 'false'
+            elif isinstance(tag_value, timedelta):
+                tag_value = str(parse(tag_value.total_seconds(), registry.s))
+            elif isinstance(tag_value, datetime):
                 # Add UTC referenced tag
-                point.tag(tag + '_utc', value.astimezone(timezone.utc).isoformat())
+                tag_dict[tag_name + '_utc'] = tag_value.astimezone(timezone.utc).isoformat()
 
                 # Use local time for tag value
-                value = value.astimezone(get_localzone()).isoformat()
-            elif any(isinstance(value, t) for t in (int, HardwareEnum, GasProperties, Component, Mixture, Quantity)):
+                tag_value = tag_value.astimezone(get_localzone()).isoformat()
+            elif isinstance(tag_value, HardwareEnum):
+                # Extract value
+                tag_value = str(tag_value.tag_value)
+            elif any(isinstance(tag_value, t) for t in self._TAG_STR_SAFE):
                 # Known safe conversion to string
-                value = str(value)
-            elif not isinstance(value, str):
-                self.logger().warning(f"Casting tag {tag} (repr: {value!r}, type: {type(value)}) to string")
-                value = str(value)
+                tag_value = str(tag_value)
             else:
-                raise DatabaseError(f"Tag {tag} has unexpected type (repr: {value!r}, type: {type(value)})")
+                self.logger().warning(f"Casting tag {tag_name} (repr: {tag_value!r}, type: {type(tag_value)}) to "
+                                      f"string \"{tag_value!s}\", conversion may not be stable")
+                tag_value = str(tag_value)
 
-            if len(value) > 0:
-                point.tag(tag, value)
+            assert isinstance(tag_value, str), 'Tag values must be converted to strings'
 
-        self.logger().trace(f"Writing {measurement} as {point.to_line_protocol()}")
-        self.write_api.write(self.bucket, record=point)
+            # Add non-empty tags to list
+            if len(tag_value) > 0:
+                tag_dict[tag_name] = tag_value
+
+        # Add fields
+        for field_name, field_value in measurement.get_fields().items():
+            units_tag = None
+
+            if isinstance(field_value, Quantity):
+                units_tag = str(field_value.units)
+
+                self.logger().trace(f"Quantity {field_name} = {field_value} (units: {field_value.units!r})")
+
+                if field_value.units == dimensionless:
+                    # Get absolute magnitude
+                    self.logger().debug(f"Convert Quantity {field_name} = {field_value} to absolute magnitude")
+                    field_value = field_value.m_as(dimensionless)
+                elif field_value.is_compatible_with(dimensionless) or field_value.units in self._PASS_UNITS:
+                    self.logger().debug(f"Convert Quantity {field_name} = {field_value} to magnitude (pass)")
+                    field_value = field_value.magnitude
+                elif field_value.units == registry.rpm:
+                    self.logger().debug(f"Convert Quantity {field_name} = {field_value} to rpm")
+                    field_value = field_value.m_as(registry.rpm)
+                elif field_value.units.is_compatible_with(registry.Hz):
+                    self.logger().debug(f"Convert Quantity {field_name} = {field_value} to Hz")
+                    field_value = field_value.m_as(registry.Hz)
+                elif field_value.is_compatible_with(registry.s):
+                    self.logger().debug(f"Convert Quantity {field_name} = {field_value} to seconds")
+                    field_value = field_value.m_as(registry.s)
+                else:
+                    unit_match = False
+
+                    for base_unit in self._BASE_UNITS:
+                        if field_value.is_compatible_with(base_unit):
+                            self.logger().debug(f"Convert Quantity {field_name} = {field_value} to base unit "
+                                                f"{base_unit}")
+
+                            unit_match = True
+                            field_value = field_value.m_as(field_value)
+                            break
+
+                    if not unit_match:
+                        # Take magnitude of existing units
+                        self.logger().warning(f"Convert Quantity {field_name} = {field_value} to magnitude (unhandled "
+                                              f"unit)")
+                        field_value = field_value.magnitude
+            elif isinstance(field_value, timedelta):
+                self.logger().debug(f"Converting timedelta {field_name} = {field_value} to seconds")
+                field_value = field_value.total_seconds()
+            elif any((isinstance(field_value, t) for t in (bool, int, float, str))):
+                self.logger().debug(f"Unconverted {field_name} = {field_value!r} (type: {type(field_value)})")
+            else:
+                raise DatabaseError(f"Field {field_name} has unsupported value type (repr: {field_value!r}, "
+                                    f"type: {type(field_value)})")
+
+            # Create point for each field
+            point = influxdb_client.Point(measurement.measurement_group.value).time(measurement.timestamp)\
+                .field(field_name, field_value)
+
+            if units_tag is not None:
+                # Add tag with quantity units
+                point.tag('units', units_tag)
+
+            for tag_name, tag_value in tag_dict.items():
+                point.tag(tag_name, tag_value)
+
+            point_list.append(point)
+
+        point_summary = ', '.join((point.to_line_protocol() for point in point_list))
+        self.logger().trace(f"Writing {measurement} as [{point_summary}]")
+        self.write_api.write(self.bucket, record=point_list)
 
 
 _db_client: typing.Dict[str, _InfluxDBv2Client] = {}
