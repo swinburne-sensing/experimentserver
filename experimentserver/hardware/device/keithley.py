@@ -442,11 +442,15 @@ class Picoammeter6487(_KeithleyInstrument):
 
     @SCPIHardware.register_measurement(description='Measure current/resistance', default=True)
     def get_reading(self) -> Measurement:
+        if self._settling_time is not None:
+            # Take measurement after settling time
+            self.sleep(self._settling_time, f"settling time")
+    
         # Fetch reading from instrument
         with self.visa_transaction() as transaction:
             reading = transaction.query(':READ?')
             source_voltage = parse(transaction.query(':SOUR:VOLT?'), registry.V)
-            source_enabled = int(transaction.query(':SOUR:VOLT:STAT?'))
+            source_enabled = int(transaction.query(':SOUR:VOLT:STAT?')) == 1
 
         # Get reading
         reading = reading.split(',', 1)
