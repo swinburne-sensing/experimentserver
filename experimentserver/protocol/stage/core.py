@@ -67,6 +67,10 @@ class Delay(BaseStage):
         Measurement.add_global_tag('delay_interval', self._delay_interval)
 
     def stage_run(self) -> bool:
+        if not self._has_duration:
+            # No duration, always complete
+            return False
+
         # Test for stage completion
         return now() < self._delay_exit_timestamp
 
