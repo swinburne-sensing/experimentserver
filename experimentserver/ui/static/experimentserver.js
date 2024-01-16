@@ -108,6 +108,7 @@ function registerAjax(parent, url, success_callback = null, data = null, error_m
 }
 
 let updating = false;
+let refresh_flag = false;
 
 // Status and state updates
 function updateStatus() {
@@ -144,6 +145,11 @@ function updateStatus() {
     $.ajax({
         url: '/server/state',
         success: function (result) {
+            if (refresh_flag) {
+                // Reload page
+                location.reload();
+            }
+
             // Clear state indicator
             dom_state
                 .empty()
@@ -244,6 +250,8 @@ function updateStatus() {
         error: function () {
             // Show error dialog
             UIkit.modal('#comm-error-dialog').show();
+
+            refresh_flag = true;
         },
         complete: function () {
             updating = false;
