@@ -48,6 +48,17 @@ HEADER = f"""%YAML 1.2
 #     
 #     - !flow <mfc>, <flow rate>
 #         Shortcut to set a flow rate
+#
+#     - !led_setup <voltage>[, <current>]
+#         eg:
+#           - !led_setup 3V
+#           - !led_setup 5V, 100mA
+#
+#     - !led <on or off>[, <current>]
+#         eg:
+#           - !led on
+#           - !led off
+#           - !led on, 300mA
 #     
 #     - !stage <temperature OR ramp OR humidity OR valve>, <value>
 #         Shortcut to change Linkam stage/generator settings
@@ -84,8 +95,25 @@ HEADER = f"""%YAML 1.2
 #     - !set <hardware>, <command>[ <argument>, <argument>, ...]
 #         Manual command, use with caution.
 #
+#     - !add_sample <number>, <sample>
+#         Add a channel to the scan list for multi-channel experiments and add sample metadata to that channel.
+#
+#     - !set_sample <number>, <sample>
+#         Add a single channel to the scan list for multi-channel experiments and add sample metadata to that channel.
+#
 
 """
+
+
+def convert_bool(x: str) -> bool:
+    x_lower = x.lower().strip()
+
+    if x_lower in ('true', 'on', 'yes', '1'):
+        return True
+    elif x_lower in ('false', 'off', 'no', '0'):
+        return False
+    else:
+        raise ValueError(f"Could not convert value \"{x}\" to boolean")
 
 
 class ProcedureArgumentError(experimentserver.ApplicationException):
@@ -101,7 +129,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
 
     # Argument parser for !delay
     _DELAY_PARSER = arg_helper.SimpleArgParser()
-    _DELAY_PARSER.add_argument('interval', converter=converter)
+    _DELAY_PARSER.add_argument('interval', converter=parse_timedelta)
     _DELAY_PARSER.add_argument('tags', converter=arg_helper.parse_pair, default=[], greedy=True, required=False)
 
     # Argument parser for !pause
@@ -133,6 +161,21 @@ class YAMLProcedureLoader(yaml.SafeLoader):
     _PULSE_PARSER.add_argument('total_flow', converter=converter(registry.sccm), default=Quantity(200, registry.sccm),
                                required=False)
     _PULSE_PARSER.add_argument('tags', converter=arg_helper.parse_pair, default=[], greedy=True, required=False)
+
+    # Parser for !led
+    _LED_PARSER = arg_helper.SimpleArgParser()
+    _LED_PARSER.add_argument('state', converter=convert_bool)
+    _LED_PARSER.add_argument('current', converter=converter(registry.A), required=False)
+
+    # Parser for !led_setup
+    _LED_SETUP_PARSER = arg_helper.SimpleArgParser()
+    _LED_SETUP_PARSER.add_argument('voltage', converter=converter(registry.V))
+    _LED_SETUP_PARSER.add_argument('current', converter=converter(registry.A), required=False)
+
+    # Parser for !add/set_sample
+    _SAMPLE_PARSER = arg_helper.SimpleArgParser()
+    _SAMPLE_PARSER.add_argument('channel', converter=int)
+    _SAMPLE_PARSER.add_argument('sample')
 
     def __init__(self, stream):
         yaml.SafeLoader.__init__(self, stream)
@@ -213,9 +256,9 @@ class YAMLProcedureLoader(yaml.SafeLoader):
         elif args.type == 'valve':
             valve_pos = args.value.lower()
 
-            if valve_pos in ('a', 'chamber', 'sample'):
+            if valve_pos in ('a', 'chamber', 'sample', 'true', 'on', 'humid', 'humidity', 'wet'):
                 valve_pos = 'A'
-            elif valve_pos in ('b', 'vent'):
+            elif valve_pos in ('b', 'vent', 'false', 'off', 'dry'):
                 valve_pos = 'B'
             else:
                 raise ConstructorError(f"Invalid valve position \"{valve_pos}\"", node)
@@ -375,6 +418,98 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         ]
 
+    def command_led(self, node):
+        args = self._parse_node_args(self._LED_PARSER, node)
+
+        if args.current is None:
+            parameters = {
+                'set_output': (2, args.state)
+            }
+        else:
+            parameters = {
+                'set_current': (2, args.current),
+                'set_output': (2, args.state)
+            }
+
+        return {
+            'class': 'core.Setup',
+            'version': BaseStage.EXPORT_VERSION,
+            'parameters': {
+                'rigol': parameters
+            }
+        }
+
+    def command_led_setup(self, node):
+        args = self._parse_node_args(self._LED_SETUP_PARSER, node)
+
+        if args.current is None:
+            parameters = {
+                'set_voltage': (2, args.voltage),
+                'set_output': (2, False)
+            }
+        else:
+            parameters = {
+                'set_voltage': (2, args.voltage),
+                'set_current': (2, args.current),
+                'set_output': (2, False)
+            }
+
+        return [
+            {
+                'class': 'core.Setup',
+                'version': BaseStage.EXPORT_VERSION,
+                'parameters': {
+                    'rigol': parameters
+                }
+            }
+        ]
+
+    def command_add_sample(self, node):
+        args = self._parse_node_args(self._SAMPLE_PARSER, node)
+
+        return [
+            {
+                'class': 'core.Setup',
+                'version': BaseStage.EXPORT_VERSION,
+                'parameters': {
+                    'picoammeter_multi': {
+                        'add_channel_metadata': (args.channel, 'sample', args.sample)
+                    }
+                }
+            },
+            {
+                'class': 'core.Setup',
+                'version': BaseStage.EXPORT_VERSION,
+                'parameters': {
+                    'picoammeter_multi': {
+                        'add_channel': args.channel
+                    }
+                }
+            },
+        ]
+
+    def command_set_sample(self, node):
+        args = self._parse_node_args(self._SAMPLE_PARSER, node)
+
+        return [
+            {
+                'class': 'core.Setup',
+                'version': BaseStage.EXPORT_VERSION,
+                'picoammeter_multi': {
+                    'add_channel_metadata': (args.channel, 'sample', args.sample)
+                }
+            },
+            {
+                'class': 'core.Setup',
+                'version': BaseStage.EXPORT_VERSION,
+                'parameters': {
+                    'picoammeter_multi': {
+                        'set_channel': args.channel
+                    }
+                }
+            },
+        ]
+
 
 YAMLProcedureLoader.add_constructor('!delay', YAMLProcedureLoader.command_delay)
 YAMLProcedureLoader.add_constructor('!notify', YAMLProcedureLoader.command_notify)
@@ -384,3 +519,11 @@ YAMLProcedureLoader.add_constructor('!set', YAMLProcedureLoader.command_set)
 YAMLProcedureLoader.add_constructor('!flow', YAMLProcedureLoader.command_flow)
 YAMLProcedureLoader.add_constructor('!pulse', YAMLProcedureLoader.command_pulse)
 YAMLProcedureLoader.add_constructor('!interlock', YAMLProcedureLoader.command_interlock)
+YAMLProcedureLoader.add_constructor('!led', YAMLProcedureLoader.command_led)
+YAMLProcedureLoader.add_constructor('!led_setup', YAMLProcedureLoader.command_led_setup)
+YAMLProcedureLoader.add_constructor('!add_sample', YAMLProcedureLoader.command_add_sample)
+YAMLProcedureLoader.add_constructor('!set_sample', YAMLProcedureLoader.command_set_sample)
+
+# Legacy
+YAMLProcedureLoader.add_constructor('!setup', YAMLProcedureLoader.command_set)
+YAMLProcedureLoader.add_constructor('!valve', YAMLProcedureLoader.command_set)
