@@ -1,0 +1,19 @@
+%YAML 1.2
+---
+- class: rigol.DP832PowerSupply
+  identifier: ledsupply
+  visa_address: 'TCPIP0::192.168.2.101::inst0::INSTR'
+  parameters:
+    # Limit for LED channel
+    - set_ovp: 2, 7.5V
+    - set_ocp: 2, 500mA
+
+    # Supply for auxiliary equipment
+    - set_voltage: 3, 5V
+    - set_current: 3, 1A
+    - set_output: 3, True
+
+- class: rigol.DP832PowerSupply
+  identifier: powersupply
+  visa_address: 'TCPIP0::192.168.2.101::inst0::INSTR'
+...

@@ -1,0 +1,6 @@
+%YAML 1.2
+---
+class: linkam.T96Controller
+identifier: linkam
+humidity_room_temp: 20
+...
