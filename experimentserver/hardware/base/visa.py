@@ -462,7 +462,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         pass
 
     # State transition handling
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(VISAHardware, self).transition_connect(event)
 
         if self._visa_resource is not None:
@@ -513,22 +513,22 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 self.logger().warning(f"Existing instrument errors found: {error}")
                 error = self._get_visa_error(transaction)
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         self._visa_disconnect()
 
         super(VISAHardware, self).transition_disconnect(event)
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super(VISAHardware, self).transition_configure(event)
 
         assert self._visa_resource is not None
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         assert self._visa_resource is not None
 
         super(VISAHardware, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         self._visa_disconnect()
 
         super(VISAHardware, self).transition_error(event)

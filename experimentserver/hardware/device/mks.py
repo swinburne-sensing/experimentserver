@@ -270,7 +270,7 @@ class GE50MassFlowController(Hardware):
             raise MeasurementUnavailable()
 
     # Configuration methods
-    def set_config_control(self, digital: bool) -> typing.NoReturn:
+    def set_config_control(self, digital: bool) -> None:
         """ Enable or disable digital operation.
 
         :param digital: if True digital override is enable, otherwise analogue control is used
@@ -344,7 +344,7 @@ class GE50MassFlowController(Hardware):
 
     # Not sure if CGF is implemented in controller correctly, so for now GCF is applied when setting and reading flow
     # @Hardware.register_parameter(description='Gas correction factor')
-    # def set_gas_correction_factor(self, gcf: float) -> typing.NoReturn:
+    # def set_gas_correction_factor(self, gcf: float) -> None:
     #     if gcf <= 0:
     #         raise ParameterError(self, f"Requested operating pressure {gcf} is outside valid range")
     #
@@ -361,7 +361,7 @@ class GE50MassFlowController(Hardware):
                f"({self.get_hardware_identifier()} at {self._host}:{self._port})"
 
     # Event handlers
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(GE50MassFlowController, self).transition_connect(event)
 
         # Read metadata
@@ -407,7 +407,7 @@ class GE50MassFlowController(Hardware):
 
         self._thread_trace_consumer.thread_start()
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         self._max_flow = None
 
         # Stop data consumer
@@ -418,7 +418,7 @@ class GE50MassFlowController(Hardware):
 
         super(GE50MassFlowController, self).transition_disconnect(event)
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         # Configure operating pressure and GCF (might be overwritten by parameters
         if self._pressure is not None:
             self.set_pressure(self._pressure)
@@ -431,13 +431,13 @@ class GE50MassFlowController(Hardware):
 
         super(GE50MassFlowController, self).transition_configure(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         # Zero flow rate
         self.set_flow_rate(0)
 
         super(GE50MassFlowController, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(GE50MassFlowController, self).transition_error(event)
 
     def _thread_trace_consumer_callback(self):

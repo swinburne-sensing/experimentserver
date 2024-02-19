@@ -29,7 +29,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     @classmethod
     @abc.abstractmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
-                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+                     msg: typing.Optional[str] = None) -> None:
         """
 
         :param transaction:
@@ -40,7 +40,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
 
     # SCPI commands
     @staticmethod
-    def scpi_reset(transaction: typing.Optional[VISAHardware.VISATransaction] = None) -> typing.NoReturn:
+    def scpi_reset(transaction: typing.Optional[VISAHardware.VISATransaction] = None) -> None:
         """ Issue SCPI instrument reset command. Should return instrument to power-up defaults.
 
         :param transaction:
@@ -64,7 +64,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         pass
 
     @staticmethod
-    def scpi_clear(transaction: VISAHardware.VISATransaction) -> typing.NoReturn:
+    def scpi_clear(transaction: VISAHardware.VISATransaction) -> None:
         """ Issue SCPI instrument clear status command. Clears event registers and error queue.
 
         :param transaction:
@@ -137,7 +137,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return transaction.query('*OPT?')
 
     @staticmethod
-    def scpi_set_event_status_enable(transaction: VISAHardware.VISATransaction, mask) -> typing.NoReturn:
+    def scpi_set_event_status_enable(transaction: VISAHardware.VISATransaction, mask) -> None:
         """
 
         :param transaction:
@@ -147,7 +147,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write(f"*ESE {mask}")
 
     @staticmethod
-    def scpi_set_service_request_enable(transaction: VISAHardware.VISATransaction, mask) -> typing.NoReturn:
+    def scpi_set_service_request_enable(transaction: VISAHardware.VISATransaction, mask) -> None:
         """
 
         :param transaction:
@@ -166,7 +166,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write('*OPC')
 
     @staticmethod
-    def scpi_trigger(transaction: VISAHardware.VISATransaction) -> typing.NoReturn:
+    def scpi_trigger(transaction: VISAHardware.VISATransaction) -> None:
         """ TODO
 
         :param transaction:
@@ -175,7 +175,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write('*TRG')
 
     @staticmethod
-    def scpi_wait(transaction: VISAHardware.VISATransaction) -> typing.NoReturn:
+    def scpi_wait(transaction: VISAHardware.VISATransaction) -> None:
         """ Wait for pending commands to complete.
 
         Notes: from experience this command usually has mixed results. Behaviour is often defines by the status event
@@ -225,7 +225,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
 
         super().transition_disconnect(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         with self.visa_transaction(error_raise=False) as transaction:
             try:
                 self.scpi_display(transaction, 'Error')

@@ -58,7 +58,7 @@ class SDGWaveformGenerator(SCPIHardware):
 
         return Measurement(self, MeasurementGroup.FREQUENCY, values, tags=tags)
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_configure(event)
 
         with self.visa_transaction() as transaction:
@@ -69,7 +69,7 @@ class SDGWaveformGenerator(SCPIHardware):
 
     @classmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
-                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+                     msg: typing.Optional[str] = None) -> None:
         # No custom display commands
         raise SCPIDisplayUnavailable()
 

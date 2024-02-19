@@ -67,7 +67,7 @@ class ConfigManager(object):
         with self._config_lock:
             return self._dump_helper(self._config)
 
-    def load(self, filename: str) -> typing.NoReturn:
+    def load(self, filename: str) -> None:
         """ Load a YAML file as configuration.
 
         :param filename:
@@ -84,7 +84,7 @@ class ConfigManager(object):
 
         self.update(content)
 
-    def update(self, content) -> typing.NoReturn:
+    def update(self, content) -> None:
         """
 
         :param content:

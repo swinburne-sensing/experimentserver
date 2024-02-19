@@ -89,29 +89,29 @@ class GasAlanyzer(SerialStringHardware):
 
         self._zero_timeout = now()
 
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
     # Do nothing during transitions
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super(GasAlanyzer, self).transition_configure(event)
 
-    def transition_start(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_start(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_start(event)
 
         # Start acquisition
         self.command_data_start()
 
-    def transition_stop(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_stop(self, event: typing.Optional[EventData] = None) -> None:
         # Stop acquisition
         self.command_data_stop()
 
         super().transition_stop(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         super(GasAlanyzer, self).transition_configure(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(GasAlanyzer, self).transition_configure(event)
 
     def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[typing.List[Measurement]]:

@@ -57,7 +57,7 @@ class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
             self.write_api.close()
             self.write_api = None
 
-    def _record(self, measurement: Measurement) -> typing.NoReturn:
+    def _record(self, measurement: Measurement) -> None:
         point_list: typing.List[influxdb_client.Point] = []
         tag_dict: typing.Dict[str, str] = {}
 

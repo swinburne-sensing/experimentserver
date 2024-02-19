@@ -54,28 +54,28 @@ class MCMassFlowController(Hardware):
     def get_hardware_class_description() -> str:
         return "Alicat MC Mass Flow Controller"
 
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(MCMassFlowController, self).transition_connect(event)
 
         self._modbus_client.connect()
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         self._modbus_client.close()
         
         super(MCMassFlowController, self).transition_disconnect(event)
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super(MCMassFlowController, self).transition_configure(event)
         
         # Zero flow rate
         self.set_flow_rate(0)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         self.set_flow_rate(0)
         
         super(MCMassFlowController, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         pass
 
     @Hardware.register_parameter(description='Target gas flow rate')

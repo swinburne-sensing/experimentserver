@@ -55,7 +55,7 @@ class FieldMasterGSPowerMeter(SerialHardware):
             'wavelength': f"{wavelength.to('nm').magnitude:g} nm"
         })
 
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
         with self._serial_lock.lock():
@@ -72,16 +72,16 @@ class FieldMasterGSPowerMeter(SerialHardware):
         self.logger().info(f"Version: {version}")
         self.logger().info(f"Detector: {detector}")
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_configure(event)
 
         # Reset
         with self._serial_lock.lock():
             self._serial_port.write(f"*rst{self._termination}".encode())
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_error(event)
 

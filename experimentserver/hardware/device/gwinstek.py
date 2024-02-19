@@ -262,7 +262,7 @@ class GWInstekLCR6000Series(SCPIHardware):
 
     @classmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
-                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+                     msg: typing.Optional[str] = None) -> None:
         if msg is not None:
             if len(msg) > 30:
                 cls.logger().warning("Truncating message to 30 characters (original: {})".format(msg))

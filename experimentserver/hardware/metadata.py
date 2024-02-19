@@ -132,7 +132,7 @@ class _ParameterMetadata(OrderedMetadata):
 
 
 # Parameter callable
-CALLABLE_PARAMETER = typing.Callable[..., typing.NoReturn]
+CALLABLE_PARAMETER = typing.Callable[..., None]
 
 # Measurement methods may return a dict, a single measurement, or a sequence of measurements
 CALLABLE_MEASUREMENT = typing.Callable[[], T_MEASUREMENT_RETURN]

@@ -152,7 +152,7 @@ class BaseStage(LoggedAbstract):
 
         return lines
 
-    def stage_validate(self) -> typing.NoReturn:
+    def stage_validate(self) -> None:
         """ Validate stage. Should throw
 
         :raise TrackedIdentifierError: when a required hardware identifier is missing or the wrong type
@@ -186,7 +186,7 @@ class BaseStage(LoggedAbstract):
                 except ParameterError as exc:
                     raise StageRuntimeError(f"Invalid parameter set for {hardware_identifier} (error: {exc!s})")
 
-    def stage_enter(self) -> typing.NoReturn:
+    def stage_enter(self) -> None:
         """ Called upon stage entry. """
         self.logger().debug('Entering stage')
 
@@ -215,7 +215,7 @@ class BaseStage(LoggedAbstract):
 
             hardware_manager.queue_transition(HardwareTransition.PARAMETER, parameters_bound_list, block=False)
 
-    def stage_pause(self) -> typing.NoReturn:
+    def stage_pause(self) -> None:
         """ Called upon stage pause. """
         self.logger().debug('Pausing stage')
 
@@ -230,7 +230,7 @@ class BaseStage(LoggedAbstract):
         """
         pass
 
-    def stage_exit(self) -> typing.NoReturn:
+    def stage_exit(self) -> None:
         """ Called upon stage completion. """
         if self._has_duration:
             # Restore metadata
@@ -242,7 +242,7 @@ class BaseStage(LoggedAbstract):
 
         self.logger().debug('Exiting stage')
 
-    def stage_resume(self) -> typing.NoReturn:
+    def stage_resume(self) -> None:
         """ Called upon stage resume. """
         if len(self._stage_metadata) > 0:
             Measurement.add_global_tag('stage_state', 'running')

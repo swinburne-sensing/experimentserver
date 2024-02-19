@@ -125,13 +125,13 @@ class GenericSerial(SerialHardware):
             'value': response_value
         }
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super(GenericSerial, self).transition_configure(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         super(GenericSerial, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(GenericSerial, self).transition_error(event)
 
 
@@ -151,13 +151,13 @@ class GrblController(SerialHardware):
     def increment_axis(self, axis: str, distance: float):
         pass
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super(GrblController, self).transition_configure(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         super(GrblController, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(GrblController, self).transition_error(event)
 
 
@@ -232,11 +232,11 @@ class ValveController(SerialHardware):
     def get_hardware_class_description() -> str:
         return '2-way Valve Controller'
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super(ValveController, self).transition_configure(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         super(ValveController, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(ValveController, self).transition_error(event)

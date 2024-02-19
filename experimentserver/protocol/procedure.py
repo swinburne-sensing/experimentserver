@@ -122,7 +122,7 @@ class Procedure(ManagedStateMachine):
 
     # Stage management
     def add_stage(self, stage_class: typing.Type[TYPE_STAGE], index: typing.Optional[int] = None,
-                  **stage_kwargs) -> typing.NoReturn:
+                  **stage_kwargs) -> None:
         if self.get_state().is_valid():
             raise ProcedureLoadError('Procedure is read-only once validated')
 
@@ -137,14 +137,14 @@ class Procedure(ManagedStateMachine):
             else:
                 self._procedure_stages.insert(index, stage)
 
-    def add_hardware(self, identifier: str) -> typing.NoReturn:
+    def add_hardware(self, identifier: str) -> None:
         if self.get_state().is_valid():
             raise ProcedureLoadError('Procedure is read-only once validated')
 
         if identifier not in self._procedure_hardware:
             self._procedure_hardware.append(identifier)
 
-    def remove_stage(self, index: int) -> typing.NoReturn:
+    def remove_stage(self, index: int) -> None:
         if self.get_state().is_valid():
             raise ProcedureLoadError('Procedure is read-only once validated')
 
@@ -154,7 +154,7 @@ class Procedure(ManagedStateMachine):
 
             self._procedure_stages.pop(index)
 
-    def remove_hardware(self, identifier: str) -> typing.NoReturn:
+    def remove_hardware(self, identifier: str) -> None:
         if self.get_state().is_valid():
             raise ProcedureLoadError('Procedure is read-only once validated')
 
@@ -538,7 +538,7 @@ class Procedure(ManagedStateMachine):
         else:
             return yaml.dump(procedure)
 
-    def _thread_manager(self) -> typing.NoReturn:
+    def _thread_manager(self) -> None:
         entry_time = time.time()
 
         with self._procedure_stages_lock:

@@ -40,7 +40,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
         self._serial_lock = ThreadLock(f"{self.get_hardware_identifier(True)}SerialLock", 5)
         self._serial_port: typing.Optional[serial.SerialBase] = None
 
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(SerialHardware, self).transition_connect(event)
 
         with self._serial_lock.lock('transition_connect'):
@@ -51,7 +51,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
             except serial.SerialException as exc:
                 raise CommunicationError(f"Unable to open serial port {self._serial_args['port']}") from exc
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         with self._serial_lock.lock('transition_disconnect'):
             # Close serial port
             self._serial_port.close()
@@ -83,7 +83,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
         self._thread_serial_consumer: typing.Optional[CallbackThread] = None
         self._thread_payload_consumer: typing.Optional[QueueThread] = None
 
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
         # Start serial thread
@@ -98,7 +98,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
         self._thread_payload_consumer.thread_start()
         self._thread_serial_consumer.thread_start()
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         # Stop consumers
         self._thread_serial_consumer.thread_stop()
         self._thread_serial_consumer.thread_join()
@@ -152,15 +152,15 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
                 # Search for another line
                 eol_index = serial_buffer.find(b'\n')
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         # Do nothing
         pass
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         # Do nothing
         pass
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         # Do nothing
         pass
 

@@ -182,7 +182,7 @@ class Measurement(Logged):
                f"tags={tags})"
 
     @classmethod
-    def add_global_dynamic_field(cls, name: str, callback: T_DYNAMIC_FIELD) -> typing.NoReturn:
+    def add_global_dynamic_field(cls, name: str, callback: T_DYNAMIC_FIELD) -> None:
         """ TODO
 
         :param name:
@@ -194,7 +194,7 @@ class Measurement(Logged):
             cls.logger().info(f"Registered global dynamic field {name} = {callback!r}")
 
     @classmethod
-    def add_global_tag(cls, tag: str, value: T_TAG_VALUE) -> typing.NoReturn:
+    def add_global_tag(cls, tag: str, value: T_TAG_VALUE) -> None:
         """ TODO
 
         :param tag:
@@ -206,7 +206,7 @@ class Measurement(Logged):
             cls.logger().info(f"Registered global tag {tag} = {value!r}")
 
     @classmethod
-    def add_global_tags(cls, tags: T_TAG_MAP) -> typing.NoReturn:
+    def add_global_tags(cls, tags: T_TAG_MAP) -> None:
         """ TODO
 
         :param tags:
@@ -220,7 +220,7 @@ class Measurement(Logged):
             cls.logger().info(f"Registered global tags {tags!r}")
 
     @classmethod
-    def push_global_metadata(cls) -> typing.NoReturn:
+    def push_global_metadata(cls) -> None:
         """ Pop metadata stack (save current metadata). """
         with cls.metadata_global_lock:
             cls._metadata_global_metadata_stack.append((dict(cls._metadata_global_dynamic_fields),
@@ -229,7 +229,7 @@ class Measurement(Logged):
             cls.logger().info(f"Pushed global tag stack (depth: {len(cls._metadata_global_metadata_stack)})")
 
     @classmethod
-    def pop_global_metadata(cls) -> typing.NoReturn:
+    def pop_global_metadata(cls) -> None:
         """ Pop metadata stack (retrieve previous metadata). """
         if len(cls._metadata_global_metadata_stack) > 0:
             return
@@ -240,7 +240,7 @@ class Measurement(Logged):
             cls.logger().info(f"Popped global tag stack (depth: {len(cls._metadata_global_metadata_stack)})")
 
     @classmethod
-    def flush_global_metadata(cls) -> typing.NoReturn:
+    def flush_global_metadata(cls) -> None:
         """ Clear metadata stack. """
         with cls.metadata_global_lock:
             if len(cls._metadata_global_metadata_stack) > 0:
@@ -303,7 +303,7 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
             return cls._measurement_cache[measurement_hash]
 
     @classmethod
-    def measurement_target_remap(cls, source: str, destination: str) -> typing.NoReturn:
+    def measurement_target_remap(cls, source: str, destination: str) -> None:
         """ TODO
 
         :param source:
@@ -317,7 +317,7 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
             cls._measurement_target_remap.append((source, destination))
 
     @abc.abstractmethod
-    def _record(self, measurement: Measurement) -> typing.NoReturn:
+    def _record(self, measurement: Measurement) -> None:
         """ Inner abstract definition for Measurement object handling.
 
         :param measurement:
@@ -325,7 +325,7 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
         pass
 
     @classmethod
-    def record(cls, measurement: Measurement) -> typing.NoReturn:
+    def record(cls, measurement: Measurement) -> None:
         """ Record a Measurement.
 
         :param measurement:
@@ -360,7 +360,7 @@ class DummyTarget(LoggedAbstract, MeasurementTarget):
         LoggedAbstract.__init__(self)
         MeasurementTarget.__init__(self)
 
-    def _record(self, measurement: Measurement) -> typing.NoReturn:
+    def _record(self, measurement: Measurement) -> None:
         self.logger().info(measurement)
 
 

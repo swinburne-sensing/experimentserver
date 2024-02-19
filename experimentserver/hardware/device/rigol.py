@@ -74,7 +74,7 @@ class DP832PowerSupply(SCPIHardware):
 
     @classmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
-                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+                     msg: typing.Optional[str] = None) -> None:
         if msg is not None:
             if len(msg) > 45:
                 cls.logger().warning("Truncating message to 45 characters (original: {})".format(msg))
@@ -250,12 +250,12 @@ class DP832PowerSupply(SCPIHardware):
 
         super().transition_disconnect(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         if self._output_failsafe:
             for channel in PowerSupplyChannel:
                 self.set_output(channel, False)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         # Disconnect all output channels
         if self._output_failsafe:
             if self._visa_resource is not None:

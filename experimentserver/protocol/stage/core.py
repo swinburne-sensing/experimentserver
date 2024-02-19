@@ -52,7 +52,7 @@ class Delay(BaseStage):
 
         return summary
 
-    def stage_enter(self) -> typing.NoReturn:
+    def stage_enter(self) -> None:
         super(Delay, self).stage_enter()
 
         # Calculate exit timestamp
@@ -74,13 +74,13 @@ class Delay(BaseStage):
         # Test for stage completion
         return now() < self._delay_exit_timestamp
 
-    def stage_resume(self) -> typing.NoReturn:
+    def stage_resume(self) -> None:
         # Update resume timestamp
         self._sync_delay_exit_timestamp(now() - self._stage_pause_timestamp)
 
         super(Delay, self).stage_resume()
 
-    def stage_exit(self) -> typing.NoReturn:
+    def stage_exit(self) -> None:
         # Clear timestamp
         self._delay_exit_timestamp = None
 
@@ -114,7 +114,7 @@ class Pause(BaseStage):
                  metadata: typing.Optional[T_TAG_MAP] = None):
         super(Pause, self).__init__(config, uid, metadata=metadata)
 
-    def stage_enter(self) -> typing.NoReturn:
+    def stage_enter(self) -> None:
         super().stage_enter()
 
         self.logger().info('Reached pause in procedure', notify=True)
@@ -151,7 +151,7 @@ class Notify(Setup):
 
         self._message = message
 
-    def stage_enter(self) -> typing.NoReturn:
+    def stage_enter(self) -> None:
         super().stage_enter()
 
         self.logger().info(self._message, notify=True)

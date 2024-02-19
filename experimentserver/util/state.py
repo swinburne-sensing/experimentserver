@@ -128,7 +128,7 @@ class ManagedStateMachine(CallbackThread):
 
         return None
 
-    def clear_transition(self) -> typing.NoReturn:
+    def clear_transition(self) -> None:
         """ Clear pending transition queue.
 
         :return:
@@ -180,7 +180,7 @@ class ManagedStateMachine(CallbackThread):
                 return None
 
     @abc.abstractmethod
-    def _thread_manager(self) -> typing.NoReturn:
+    def _thread_manager(self) -> None:
         """ Thread code for handling machine state. No locks are held upon entry! """
         pass
 

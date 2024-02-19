@@ -267,13 +267,13 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         return measurement_flag
 
-    def set_hardware_measurement(self, name: typing.Optional[str] = None) -> typing.NoReturn:
+    def set_hardware_measurement(self, name: typing.Optional[str] = None) -> None:
         self._child_hardware.set_hardware_measurement(name)
 
-    def enable_hardware_measurement(self, name: str) -> typing.NoReturn:
+    def enable_hardware_measurement(self, name: str) -> None:
         self._child_hardware.enable_hardware_measurement(name)
 
-    def disable_hardware_measurement(self, name: str) -> typing.NoReturn:
+    def disable_hardware_measurement(self, name: str) -> None:
         self._child_hardware.disable_hardware_measurement(name)
 
     def bind_parameter(self, parameter_command: TYPE_PARAMETER_COMMAND) -> typing.List[metadata.BoundMetadataCall]:
@@ -283,13 +283,13 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         except ParameterError:
             return self._child_hardware.bind_parameter(parameter_command)
 
-    def transition_start(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_start(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_start(event)
 
         self._daq_hardware.transition_start(event)
         self._child_hardware.transition_start(event)
 
-    def transition_stop(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_stop(self, event: typing.Optional[EventData] = None) -> None:
         try:
             self._daq_hardware.transition_stop(event)
         finally:
@@ -297,13 +297,13 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         super().transition_stop(event)
 
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(MultiChannelHardware, self).transition_connect(event)
 
         self._daq_hardware.transition_connect(event)
         self._child_hardware.transition_connect(event)
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         try:
             self._daq_hardware.transition_disconnect(event)
         finally:
@@ -311,13 +311,13 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         super(MultiChannelHardware, self).transition_disconnect(event)
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         super(MultiChannelHardware, self).transition_configure(event)
 
         self._daq_hardware.transition_configure(event)
         self._child_hardware.transition_configure(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         try:
             self._daq_hardware.transition_cleanup(event)
         finally:
@@ -325,7 +325,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         super(MultiChannelHardware, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(MultiChannelHardware, self).transition_error(event)
 
         try:
@@ -333,7 +333,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         finally:
             self._child_hardware.transition_error(event)
 
-    def transition_reset(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_reset(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_reset(event)
 
         try:

@@ -152,8 +152,7 @@ class ManagedThread(LoggedAbstract):
         self._run_final = run_final
 
         # Thread object
-        self._thread = threading.Thread(name=self._thread_name, target=self.__thread_target_wrapper,
-                                        daemon=True)
+        self._thread = threading.Thread(name=self._thread_name, target=self.__thread_target_wrapper, daemon=True)
 
         # Add self to list of instances
         self._thread_instances.append(self)
@@ -165,7 +164,7 @@ class ManagedThread(LoggedAbstract):
         """
         return self._thread.is_alive()
 
-    def thread_start(self) -> typing.NoReturn:
+    def thread_start(self) -> None:
         """
 
         :return:
@@ -174,7 +173,7 @@ class ManagedThread(LoggedAbstract):
         self._thread.start()
 
     @abc.abstractmethod
-    def thread_stop(self, *args, **kwargs) -> typing.NoReturn:
+    def thread_stop(self, *args, **kwargs) -> None:
         """
 
         :param args:
@@ -199,7 +198,7 @@ class ManagedThread(LoggedAbstract):
         pass
 
     @classmethod
-    def join_all_thread(cls, timeout: typing.Optional[float] = None) -> typing.NoReturn:
+    def join_all_thread(cls, timeout: typing.Optional[float] = None) -> None:
         """
 
         :param timeout:
@@ -216,7 +215,7 @@ class ManagedThread(LoggedAbstract):
                 cls.logger().debug(f"Thread {instance._thread_name} is not running")
 
     @classmethod
-    def stop_all_thread(cls, *args, **kwargs) -> typing.NoReturn:
+    def stop_all_thread(cls, *args, **kwargs) -> None:
         """
 
         :param args:
@@ -322,13 +321,13 @@ class CallbackThread(ManagedThread):
         # Thread stop flag
         self._thread_stop = threading.Event()
 
-    def thread_start(self) -> typing.NoReturn:
+    def thread_start(self) -> None:
         # Clear existing stop flag if any
         self._thread_stop.clear()
 
         super().thread_start()
 
-    def thread_stop(self, *args, **kwargs) -> typing.NoReturn:
+    def thread_stop(self, *args, **kwargs) -> None:
         super().thread_stop()
 
         self._thread_stop.set()
@@ -374,7 +373,7 @@ class QueueThread(ManagedThread):
         # Thread stop flag
         self._thread_stop = False
 
-    def thread_stop(self, *args, **kwargs) -> typing.NoReturn:
+    def thread_stop(self, *args, **kwargs) -> None:
         self._append(_QueueCommand.FINISH)
 
     def thread_stop_requested(self) -> bool:
@@ -384,7 +383,7 @@ class QueueThread(ManagedThread):
         # Raise exception, any exceptions caused by event handlers should be handled in wrapper
         raise exc
 
-    def append(self, obj):
+    def append(self, obj) -> None:
         """ Append data to process to the command queue.
 
         :param obj:
@@ -395,7 +394,7 @@ class QueueThread(ManagedThread):
 
         self._append(_QueueCommand.PROCESS, obj)
 
-    def _append(self, obj_type: _QueueCommand, obj=None):
+    def _append(self, obj_type: _QueueCommand, obj=None) -> None:
         # Insert into priority queue
         self._queue.put(_QueueEntry(obj_type, obj))
 

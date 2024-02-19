@@ -241,7 +241,7 @@ class T96Controller(Hardware):
     def get_hardware_class_description() -> str:
         return 'Linkam T96 Stage Controller'
 
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(T96Controller, self).transition_connect(event)
 
         # Connect over USB
@@ -282,13 +282,13 @@ class T96Controller(Hardware):
             except LinkamConnectionError as exc:
                 self.logger().warning(f"Error starting Linkam (error: {exc!s})")
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         self._handle.close()
         self._handle = None
 
         super(T96Controller, self).transition_disconnect(event)
 
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         # Force default humidity and enable
         if self._has_humidity:
             self.set_humidity(0)
@@ -296,12 +296,12 @@ class T96Controller(Hardware):
 
         super(T96Controller, self).transition_configure(event)
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         # Stop heating and humidity regulation
         self._handle.enable_heater(False)
         self._handle.enable_humidity(False)
 
         super(T96Controller, self).transition_cleanup(event)
 
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(T96Controller, self).transition_error(event)

@@ -197,7 +197,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
     @register_parameter(description='Enable a single measurement method', order=0,
                         validation={'name': _validate_measurement})
-    def set_hardware_measurement(self, name: typing.Optional[str] = None) -> typing.NoReturn:
+    def set_hardware_measurement(self, name: typing.Optional[str] = None) -> None:
         """
 
         :param name:
@@ -219,7 +219,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
     @register_parameter(description='Enable a measurement method', order=0,
                         validation={'name': _validate_measurement})
-    def enable_hardware_measurement(self, name: str) -> typing.NoReturn:
+    def enable_hardware_measurement(self, name: str) -> None:
         """
 
         :param name:
@@ -235,7 +235,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
     @register_parameter(description='Disable a measurement method', order=0,
                         validation={'name': _validate_measurement})
-    def disable_hardware_measurement(self, name: str) -> typing.NoReturn:
+    def disable_hardware_measurement(self, name: str) -> None:
         """
 
         :param name:
@@ -393,7 +393,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         return parameter_command
 
-    def _handle_parameter(self, event: EventData) -> typing.NoReturn:
+    def _handle_parameter(self, event: EventData) -> None:
         """ Handle application of parameters from a normal (non-error) state.
 
         :param event:
@@ -412,7 +412,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
                         # Buffer parameter after successful execution
                         self._parameter_buffer[hash(parameter_call)] = parameter_call
 
-    def _buffer_parameters(self, event: EventData) -> typing.NoReturn:
+    def _buffer_parameters(self, event: EventData) -> None:
         """ Handling buffering of parameters inside an error state.
 
         :param event:
@@ -431,7 +431,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
     # State transition handling
     @abc.abstractmethod
-    def transition_connect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         """ Called during connection to external hardware. This method should handle connection to an instrument without
         any configuration.
 
@@ -450,7 +450,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
             self.logger().info(f"Configured default measurements: {enabled_list}")
 
     @abc.abstractmethod
-    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         """ Called during disconnection from external hardware. Should handle cleaning up of all connection resources.
 
         Note that is method is not called when disconnection occurs as the result of an error.
@@ -462,7 +462,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         pass
 
     @abc.abstractmethod
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
         """ Called after connection but before generating measurements. Should send any necessary configuration commands
         to instrument and prepare for dat acquisition.
 
@@ -488,7 +488,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
                 parameter_call()
 
     @abc.abstractmethod
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         """ Called in preparation for release of external hardware. Should return hardware to a safe/known configuration
         such that reconfiguration is ready to be performed.
 
@@ -504,7 +504,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         with self._parameter_lock:
             self._parameter_buffer.clear()
 
-    def transition_start(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_start(self, event: typing.Optional[EventData] = None) -> None:
         """ Called to begin generation of measurements. Should prepare the hardware for data acquisition.
 
         :param event: transition metadata
@@ -513,7 +513,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         """
         pass
 
-    def transition_stop(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_stop(self, event: typing.Optional[EventData] = None) -> None:
         """ Called to stop generation of measurements. Should return the hardware to a configured/ready manager.
 
         :param event: transition metadata
@@ -523,7 +523,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         pass
 
     @abc.abstractmethod
-    def transition_error(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         """ Called when hardware manager transition results in an error, or when any communication or hardware reported
         error occurs.
 
@@ -533,7 +533,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         """
         self.logger().error(f"Hardware {self.get_hardware_identifier()} has entered an error state")
 
-    def transition_reset(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_reset(self, event: typing.Optional[EventData] = None) -> None:
         """ Optionally called when resetting from an error state.
 
         Note that reset will transition the hardware to the state saved prior to the occurrence of the error.

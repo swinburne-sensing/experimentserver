@@ -126,7 +126,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
 
     @classmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
-                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+                     msg: typing.Optional[str] = None) -> None:
         # Clear display
         transaction.write(':DISP:CLE')
 
@@ -318,7 +318,7 @@ class Picoammeter6487(_KeithleyInstrument):
 
     @classmethod
     def scpi_display(cls, transaction: VISAHardware.VISATransaction,
-                     msg: typing.Optional[str] = None) -> typing.NoReturn:
+                     msg: typing.Optional[str] = None) -> None:
         if msg is None:
             # Disable message mode
             transaction.write(':DISP:TEXT:STAT OFF')
@@ -530,7 +530,7 @@ class Picoammeter6487(_KeithleyInstrument):
         # On reset unit defaults to current mode
         self._expect_ohms = False
 
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> typing.NoReturn:
+    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         # Disable voltage source
         self.set_source_enable(False)
 

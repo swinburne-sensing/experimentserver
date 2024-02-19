@@ -41,7 +41,7 @@ class LinkamSDK(Logged):
             if hasattr(self, '_handle') and self._handle is not None:
                 self.close()
 
-        def close(self) -> typing.NoReturn:
+        def close(self) -> None:
             self._parent._sdk_process_message(Message.CLOSE_COMMS, comm_handle=self._handle)
 
         def enable_heater(self, enabled: bool) -> bool:
@@ -53,7 +53,7 @@ class LinkamSDK(Logged):
             return self._parent._sdk_process_message(Message.START_HEATING, ('vBoolean', enabled),
                                                      comm_handle=self._handle)
 
-        def enable_humidity(self, enabled: bool) -> typing.NoReturn:
+        def enable_humidity(self, enabled: bool) -> None:
             """ Enable/disable the humidity generator.
 
             :param enabled: if True start humidity, otherwise stop humidity
@@ -304,7 +304,7 @@ class LinkamSDK(Logged):
 
         return buffer.value.decode().strip()
 
-    def set_logging_level(self, level: LoggingLevel) -> typing.NoReturn:
+    def set_logging_level(self, level: LoggingLevel) -> None:
         """ Set SDK logging level.
 
         :param level: logging level to use
