@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import re
 import typing
@@ -25,7 +27,7 @@ class PowerSupplyChannel(HardwareEnum):
     CHANNEL3 = enum.auto()
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[typing.Any]]]:
+    def _get_alias_map(cls) -> typing.Dict[PowerSupplyChannel, typing.List[typing.Any]]:
         return {
             cls.CHANNEL1: ['channel1', 'channel 1', 'ch1', 'ch 1', 1],
             cls.CHANNEL2: ['channel2', 'channel 2', 'ch2', 'ch 2', 2],
@@ -33,7 +35,7 @@ class PowerSupplyChannel(HardwareEnum):
         }
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_description_map(cls) -> typing.Dict[PowerSupplyChannel, str]:
         return {
             cls.CHANNEL1: 'Channel 1',
             cls.CHANNEL2: 'Channel 2',
@@ -41,7 +43,7 @@ class PowerSupplyChannel(HardwareEnum):
         }
 
     @classmethod
-    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_command_map(cls) -> typing.Dict[PowerSupplyChannel, str]:
         return {
             cls.CHANNEL1: 'CH1',
             cls.CHANNEL2: 'CH2',
@@ -53,7 +55,7 @@ class PowerSupplyChannel(HardwareEnum):
         return 'supply_channel'
 
     @classmethod
-    def _get_tag_map(cls) -> typing.Dict[HardwareEnum, typing.Any]:
+    def _get_tag_map(cls) -> typing.Dict[PowerSupplyChannel, typing.Any]:
         return {
             cls.CHANNEL1: 1,
             cls.CHANNEL2: 2,
@@ -132,7 +134,7 @@ class DP832PowerSupply(SCPIHardware):
     def set_output(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], enable: typing.Union[bool, str]):
         channel = PowerSupplyChannel.from_input(channel)
 
-        if type(enable) is str:
+        if isinstance(enable, str):
             enable = enable.strip().lower() in ['true', '1', 'on']
 
         with self.visa_transaction() as transaction:

@@ -44,16 +44,16 @@ class ConfigManager(object):
 
     @classmethod
     def _dump_helper(cls, data) -> typing.Dict[str, typing.Any]:
-        data_dict = {}
+        data_dict: typing.Dict[str, typing.Any] = {}
 
         for key, value in data.items():
-            if type(value) is ConfigNode:
+            if isinstance(value, ConfigNode):
                 data_dict[key] = cls._dump_helper(value)
-            elif type(value) is list:
+            elif isinstance(value, list):
                 data_dict[key] = []
 
                 for element in value:
-                    if type(element) is ConfigNode:
+                    if isinstance(element, ConfigNode):
                         element = cls._dump_helper(element)
 
                     data_dict[key].append(element)
@@ -124,9 +124,9 @@ class ConfigManager(object):
 
             return node[key_set[-1]]
 
-    def set(self, key: str, value: typing.Any):
+    def set(self, key: str, value: typing.Any) -> None:
         with self._config_lock:
-            node = self._config
+            node: ConfigNode = self._config
             key_set = key.split('.')
 
             for node_key in key_set[:-1]:
@@ -171,7 +171,7 @@ class ConfigManager(object):
         flat_node = []
 
         for child in node:
-            if type(child) is list or type(child) is tuple:
+            if isinstance(child, (list, tuple)):
                 flat_node.extend(cls._flatten_helper(child))
             else:
                 flat_node.append(child)
@@ -180,15 +180,15 @@ class ConfigManager(object):
 
     @classmethod
     def _update_helper(cls, node):
-        if type(node) is dict:
+        if isinstance(node, dict):
             parent = cls._create_node()
 
             for label, node in node.items():
                 parent[label] = cls._update_helper(node)
 
             return parent
-        elif type(node) is list or type(node) is tuple:
+        elif isinstance(node, (list, tuple)):
             node = cls._flatten_helper(node)
-            node = [cls._create_node(x) if type(x) is dict else x for x in node]
+            node = [cls._create_node(x) if isinstance(x, dict) else x for x in node]
 
         return node

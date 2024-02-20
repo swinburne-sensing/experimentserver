@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import typing
 
-from experimentlib.data.unit import T_PARSE_QUANTITY, parse, registry, dimensionless
+from experimentlib.data.unit import T_PARSE_QUANTITY, Unit, parse, registry, dimensionless
 from experimentlib.util.time import now
 
 from experimentserver.hardware.base.enum import HardwareEnum, TYPE_ENUM_CAST
@@ -37,7 +37,7 @@ class LCRMeasurement(HardwareEnum):
     DCRES = enum.auto()
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
+    def _get_alias_map(cls) -> typing.Dict[LCRMeasurement, typing.List[typing.Any]]:
         return {
             cls.CAP_SERIES_RES_SERIES: ['csrs'],
             cls.CAP_SERIES_DISSIPATION: ['csd'],
@@ -58,7 +58,7 @@ class LCRMeasurement(HardwareEnum):
         }
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_description_map(cls) -> typing.Dict[LCRMeasurement, str]:
         return {
             cls.CAP_SERIES_RES_SERIES: 'Series Capacitance + Resistance (ESR) (Cs-Rs)',
             cls.CAP_SERIES_DISSIPATION: 'Series Capacitance + Dissipation (Cs-D)',
@@ -79,7 +79,7 @@ class LCRMeasurement(HardwareEnum):
         }
 
     @classmethod
-    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_command_map(cls) -> typing.Dict[LCRMeasurement, str]:
         return {
             cls.CAP_SERIES_RES_SERIES: 'Cs-Rs',
             cls.CAP_SERIES_DISSIPATION: 'Cs-D',
@@ -100,43 +100,49 @@ class LCRMeasurement(HardwareEnum):
         }
 
     @classmethod
-    def get_reading_map(cls, measure: typing.Optional[LCRMeasurement] = None):
-        if measure is not None:
-            return cls.get_reading_map()[measure]
-        else:
-            return {
-                cls.CAP_SERIES_RES_SERIES: ((MeasurementGroup.CAPACITANCE, 'series', registry.F),
-                                            (MeasurementGroup.RESISTANCE, 'series', registry.ohm)),
-                cls.CAP_SERIES_DISSIPATION: ((MeasurementGroup.CAPACITANCE, 'series', registry.F),
-                                             (MeasurementGroup.DISSIPATION, 'factor', dimensionless)),
-                cls.CAP_PARALLEL_RES_PARALLEL: ((MeasurementGroup.CAPACITANCE, 'parallel', registry.F),
-                                                (MeasurementGroup.RESISTANCE, 'parallel', registry.ohm)),
-                cls.CAP_PARALLEL_DISSIPATION: ((MeasurementGroup.CAPACITANCE, 'parallel', registry.F),
-                                               (MeasurementGroup.DISSIPATION, 'factor', dimensionless)),
-                cls.IND_PARALLEL_RES_PARALLEL: ((MeasurementGroup.INDUCTANCE, 'parallel', registry.H),
-                                                (MeasurementGroup.RESISTANCE, 'parallel', registry.ohm)),
-                cls.IND_PARALLEL_QUALITY: ((MeasurementGroup.INDUCTANCE, 'parallel', registry.H),
-                                           (MeasurementGroup.QUALITY, 'factor', dimensionless)),
-                cls.IND_SERIES_RES_SERIES: ((MeasurementGroup.INDUCTANCE, 'series', registry.H),
-                                            (MeasurementGroup.RESISTANCE, 'series', registry.ohm)),
-                cls.IND_SERIES_QUALITY: ((MeasurementGroup.INDUCTANCE, 'series', registry.H),
-                                         (MeasurementGroup.QUALITY, 'factor', dimensionless)),
-                cls.RES_SERIES_QUALITY: ((MeasurementGroup.RESISTANCE, 'series', registry.ohm),
-                                         (MeasurementGroup.QUALITY, 'factor', dimensionless)),
-                cls.RES_PARALLEL_QUALITY: ((MeasurementGroup.RESISTANCE, 'parallel', registry.ohm),
-                                           (MeasurementGroup.QUALITY, 'factor', dimensionless)),
-                cls.RES_REACTANCE: ((MeasurementGroup.RESISTANCE, 'resistance', registry.ohm),
-                                    (MeasurementGroup.RESISTANCE, 'reactance', registry.ohm)),
-                cls.IMPEDANCE_PHASE_RAD: ((MeasurementGroup.IMPEDANCE, 'mag', registry.ohm),
-                                          (MeasurementGroup.IMPEDANCE, 'phase_rad', registry.rad)),
-                cls.IMPEDANCE_PHASE_DEG: ((MeasurementGroup.IMPEDANCE, 'mag', registry.ohm),
-                                          (MeasurementGroup.IMPEDANCE, 'phase_deg', registry.deg)),
-                cls.IMPEDANCE_DISSIPATION: ((MeasurementGroup.RESISTANCE, 'impedance', registry.ohm),
+    def get_reading_map(cls) -> typing.Mapping[
+            LCRMeasurement,
+            typing.Sequence[
+                typing.Tuple[
+                    MeasurementGroup,
+                    str,
+                    Unit
+                ]
+            ]
+        ]:
+        return {
+            cls.CAP_SERIES_RES_SERIES: ((MeasurementGroup.CAPACITANCE, 'series', registry.F),
+                                        (MeasurementGroup.RESISTANCE, 'series', registry.ohm)),
+            cls.CAP_SERIES_DISSIPATION: ((MeasurementGroup.CAPACITANCE, 'series', registry.F),
                                             (MeasurementGroup.DISSIPATION, 'factor', dimensionless)),
-                cls.IMPEDANCE_QUALITY: ((MeasurementGroup.RESISTANCE, 'impedance', registry.ohm),
+            cls.CAP_PARALLEL_RES_PARALLEL: ((MeasurementGroup.CAPACITANCE, 'parallel', registry.F),
+                                            (MeasurementGroup.RESISTANCE, 'parallel', registry.ohm)),
+            cls.CAP_PARALLEL_DISSIPATION: ((MeasurementGroup.CAPACITANCE, 'parallel', registry.F),
+                                            (MeasurementGroup.DISSIPATION, 'factor', dimensionless)),
+            cls.IND_PARALLEL_RES_PARALLEL: ((MeasurementGroup.INDUCTANCE, 'parallel', registry.H),
+                                            (MeasurementGroup.RESISTANCE, 'parallel', registry.ohm)),
+            cls.IND_PARALLEL_QUALITY: ((MeasurementGroup.INDUCTANCE, 'parallel', registry.H),
                                         (MeasurementGroup.QUALITY, 'factor', dimensionless)),
-                cls.DCRES: ((MeasurementGroup.RESISTANCE, 'resistance', registry.ohm),)
-            }
+            cls.IND_SERIES_RES_SERIES: ((MeasurementGroup.INDUCTANCE, 'series', registry.H),
+                                        (MeasurementGroup.RESISTANCE, 'series', registry.ohm)),
+            cls.IND_SERIES_QUALITY: ((MeasurementGroup.INDUCTANCE, 'series', registry.H),
+                                        (MeasurementGroup.QUALITY, 'factor', dimensionless)),
+            cls.RES_SERIES_QUALITY: ((MeasurementGroup.RESISTANCE, 'series', registry.ohm),
+                                        (MeasurementGroup.QUALITY, 'factor', dimensionless)),
+            cls.RES_PARALLEL_QUALITY: ((MeasurementGroup.RESISTANCE, 'parallel', registry.ohm),
+                                        (MeasurementGroup.QUALITY, 'factor', dimensionless)),
+            cls.RES_REACTANCE: ((MeasurementGroup.RESISTANCE, 'resistance', registry.ohm),
+                                (MeasurementGroup.RESISTANCE, 'reactance', registry.ohm)),
+            cls.IMPEDANCE_PHASE_RAD: ((MeasurementGroup.IMPEDANCE, 'mag', registry.ohm),
+                                        (MeasurementGroup.IMPEDANCE, 'phase_rad', registry.rad)),
+            cls.IMPEDANCE_PHASE_DEG: ((MeasurementGroup.IMPEDANCE, 'mag', registry.ohm),
+                                        (MeasurementGroup.IMPEDANCE, 'phase_deg', registry.deg)),
+            cls.IMPEDANCE_DISSIPATION: ((MeasurementGroup.RESISTANCE, 'impedance', registry.ohm),
+                                        (MeasurementGroup.DISSIPATION, 'factor', dimensionless)),
+            cls.IMPEDANCE_QUALITY: ((MeasurementGroup.RESISTANCE, 'impedance', registry.ohm),
+                                    (MeasurementGroup.QUALITY, 'factor', dimensionless)),
+            cls.DCRES: ((MeasurementGroup.RESISTANCE, 'resistance', registry.ohm),)
+        }
 
 
 class GWInstekLCR6000Series(SCPIHardware):
@@ -155,10 +161,10 @@ class GWInstekLCR6000Series(SCPIHardware):
 
     @SCPIHardware.register_parameter(description='Set measurement mode')
     def set_mode(self, mode: typing.Union[TYPE_ENUM_CAST, LCRMeasurement]):
-        mode = LCRMeasurement.from_input(mode)
+        mode_enum = LCRMeasurement.from_input(mode)
 
         with self.visa_transaction() as transaction:
-            transaction.write(':FUNC {}', mode)
+            transaction.write(':FUNC {}', mode_enum)
 
     @SCPIHardware.register_parameter(description='Source output DC bias')
     def set_source_bias(self, voltage: T_PARSE_QUANTITY):
@@ -167,9 +173,9 @@ class GWInstekLCR6000Series(SCPIHardware):
         :param voltage:
         :return:
         """
-        if type(voltage) is str and voltage.upper() == 'MAX':
+        if isinstance(voltage, str) and voltage.upper() == 'MAX':
             voltage = 'MAX'
-        elif type(voltage) is str and voltage.upper() == 'MIN':
+        elif isinstance(voltage, str) and voltage.upper() == 'MIN':
             voltage = 'MIN'
         else:
             voltage = parse(voltage, registry.V).magnitude
@@ -179,9 +185,9 @@ class GWInstekLCR6000Series(SCPIHardware):
 
     @SCPIHardware.register_parameter(description='Source output frequency')
     def set_source_frequency(self, frequency: T_PARSE_QUANTITY):
-        if type(frequency) is str and frequency.upper() == 'MAX':
+        if isinstance(frequency, str) and frequency.upper() == 'MAX':
             frequency = 'MAX'
-        elif type(frequency) is str and frequency.upper() == 'MIN':
+        elif isinstance(frequency, str) and frequency.upper() == 'MIN':
             frequency = 'MIN'
         else:
             frequency = parse(frequency, 'Hz').magnitude
@@ -196,9 +202,9 @@ class GWInstekLCR6000Series(SCPIHardware):
         :param voltage:
         :return:
         """
-        if type(voltage) is str and voltage.upper() == 'MAX':
+        if isinstance(voltage, str) and voltage.upper() == 'MAX':
             voltage = 'MAX'
-        elif type(voltage) is str and voltage.upper() == 'MIN':
+        elif isinstance(voltage, str) and voltage.upper() == 'MIN':
             voltage = 'MIN'
         else:
             voltage = parse(voltage, registry.V).magnitude
@@ -236,7 +242,8 @@ class GWInstekLCR6000Series(SCPIHardware):
         measure_fields = measure_fields.split(',')
 
         # Get measurement mode metadata
-        measure_meta = LCRMeasurement.get_reading_map(measure_function)
+        measure_meta_map = LCRMeasurement.get_reading_map()
+        measure_meta = measure_meta_map[measure_function]
 
         # Validate number of fields
         if len(measure_fields) != len(measure_meta):

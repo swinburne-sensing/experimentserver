@@ -43,12 +43,12 @@ class ApplicationException(Exception):
 
     """ Base exception for all custom application exceptions that occur during runtime. """
     def get_user_str(self, separator: str = '\n') -> str:
-        exc = self
+        current_exc: typing.Optional[BaseException] = self
         exc_str = []
 
-        while exc is not None:
-            exc_str.append(str(exc))
-            exc = exc.__cause__
+        while current_exc is not None:
+            exc_str.append(str(current_exc))
+            current_exc = current_exc.__cause__
 
         return separator.join(exc_str)
 

@@ -40,14 +40,14 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
 
     # SCPI commands
     @staticmethod
-    def scpi_reset(transaction: typing.Optional[VISAHardware.VISATransaction] = None) -> None:
+    def scpi_reset(transaction: VISAHardware.VISATransaction) -> None:
         """ Issue SCPI instrument reset command. Should return instrument to power-up defaults.
 
         :param transaction:
         """
         transaction.write('*RST')
 
-    def _scpi_reset_pre(self, transaction: VISAHardware.VISATransaction):
+    def _scpi_reset_pre(self, transaction: VISAHardware.VISATransaction) -> None:
         """
 
         :param transaction:
@@ -55,7 +55,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         """
         pass
 
-    def _scpi_reset_post(self, transaction: VISAHardware.VISATransaction):
+    def _scpi_reset_post(self, transaction: VISAHardware.VISATransaction) -> None:
         """
 
         :param transaction:

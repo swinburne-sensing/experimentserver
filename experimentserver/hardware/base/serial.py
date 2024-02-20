@@ -53,10 +53,11 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         with self._serial_lock.lock('transition_disconnect'):
-            # Close serial port
-            self._serial_port.close()
+            if self._serial_port:
+                # Close serial port
+                self._serial_port.close()
 
-            self._serial_port = None
+                self._serial_port = None
 
         super(SerialHardware, self).transition_disconnect(event)
 
@@ -99,15 +100,17 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
         self._thread_serial_consumer.thread_start()
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
-        # Stop consumers
-        self._thread_serial_consumer.thread_stop()
-        self._thread_serial_consumer.thread_join()
+        if self._thread_serial_consumer is not None:
+            if self._thread_serial_consumer:
+                # Stop consumers
+                self._thread_serial_consumer.thread_stop()
+                self._thread_serial_consumer.thread_join()
+                self._thread_serial_consumer = None
 
-        self._thread_payload_consumer.thread_stop()
-        self._thread_payload_consumer.thread_join()
-
-        self._thread_serial_consumer = None
-        self._thread_payload_consumer = None
+            if self._thread_payload_consumer:
+                self._thread_payload_consumer.thread_stop()
+                self._thread_payload_consumer.thread_join()
+                self._thread_payload_consumer = None
 
         super().transition_disconnect(event)
 
@@ -165,7 +168,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    def _thread_payload_consumer_event(self, payload: typing.Tuple[bytes, datetime]):
+    def _thread_payload_consumer_event(self, payload: typing.Tuple[bytes, datetime]) -> None:
         pass
 
 
@@ -174,7 +177,7 @@ class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
     def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[typing.List[Measurement]]:
         pass
 
-    def _thread_payload_consumer_event(self, payload: typing.Optional[typing.Tuple[bytes, datetime]]):
+    def _thread_payload_consumer_event(self, payload: typing.Optional[typing.Tuple[bytes, datetime]]) -> None:
         if payload is None:
             self.logger().error('No payload')
             return
@@ -195,9 +198,9 @@ class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
                 for measurement in measurements:
                     MeasurementTarget.record(measurement)
         except TypeError as exc:
-            self.logger().warning(f"Bad type in payload \"{payload[0]}\", error: {exc}")
+            self.logger().warning(f"Bad type in payload {payload[0]!r}, error: {exc}")
         except UnicodeDecodeError as exc:
-            self.logger().warning(f"Could not decode unicode in \"{payload[0]}\", error: {exc}")
+            self.logger().warning(f"Could not decode unicode in {payload[0]!r}, error: {exc}")
 
 
 class SerialJSONHardware(SerialStringHardware, metaclass=abc.ABCMeta):
@@ -205,7 +208,7 @@ class SerialJSONHardware(SerialStringHardware, metaclass=abc.ABCMeta):
     def _handle_object(self, payload: typing.Any, received: datetime) -> typing.Optional[typing.List[Measurement]]:
         pass
 
-    def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[Measurement]:
+    def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[typing.List[Measurement]]:
         try:
             # Attempt to decode JSON
             payload_obj = json.loads(payload)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import enum
 import re
@@ -33,7 +35,7 @@ class DAQChannelFunction(HardwareEnum):
     # DISTANCE = enum.auto()
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
+    def _get_alias_map(cls) -> typing.Dict[DAQChannelFunction, typing.List[typing.Any]]:
         return {
             cls.OPEN: ['open', 'na', 'none'],
             cls.VOLTAGE_DC: ['v', registry.V, 'volts', 'voltage'],
@@ -43,7 +45,7 @@ class DAQChannelFunction(HardwareEnum):
         }
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_description_map(cls) -> typing.Dict[DAQChannelFunction, str]:
         return {
             cls.OPEN: 'Open Circuit (external)',
             cls.VOLTAGE_DC: 'Voltage DC',
@@ -61,7 +63,7 @@ class DAQChannelFunction(HardwareEnum):
         }
 
     @classmethod
-    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_command_map(cls) -> typing.Dict[DAQChannelFunction, str]:
         return {
             cls.VOLTAGE_DC: '\"VOLT\"',
             cls.VOLTAGE_AC: '\"VOLT:AC\"',
@@ -105,10 +107,11 @@ class _KeithleyInstrument(SCPIHardware, metaclass=abc.ABCMeta):
 class MultimeterDAQ6510(_KeithleyInstrument):
     """  """
 
-    _SLOTS = [1, 2]
-    _CHANNELS = []
+    _SLOTS: typing.List[int] = [1, 2]
+    _CHANNELS: typing.List[int] = []
 
-    _CHANNEL_INTERNAL = [23, 24, 25]
+    # Channels used for internal switching
+    _CHANNEL_INTERNAL: typing.List[int] = [23, 24, 25]
 
     def __init__(self, *args, **kwargs):
         """ Create Hardware instance for a Keithley DAQ6510.
@@ -338,7 +341,7 @@ class Picoammeter6487(_KeithleyInstrument):
 
     @SCPIHardware.register_parameter(description='Measurement range', order=40)
     def set_measure_range(self, measure_range: T_PARSE_QUANTITY):
-        if type(measure_range) is str and measure_range.lower() == 'auto':
+        if isinstance(measure_range, str) and measure_range.lower() == 'auto':
             with self.visa_transaction() as transaction:
                 transaction.write(':RANG:AUTO')
         else:
@@ -356,7 +359,7 @@ class Picoammeter6487(_KeithleyInstrument):
 
     @SCPIHardware.register_parameter(description='Enable resistance measurement')
     def set_measure_ohms(self, enable: typing.Union[bool, str]):
-        if type(enable) is str:
+        if isinstance(enable, str):
             enable = enable.strip().lower() in ['true', '1', 'on']
 
         with self.visa_transaction() as transaction:
@@ -405,7 +408,7 @@ class Picoammeter6487(_KeithleyInstrument):
 
     @SCPIHardware.register_parameter(description='Source output enable', order=60)
     def set_source_enable(self, enable: typing.Union[bool, str]):
-        if type(enable) is str:
+        if isinstance(enable, str):
             enable = enable.strip().lower() in ['true', '1', 'on']
 
         with self.visa_transaction() as transaction:
@@ -491,12 +494,12 @@ class Picoammeter6487(_KeithleyInstrument):
     @SCPIHardware.register_measurement(description='Measure current/resistance across range of source voltages')
     def get_sweep(self) -> T_MEASUREMENT_SEQUENCE:
         measurement_list = []
-        sweep_tags = {
-            'source_sweep': True
+        sweep_tags: typing.Dict[str, str] = {
+            'source_sweep': str(True)
         }
 
         if self._settling_time is not None:
-            sweep_tags['source_settling_delay'] = self._settling_time
+            sweep_tags['source_settling_delay'] = str(self._settling_time)
 
         if self._source_sweep_range is None:
             raise MeasurementUnavailable('Sweep range not configured')

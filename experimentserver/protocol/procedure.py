@@ -30,7 +30,7 @@ class ProcedureRuntimeError(ApplicationException):
     pass
 
 
-class Procedure(ManagedStateMachine):
+class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
     """ Procedures represent experimental protocols. """
 
     # Limit the maximum repetition rate of the management thread when no measurements are made
@@ -42,7 +42,7 @@ class Procedure(ManagedStateMachine):
 
     def __init__(self, stages: typing.List[BaseStage], metadata: T_TAG_MAP, uid: typing.Optional[str] = None,
                  config: typing.Union[None, ConfigManager, typing.Dict[str, typing.Any]] = None,
-                 hardware: typing.Optional[typing.Sequence[str]] = None):
+                 hardware: typing.Optional[typing.Iterable[str]] = None):
         """ Create new Procedure instance.
 
         :param stages:
@@ -58,18 +58,18 @@ class Procedure(ManagedStateMachine):
                                      ProcedureState.SETUP)
 
         # Shared configuration
-        if config is None or type(config) is not ConfigManager:
+        if isinstance(config, ConfigManager):
+            self._procedure_config = config
+        else:
             # New configuration
-            self._procedure_config: ConfigManager = ConfigManager()
+            self._procedure_config = ConfigManager()
 
             # If dict is provided then update using that
             if config is not None:
                 self._procedure_config.update(config)
-        else:
-            self._procedure_config = config
 
         # Additional hardware
-        self._procedure_hardware = hardware or []
+        self._procedure_hardware = list(hardware or [])
 
         # Metadata tied to procedure
         if isinstance(metadata, ConfigNode):
@@ -103,8 +103,8 @@ class Procedure(ManagedStateMachine):
         self._procedure_stages_lock = threading.RLock()
 
         # Stage index, next, and advance trigger
-        self._procedure_stage_current = None
-        self._procedure_stage_next = None
+        self._procedure_stage_current: typing.Optional[int] = None
+        self._procedure_stage_next: typing.Optional[int] = None
         self._procedure_stage_advance = False
 
         # Active hardware
@@ -183,28 +183,30 @@ class Procedure(ManagedStateMachine):
         with self._procedure_stages_lock:
             for stage in self._procedure_stages:
                 stage_duration = stage.get_stage_duration()
+                stage_duration_value: typing.Union[str, float] = 0.0
 
                 if stage_duration is None:
-                    stage_duration = 'Unknown'
+                    stage_duration_value = 'Unknown'
                 elif stage_duration.total_seconds() == 0:
-                    stage_duration = 'Instant'
+                    stage_duration_value = 'Instant'
                 elif in_seconds:
-                    stage_duration = stage_duration.total_seconds()
+                    stage_duration_value = stage_duration.total_seconds()
 
                 stage_remaining = stage.get_stage_remaining()
+                stage_remaining_value: typing.Union[str, float] = 0.0
 
                 if stage_remaining is None:
-                    stage_remaining = 'Unknown'
+                    stage_remaining_value = 'Unknown'
                 elif stage_remaining.total_seconds() == 0:
-                    stage_remaining = 'Instant'
+                    stage_remaining_value = 'Instant'
                 elif in_seconds:
-                    stage_remaining = stage_remaining.total_seconds()
+                    stage_remaining_value = stage_remaining.total_seconds()
 
                 stage_summary.append({
                     'index': stage_index,
                     'class': stage.__class__.__name__,
-                    'duration': stage_duration,
-                    'duration_remaining': stage_remaining,
+                    'duration': stage_duration_value,
+                    'duration_remaining': stage_remaining_value,
                     'summary': stage.get_stage_summary()
                 })
 
@@ -375,11 +377,13 @@ class Procedure(ManagedStateMachine):
             Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(now()))
 
             # Enter first stage
+            assert self._procedure_stage_current is not None
             initial_stage = self._procedure_stages[self._procedure_stage_current]
             initial_stage.stage_enter()
 
     def _procedure_pause(self, _: transitions.EventData):
         with Measurement.metadata_global_lock:
+            assert self._procedure_stage_current is not None
             current_stage = self._procedure_stages[self._procedure_stage_current]
             current_stage.stage_pause()
 
@@ -390,6 +394,7 @@ class Procedure(ManagedStateMachine):
 
     def _procedure_resume(self, _: transitions.EventData):
         with Measurement.metadata_global_lock:
+            assert self._procedure_stage_current is not None
             current_stage = self._procedure_stages[self._procedure_stage_current]
             current_stage.stage_resume()
 
@@ -414,17 +419,13 @@ class Procedure(ManagedStateMachine):
         # Queue next stage
         self.logger().info('Skip to next stage', event=True)
 
-        # self._procedure_stage_next = self._procedure_stage_current + 1
-
-        # if self._procedure_stage_next >= len(self._procedure_stages):
-        #     self._procedure_stage_next = None
-
         self._procedure_stage_advance = True
 
     def _stage_previous(self, _: transitions.EventData):
         # Queue previous stage
         self.logger().info('Jump to previous stage', event=True)
 
+        assert self._procedure_stage_current is not None
         self._procedure_stage_next = self._procedure_stage_current - 1
 
         if self._procedure_stage_next < 0:
@@ -436,6 +437,7 @@ class Procedure(ManagedStateMachine):
         # Queue current stage
         self.logger().info('Repeat current stage', event=True)
 
+        assert self._procedure_stage_current is not None
         self._procedure_stage_next = self._procedure_stage_current
 
         self._procedure_stage_advance = True
@@ -474,8 +476,8 @@ class Procedure(ManagedStateMachine):
         :param data:
         :return:
         """
-        if type(data) is str:
-            data = yaml.load(data, YAMLProcedureLoader)
+        if isinstance(data, str):
+            data = typing.cast(typing.Dict[str, typing.Any], yaml.load(data, YAMLProcedureLoader))
 
         target_version = data.pop('version')
 
@@ -509,17 +511,19 @@ class Procedure(ManagedStateMachine):
 
         return procedure
 
-    def procedure_export(self, include_header: bool = True) -> typing.Dict[str, typing.Any]:
+    def procedure_export(self) -> typing.Dict[str, typing.Any]:
         """ Export Procedure to a dict.
 
         :return: dict
         """
+        stages: typing.List[typing.Dict[str, typing.Any]] = []
+
         procedure = {
             'class': self.__class__.__name__,
             'version': self._EXPORT_VERSION,
             'uid': self._procedure_uid,
             'config': self._procedure_config.dump(),
-            'stages': []
+            'stages': stages
         }
 
         if len(self._procedure_metadata) > 0:
@@ -531,12 +535,9 @@ class Procedure(ManagedStateMachine):
         # Export stages
         with self._procedure_stages_lock:
             for stage in self._procedure_stages:
-                procedure['stages'].append(stage.stage_export())
-
-        if include_header:
-            return HEADER + yaml.dump(procedure)
-        else:
-            return yaml.dump(procedure)
+                stages.append(stage.stage_export())
+        
+        return procedure
 
     def _thread_manager(self) -> None:
         entry_time = time.time()
@@ -548,8 +549,7 @@ class Procedure(ManagedStateMachine):
 
                 # Handle running state
                 if current_state == ProcedureState.RUNNING:
-                    if self._procedure_stage_current is None:
-                        pass
+                    assert self._procedure_stage_current is not None
 
                     # Get current stage
                     current_stage = self._procedure_stages[self._procedure_stage_current]
@@ -567,12 +567,12 @@ class Procedure(ManagedStateMachine):
                         else:
                             self._procedure_stage_current = self._procedure_stage_next
 
+                            # Enter next stage
+                            current_stage = self._procedure_stages[self._procedure_stage_current]
+                            current_stage.stage_enter()
+
                             # Update procedure metadata
                             Measurement.add_global_tag('procedure_stage_index', self._procedure_stage_current)
-
-                            # Enter next stage
-                            current_stage = self.get_stage_current()
-                            current_stage.stage_enter()
 
                             # Update next stage
                             self._procedure_stage_next += 1

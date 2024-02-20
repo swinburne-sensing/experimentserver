@@ -25,6 +25,10 @@ _werkzeug_logger = get_logger('werkzeug')
 _werkzeug_logger.addFilter(_filter_werkzeug)
 
 
+class APIError(experimentserver.ApplicationException):
+    pass
+
+
 class UserInterfaceError(experimentserver.ApplicationException):
     pass
 

@@ -57,8 +57,8 @@ class Measurement(Logged):
     _metadata_global_dynamic_fields: typing.MutableMapping[T_FIELD_NAME, T_DYNAMIC_FIELD] = {}
     _metadata_global_tags: typing.MutableMapping[T_TAG_NAME, T_TAG_VALUE] = {}
 
-    _metadata_global_metadata_stack: typing.List[typing.Tuple[typing.Mapping[T_FIELD_NAME, T_DYNAMIC_FIELD],
-                                                              typing.Mapping[T_TAG_NAME, T_TAG_VALUE]]] = []
+    _metadata_global_metadata_stack: typing.List[typing.Tuple[typing.MutableMapping[T_FIELD_NAME, T_DYNAMIC_FIELD],
+                                                              typing.MutableMapping[T_TAG_NAME, T_TAG_VALUE]]] = []
 
     def __init__(self, source: MeasurementSource, measurement_group: MeasurementGroup, fields: T_FIELD_MAP,
                  timestamp: typing.Optional[datetime] = None,
@@ -311,10 +311,10 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
         """
         # Compile regex pattern
         source = source.replace('*', '.*')
-        source = re.compile(f"^{source}$")
+        source_re = re.compile(f"^{source}$")
 
         with cls._measurement_metadata_lock:
-            cls._measurement_target_remap.append((source, destination))
+            cls._measurement_target_remap.append((source_re, destination))
 
     @abc.abstractmethod
     def _record(self, measurement: Measurement) -> None:

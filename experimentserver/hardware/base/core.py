@@ -13,8 +13,7 @@ from experimentlib.util.classes import HybridMethod
 from transitions import EventData
 
 import experimentserver.util.metadata as metadata
-from experimentserver.measurement import T_TAG_MAP, T_DYNAMIC_FIELD_MAP, MeasurementSource, Measurement,\
-    MeasurementTarget
+from experimentserver.measurement import T_FIELD_MAP, T_TAG_MAP, T_DYNAMIC_FIELD_MAP, MeasurementSource, Measurement, MeasurementTarget
 from experimentserver.hardware.error import HardwareIdentifierError, MeasurementError, MeasurementUnavailable, \
     ParameterError, NoResetHandler
 from experimentserver.hardware.metadata import TYPE_PARAMETER_DICT, TYPE_PARAMETER_COMMAND, _MeasurementMetadata, \
@@ -67,8 +66,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
         self._parameter_buffer: typing.Dict[int, metadata.BoundMetadataCall] = {}
 
         # Enabled measurement map
-        self._measurement_lock = threading.RLock()
-        self._measurement: typing.Optional[str, bool] = None
+        self._enabled_measurement_lock = threading.RLock()
+        self._enabled_measurement: typing.Optional[typing.MutableMapping[str, bool]] = None
         self._measurement_delay: typing.Optional[float] = None
 
         # Add to list of instances
@@ -142,7 +141,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
     # Instrument lock
     @contextlib.contextmanager
-    def hardware_lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
+    def hardware_lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) \
+            -> typing.Generator[int, None, None]:
         """ Acquire exclusive reentrant hardware lock. Checks for any errors when released.
 
         :param origin:
@@ -203,13 +203,16 @@ class Hardware(LoggedAbstract, MeasurementSource):
         :param name:
         :return:
         """
-        if name not in self._measurement:
+        if self._enabled_measurement is None:
+            raise MeasurementError('Measurement map not initialized')
+        
+        if name not in self._enabled_measurement:
             raise MeasurementError(f"Unrecognised measurement name {name}")
 
-        with self._measurement_lock:
+        with self._enabled_measurement_lock:
             # Disable all other measurements
-            for measure in self._measurement.keys():
-                self._measurement[measure] = False
+            for measure in self._enabled_measurement.keys():
+                self._enabled_measurement[measure] = False
 
             if name is not None:
                 # Enable the selected measurement
@@ -225,11 +228,14 @@ class Hardware(LoggedAbstract, MeasurementSource):
         :param name:
         :return:
         """
-        if name not in self._measurement:
+        if self._enabled_measurement is None:
+            raise MeasurementError('Measurement map not initialized')
+
+        if name not in self._enabled_measurement:
             raise MeasurementError(f"Unrecognised measurement name {name}")
 
-        with self._measurement_lock:
-            self._measurement[name] = True
+        with self._enabled_measurement_lock:
+            self._enabled_measurement[name] = True
 
         self.logger().info(f"Enabled measurement: {name}")
 
@@ -241,17 +247,20 @@ class Hardware(LoggedAbstract, MeasurementSource):
         :param name:
         :return:
         """
-        if name not in self._measurement:
+        if self._enabled_measurement is None:
+            raise MeasurementError('Measurement map not initialized')
+
+        if name not in self._enabled_measurement:
             raise MeasurementError(f"Unrecognised measurement name {name}")
 
-        with self._measurement_lock:
-            self._measurement[name] = False
+        with self._enabled_measurement_lock:
+            self._enabled_measurement[name] = False
 
         self.logger().info(f"Disabled measurement: {name}")
 
     def produce_measurement(self, extra_dynamic_fields: typing.Optional[T_DYNAMIC_FIELD_MAP] = None,
                             extra_tags: typing.Optional[T_TAG_MAP] = None) -> bool:
-        """ FIXME TYPE_DYNAMIC_FIELD
+        """ 
 
         :return: True if measurements were produced, False otherwise
         """
@@ -259,18 +268,18 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         measurement_flag = False
 
-        with self._measurement_lock:
-            if self._measurement is None:
+        with self._enabled_measurement_lock:
+            if self._enabled_measurement is None:
                 raise MeasurementError('Measurements have not been configured, hardware may be disconnected')
 
             if self._measurement_delay is not None:
                 self.sleep(self._measurement_delay, 'measurement rate limit')
 
             # Get enabled measurements
-            measurement_meta = self.get_hardware_measurement_metadata()
+            measurement_meta: typing.MutableMapping[str, _MeasurementMetadata] = self.get_hardware_measurement_metadata()
 
             # Discard disabled methods
-            for measurement, measurement_enabled in self._measurement.items():
+            for measurement, measurement_enabled in self._enabled_measurement.items():
                 if not measurement_enabled and not measurement_meta[measurement].force:
                     measurement_meta.pop(measurement)
 
@@ -280,7 +289,10 @@ class Hardware(LoggedAbstract, MeasurementSource):
                     measurement_method = meta.bind(self)
 
                     try:
-                        measurement_return = measurement_method()
+                        measurement_return = typing.cast(
+                            typing.Union[None, Measurement, typing.Sequence[Measurement], T_FIELD_MAP],
+                            measurement_method()
+                        )
 
                         if measurement_return is not None:
                             if isinstance(measurement_return, Measurement):
@@ -293,6 +305,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
                                 MeasurementTarget.record(measurement_return)
                             elif isinstance(measurement_return, list):
+                                measurement_return = typing.cast(typing.List[Measurement], measurement_return)
+
                                 # Multiple results with metadata
                                 for measurement in measurement_return:
                                     measurement.add_tags(extra_tags)
@@ -303,13 +317,27 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
                                     MeasurementTarget.record(measurement)
                             elif isinstance(measurement_return, dict):
+                                if meta.measurement_group is None:
+                                    raise MeasurementError(
+                                        f"Missing measurement_group on method: {meta!r}"
+                                    )
+
+                                measurement_return = typing.cast(T_FIELD_MAP, measurement_return)
+
                                 # Single result without metadata
-                                MeasurementTarget.record(Measurement(self, meta.measurement_group, measurement_return,
-                                                                     dynamic_fields=extra_dynamic_fields,
-                                                                     tags=extra_tags))
+                                MeasurementTarget.record(
+                                    Measurement(
+                                        self,
+                                        meta.measurement_group,
+                                        measurement_return,
+                                        dynamic_fields=extra_dynamic_fields,
+                                        tags=extra_tags
+                                    )
+                                )
                             else:
                                 raise MeasurementError(
-                                    f"Unexpected return from measurement method: {measurement_return!r}")
+                                    f"Unexpected return from measurement method: {measurement_return!r}"
+                                )
 
                             # Indicate a measurement was produced
                             measurement_flag = True
@@ -332,7 +360,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
             return []
 
         # Parse list of bindings into single set
-        if type(parameter_command) is list:
+        if isinstance(parameter_command, list):
             return_list = []
 
             for parameter_command_inst in parameter_command:
@@ -349,10 +377,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
             except KeyError:
                 raise ParameterError(f"Unrecognised parameter {parameter_name}")
 
-            if type(parameter_args) is not dict:
-                if type(parameter_args) is str:
-                    # FIXME Bad type hints
-                    # noinspection PyUnresolvedReferences
+            if not isinstance(parameter_args, dict):
+                if isinstance(parameter_args, str):
                     parameter_args = [x.strip() for x in parameter_args.split(',')]
 
                 # If arguments are not iterable then convert to a tuple
@@ -383,7 +409,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
         parameter_command = event.args[0]
 
         # If not bound then do that now
-        if type(parameter_command) is not list or not all([type(x) is BoundMetadataCall for x in parameter_command]):
+        if not isinstance(parameter_command, list) or \
+            not all((isinstance(x, BoundMetadataCall) for x in parameter_command)):
             self.logger().debug('Parameters bound inside state transition')
             parameter_command = self.bind_parameter(parameter_command)
 
@@ -440,12 +467,12 @@ class Hardware(LoggedAbstract, MeasurementSource):
         :raises HardwareError: when Hardware reports fatal error during connection
         """
         # Configure default measurements
-        with self._measurement_lock:
-            self._measurement = {
+        with self._enabled_measurement_lock:
+            self._enabled_measurement = {
                 measure: meta.default for measure, meta in self.get_hardware_measurement_metadata().items()
             }
 
-            enabled_list = ', '.join([measure for measure, enabled in self._measurement.items() if enabled])
+            enabled_list = ', '.join([measure for measure, enabled in self._enabled_measurement.items() if enabled])
 
             self.logger().info(f"Configured default measurements: {enabled_list}")
 
@@ -497,8 +524,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
         :raises HardwareError: when Hardware reports fatal error during cleanup
         """
         # Clear enabled measurements
-        with self._measurement_lock:
-            self._measurement = None
+        with self._enabled_measurement_lock:
+            self._enabled_measurement = None
 
         # Clear buffered parameters
         with self._parameter_lock:
@@ -554,8 +581,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
         return f"<{self.__class__.__module__}.{self.__class__.__qualname__} ({self.get_hardware_identifier()}) object>"
 
     # Convert decorators to static methods
-    register_measurement = staticmethod(register_measurement)
-    register_parameter = staticmethod(register_parameter)
+    register_measurement = staticmethod(register_measurement)  # type: ignore
+    register_parameter = staticmethod(register_parameter)  # type: ignore
 
 
 TYPE_HARDWARE = typing.TypeVar('TYPE_HARDWARE', bound=Hardware)

@@ -151,7 +151,7 @@ class GE50MassFlowController(Hardware):
         self._http_lock = threading.RLock()
 
         # Consumer thread for trace data
-        self._trace_buffer = queue.Queue(maxsize=1)
+        self._trace_buffer: queue.Queue[typing.List[Measurement]] = queue.Queue(maxsize=1)
         self._thread_trace_consumer: typing.Optional[CallbackThread] = None
 
     # Utility methods
@@ -411,10 +411,10 @@ class GE50MassFlowController(Hardware):
         self._max_flow = None
 
         # Stop data consumer
-        self._thread_trace_consumer.thread_stop()
-        self._thread_trace_consumer.thread_join()
-
-        self._thread_trace_consumer = None
+        if self._thread_trace_consumer:
+            self._thread_trace_consumer.thread_stop()
+            self._thread_trace_consumer.thread_join()
+            self._thread_trace_consumer = None
 
         super(GE50MassFlowController, self).transition_disconnect(event)
 
@@ -440,7 +440,7 @@ class GE50MassFlowController(Hardware):
     def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(GE50MassFlowController, self).transition_error(event)
 
-    def _thread_trace_consumer_callback(self):
+    def _thread_trace_consumer_callback(self) -> None:
         # Generate tags for payloads
         data_tags = {
             'gas_mixture': str(self._composition),
@@ -463,6 +463,7 @@ class GE50MassFlowController(Hardware):
                 payload_timestamp = now()
 
                 # Check exit flag
+                assert self._thread_trace_consumer is not None
                 if self._thread_trace_consumer.thread_stop_requested():
                     return
 
@@ -490,9 +491,11 @@ class GE50MassFlowController(Hardware):
                                    self._gcf if self._EVID_MAP[v_node].apply_gcf else 1)
                                   for v_node in xml_field]
 
-                xml_field_value = [struct.unpack('!f', bytes.fromhex(v_node.text[2:]))[0] for v_node in xml_data]
+                xml_field_value = [
+                    struct.unpack('!f', bytes.fromhex(typing.cast(str, v_node.text)[2:]))[0] for v_node in xml_data
+                ]
 
-                data_payload = []
+                data_payload: typing.List[Measurement] = []
 
                 for n in range(len(xml_field)):
                     fields = {

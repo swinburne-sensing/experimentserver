@@ -18,7 +18,7 @@ def javascript_parse(js_code: str) -> typing.Dict[str, typing.Any]:
     :param js_code: str
     :return:
     """
-    js_namespace = {}
+    js_namespace: typing.Dict[str, typing.Any] = {}
 
     for js_line in js_code.split('\n'):
         # Fetch only assignment lines

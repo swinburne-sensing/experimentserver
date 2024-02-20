@@ -21,16 +21,16 @@ class _MeasurementMetadata(OrderedMetadata):
 
         :param method:
         :param description: user readable description of the measurement(s) produced by this method
-        :param measurement_group:
-        :param default:
-        :param force:
-        :param order:
+        :param measurement_group: optional MeasurementGroup for generated measurements
+        :param default: if True measurement is enabled by default
+        :param force: if True measurement is always enabled
+        :param order: execution priority
         :param user:
         :param setup:
         :param setup_args:
         :param setup_kwargs:
         """
-        super().__init__(method, order)
+        super().__init__(method, description, order)
 
         return_annotation = inspect.signature(method).return_annotation
 
@@ -57,20 +57,19 @@ class _MeasurementMetadata(OrderedMetadata):
 class _ParameterMetadata(OrderedMetadata):
     """  """
 
-    def __init__(self, method: CALLABLE_PARAMETER, description: typing.Dict[str, str], order: int = 50,
+    def __init__(self, method: CALLABLE_PARAMETER, description: str, order: int = 50,
                  validation: typing.Optional[typing.Dict[str, typing.Callable[[typing.Any], bool]]] = None,
-                 primary_key: typing.Tuple[str] = None):
+                 primary_key: typing.Optional[typing.List[str]] = None):
         """ Initialise _HardwareParameter.
 
         :param method: wrapped method
         :param description: user-readable description of the function(s) controlled by this parameter
         :param order: order for application of parameters when performed as a set, lower order is performed first
         :param validation: optional set of validation methods for each argument
-        :param primary_key: optional primary key for caching of parameter calls
+        :param primary_key: optional primary key set for caching of parameter calls
         """
-        super().__init__(method, order, primary_key)
+        super().__init__(method, description, order, primary_key)
 
-        self.description = description
         self.validation = validation
 
     def bind(self, target: object, **kwargs) -> BoundMetadataCall:

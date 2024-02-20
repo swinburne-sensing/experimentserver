@@ -9,7 +9,7 @@ from transitions import EventData
 
 from .hp import HP34401AMultimeter
 from .keithley import MultimeterDAQ6510, Picoammeter6487
-from ..base.core import Hardware, TYPE_PARAMETER_DICT, TYPE_HARDWARE
+from ..base.core import Hardware, TYPE_PARAMETER_DICT
 from ..error import ParameterError
 from ..metadata import TYPE_PARAMETER_COMMAND
 from ...util import metadata as metadata
@@ -44,7 +44,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
     @classmethod
     @abc.abstractmethod
-    def get_child_class(cls) -> typing.Type[TYPE_HARDWARE]:
+    def get_child_class(cls) -> typing.Type[Hardware]:
         pass
 
     @classmethod
@@ -68,16 +68,16 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         # Switch open time
         self.sleep(self.SWITCH_DELAY, 'contact open time')
 
-    def get_channel_metadata(self, channel: int) -> typing.Dict[str, typing.Any]:
-        channel_tags = {
-            'switch_channel': channel
+    def get_channel_metadata(self, channel: int) -> T_TAG_MAP:
+        channel_tags: typing.Dict[str, str] = {
+            'switch_channel': str(channel)
         }
 
         if self._channel_repeat > 1:
-            channel_tags['switch_repeat_total'] = self._channel_repeat
+            channel_tags['switch_repeat_total'] = str(self._channel_repeat)
 
         if self._channel_duration is not None:
-            channel_tags['switch_duration'] = self._channel_duration.total_seconds()
+            channel_tags['switch_duration'] = str(self._channel_duration.total_seconds())
 
         if channel in self._channel_metadata:
             channel_tags.update(self._channel_metadata[channel])
@@ -98,7 +98,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         channel = int(channel)
 
         if channel not in self._channel_list:
-            with self._measurement_lock:
+            with self._enabled_measurement_lock:
                 self._channel_list.append(channel)
 
         self.logger().info(f"Added channel {channel}")
@@ -117,7 +117,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         channel = int(channel)
 
         if channel in self._channel_list:
-            with self._measurement_lock:
+            with self._enabled_measurement_lock:
                 self._channel_list.remove(channel)
 
                 # Force all relays open
@@ -131,7 +131,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
     def set_channel(self, channel: typing.Any):
         channel = int(channel)
 
-        with self._measurement_lock:
+        with self._enabled_measurement_lock:
             if channel == 0:
                 self._channel_list = []
             else:
@@ -146,7 +146,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
     def set_channel_duration(self, duration: T_PARSE_TIMEDELTA):
         duration = parse_timedelta(duration)
 
-        with self._measurement_lock:
+        with self._enabled_measurement_lock:
             if duration.total_seconds() > 0:
                 self._channel_duration = duration
             else:
@@ -158,28 +158,16 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
     def set_channel_repeat(self, count: typing.Any):
         count = int(count)
 
-        with self._measurement_lock:
+        with self._enabled_measurement_lock:
             self._channel_repeat = count
 
         self.logger().info(f"Set channel repeat to {self._channel_repeat}")
-
-    @Hardware.register_parameter(description='Time to make measurements from selected channel')
-    def set_channel_duration(self, duration: T_PARSE_TIMEDELTA):
-        duration = parse_timedelta(duration)
-
-        with self._measurement_lock:
-            if duration.total_seconds() > 0:
-                self._channel_duration = duration
-            else:
-                self._channel_duration = None
-
-        self.logger().info(f"Set channel duration to {self.set_channel_duration}")
 
     @Hardware.register_parameter(description='Delay before commencing measurements after channel switch')
     def set_post_channel_delay(self, delay: T_PARSE_TIMEDELTA):
         delay = parse_timedelta(delay)
 
-        with self._measurement_lock:
+        with self._enabled_measurement_lock:
             if delay.total_seconds() > 0:
                 self._post_channel_delay = delay
             else:
@@ -189,11 +177,11 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
     def produce_measurement(self, extra_dynamic_fields: typing.Optional[T_DYNAMIC_FIELD_MAP] = None,
                             extra_tags: typing.Optional[T_TAG_MAP] = None) -> bool:
-        extra_tags = extra_tags or {}
+        extra_tags_dict = dict(extra_tags or {})
 
         measurement_flag = False
 
-        with self._measurement_lock:
+        with self._enabled_measurement_lock:
             # No channels selected, just return
             if len(self._channel_list) == 0:
                 self.logger().debug('No channels')
@@ -216,7 +204,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                     channel_repeat = 0
 
                     # Setup metadata
-                    channel_tags = extra_tags.copy()
+                    channel_tags = extra_tags_dict.copy()
                     channel_tags.update(self.get_channel_metadata(channel))
 
                     self.pre_channel_close(channel)
@@ -237,7 +225,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
                         channel_repeat += 1
 
                         measurement_metadata = channel_tags.copy()
-                        measurement_metadata['channel_repeat'] = str()
+                        measurement_metadata['channel_repeat'] = str(self._channel_repeat)
 
                         self.logger().debug(f"Channel {channel} metadata {measurement_metadata!r}")
 

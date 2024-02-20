@@ -6,6 +6,7 @@ from experimentlib.data.humidity import abs_to_rel, rel_to_abs, rel_to_dew, unit
 from experimentlib.data.unit import T_PARSE_QUANTITY, parse, registry, Quantity
 
 from ..base.core import Hardware, ParameterError
+from ..error import CommunicationError
 from experimentserver.interface.linkam import LinkamSDK, StageValueType, SDK_PATH
 from experimentserver.interface.linkam.license import fetch_license
 from experimentserver.interface.linkam.sdk import LinkamConnectionError
@@ -14,6 +15,10 @@ from experimentserver.measurement import T_MEASUREMENT_SEQUENCE, Measurement, Me
 
 __author__ = 'Chris Harrison'
 __email__ = 'cjharrison@swin.edu.au'
+
+
+class LinkamNotConnectedError(CommunicationError):
+    pass
 
 
 class T96Controller(Hardware):
@@ -128,7 +133,8 @@ class T96Controller(Hardware):
                 }
 
                 # Apply updated target based upon sensor temperature
-                if self._humidity_regulator_enable and self._humidity_setpoint > 0:
+                if self._humidity_regulator_enable and self._humidity_setpoint is not None \
+                        and self._humidity_setpoint > 0:
                     try:
                         setpoint_abs = rel_to_abs(self._humidity_room_temp, self._humidity_setpoint)
                         setpoint_rel = abs_to_rel(rh_temp, setpoint_abs).to(registry.pct)
@@ -177,6 +183,9 @@ class T96Controller(Hardware):
         return payload
 
     def _set_humidity_setpoint(self, setpoint: Quantity):
+        if self._handle is None:
+            raise LinkamNotConnectedError('Not connected to stage')
+
         setpoint_scaled = (setpoint / self._humidity_flow_ratio).to(registry.pct)
         self.logger().trace(f"Setpoint: {setpoint}, Scaled: {setpoint_scaled}, Ratio: {self._humidity_flow_ratio}")
 
@@ -202,7 +211,7 @@ class T96Controller(Hardware):
 
     @Hardware.register_parameter(description='Enable/disable external humidity regulation (EXPERIMENTAL)')
     def set_humidity_regulator(self, enable: typing.Union[bool, str]):
-        if type(enable) is str:
+        if isinstance(enable, str):
             enable = enable.strip().lower() in ['true', '1', 'on']
 
         self._humidity_regulator_enable = enable
@@ -215,6 +224,9 @@ class T96Controller(Hardware):
     def set_temperature(self, temperature: T_PARSE_QUANTITY):
         if not self._has_heater:
             raise ParameterError('Heating not supported')
+    
+        if self._handle is None:
+            raise LinkamNotConnectedError('Not connected to stage')
 
         temperature = parse(temperature, registry.degC).magnitude
 
@@ -231,6 +243,9 @@ class T96Controller(Hardware):
     def set_temperature_ramp(self, rate: T_PARSE_QUANTITY):
         if not self._has_heater:
             raise ParameterError('Heating not supported')
+        
+        if self._handle is None:
+            raise LinkamNotConnectedError('Not connected to stage')
 
         rate = parse(rate, 'degC/min').magnitude
 
@@ -283,12 +298,15 @@ class T96Controller(Hardware):
                 self.logger().warning(f"Error starting Linkam (error: {exc!s})")
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
-        self._handle.close()
-        self._handle = None
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
 
         super(T96Controller, self).transition_disconnect(event)
 
     def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
+        assert self._handle is not None
+
         # Force default humidity and enable
         if self._has_humidity:
             self.set_humidity(0)
@@ -297,9 +315,13 @@ class T96Controller(Hardware):
         super(T96Controller, self).transition_configure(event)
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
-        # Stop heating and humidity regulation
-        self._handle.enable_heater(False)
-        self._handle.enable_humidity(False)
+        if self._handle is not None:
+            # Stop heating and humidity regulation
+            if self._has_heater:
+                self._handle.enable_heater(False)
+
+            if self._has_humidity:
+                self._handle.enable_humidity(False)
 
         super(T96Controller, self).transition_cleanup(event)
 

@@ -13,9 +13,15 @@ __email__ = 'cjharrison@swin.edu.au'
 
 class FieldMasterGSPowerMeter(SerialHardware):
     def __init__(self, *args, termination: str = '\r\n', **kwargs):
-        super(FieldMasterGSPowerMeter, self).__init__(*args, serial_args={
-            'baudrate': 9600
-        }, **kwargs)
+        if 'serial_args' not in kwargs:
+            kwargs['serial_args'] = {
+                'baudrate': 9600
+            }
+
+        super(FieldMasterGSPowerMeter, self).__init__(
+            *args,
+            **kwargs
+        )
 
         self._termination = termination
 
@@ -28,12 +34,14 @@ class FieldMasterGSPowerMeter(SerialHardware):
         wavelength = parse(wavelength, registry.nm).to(registry.m).magnitude
 
         # Configure wavelength
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('set_wavelength'):
+            assert self._serial_port is not None
             self._serial_port.write(f"wv {wavelength:e}{self._termination}".encode())
 
     @SerialHardware.register_measurement(description='Optical power', force=True)
     def get_power(self) -> Measurement:
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('get_power'):
+            assert self._serial_port is not None
             self._serial_port.write(f"pw?{self._termination}".encode())
             power = self._serial_port.read_until(self._termination.encode()).decode().strip()
 
@@ -58,7 +66,8 @@ class FieldMasterGSPowerMeter(SerialHardware):
     def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('transition_connect'):
+            assert self._serial_port is not None
             self._serial_port.write(f"*ind{self._termination}".encode())
             identity = self._serial_port.read_until(self._termination.encode()).decode().strip()
 
@@ -76,7 +85,8 @@ class FieldMasterGSPowerMeter(SerialHardware):
         super().transition_configure(event)
 
         # Reset
-        with self._serial_lock.lock():
+        with self._serial_lock.lock('transition_configure'):
+            assert self._serial_port is not None
             self._serial_port.write(f"*rst{self._termination}".encode())
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
@@ -84,4 +94,3 @@ class FieldMasterGSPowerMeter(SerialHardware):
 
     def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_error(event)
-

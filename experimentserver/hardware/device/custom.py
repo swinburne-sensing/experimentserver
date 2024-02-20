@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing
 from datetime import datetime, timedelta
 
@@ -27,7 +29,7 @@ class AccelMonitor(SerialJSONHardware):
         measurements = []
 
         # Handle lists of results
-        if type(payload) is list:
+        if isinstance(payload, list):
             for payload_entry in payload:
                 measurements_entry = self._handle_object(payload_entry, received)
 
@@ -92,11 +94,12 @@ class GenericSerial(SerialHardware):
     @SerialHardware.register_parameter(description='Send raw command')
     def send(self, cmd: str):
         # Encode command
-        cmd = bytes(cmd, "utf-8").decode("unicode_escape").encode()
+        cmd_enc = bytes(cmd, "utf-8").decode("unicode_escape").encode()
 
-        with self._serial_lock.lock(f"send:{cmd}"):
+        with self._serial_lock.lock(f"send:{cmd_enc!r}"):
             # Send command
-            self._serial_port.write(cmd)
+            assert self._serial_port is not None
+            self._serial_port.write(cmd_enc)
 
             # Wait for response
             response = self._serial_port.read_until()
@@ -112,6 +115,7 @@ class GenericSerial(SerialHardware):
             return {}
 
         with self._serial_lock.lock('receive'):
+            assert self._serial_port is not None
             response = self._serial_port.read_until()
 
         response = response.strip()
@@ -166,21 +170,21 @@ class ValvePosition(HardwareEnum):
     POSITION_B = 'B'
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[typing.Any]]]:
+    def _get_alias_map(cls) -> typing.Dict[ValvePosition, typing.List[typing.Any]]:
         return {
             cls.POSITION_A: ['a', 0, '0', 'direct'],
             cls.POSITION_B: ['b', 1, '1', 'bypass', 'vent']
         }
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_description_map(cls) -> typing.Dict[ValvePosition, str]:
         return {
             cls.POSITION_A: 'Position A',
             cls.POSITION_B: 'Position B'
         }
 
     @classmethod
-    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_command_map(cls) -> typing.Dict[ValvePosition, str]:
         return {
             cls.POSITION_A: 'A',
             cls.POSITION_B: 'B'
@@ -201,6 +205,7 @@ class ValveController(SerialHardware):
 
         with self._serial_lock.lock('set_position'):
             # Send command
+            assert self._serial_port is not None
             self._serial_port.write(channel.command_value.encode())
 
             # Wait for response
@@ -213,13 +218,14 @@ class ValveController(SerialHardware):
                                          force=True)
     def get_position(self) -> T_FIELD_MAP:
         with self._serial_lock.lock('get_position'):
+            assert self._serial_port is not None
             self._serial_port.write('?'.encode())
             response = self._serial_port.read_until()
             response = response.strip()
 
         response_position = ValvePosition.from_input(response)
 
-        field_dict = {
+        field_dict: typing.Dict[str, typing.Union[str, int]] = {
             'valve_position': response_position.value
         }
 

@@ -22,7 +22,7 @@ class BoundMetadataCall(object):
         
         self.parent = parent
         self.kwargs = kwargs
-        # noinspection PyUnresolvedReferences
+
         self.partial = functools.partial(self.parent.method.__get__(target, target.__class__), **kwargs)
 
     def __call__(self, **kwargs):
@@ -50,8 +50,6 @@ class BoundMetadataCall(object):
     def __str__(self) -> str:
         kwargs = [f"{arg}={value!s}" for arg, value in self.kwargs.items()]
 
-        # FIXME Bad type hints
-        # noinspection PyUnresolvedReferences
         return f"{self.parent.description}: {', '.join(kwargs)}"
 
     def __repr__(self):
@@ -63,13 +61,15 @@ class BoundMetadataCall(object):
 class Metadata(metaclass=abc.ABCMeta):
     """  """
 
-    def __init__(self, method: typing.Callable, primary_key: typing.Optional[typing.List[str]] = None):
+    def __init__(self, method: typing.Callable, description: typing.Optional[str],
+                 primary_key: typing.Optional[typing.List[str]] = None):
         """
 
         :param method:
         :param primary_key
         """
         self.method = method
+        self.description = description
         self.signature = inspect.signature(method)
         self.primary_key = primary_key or tuple(self.signature.parameters)[1:]
 
@@ -92,14 +92,14 @@ TYPE_METADATA = typing.TypeVar('TYPE_METADATA', bound=Metadata)
 class OrderedMetadata(Metadata):
     """  """
 
-    def __init__(self, method: typing.Callable, order: int, primary_key: typing.Optional[typing.List[str]] = None):
+    def __init__(self, method: typing.Callable, description: str, order: int, primary_key: typing.Optional[typing.List[str]] = None):
         """
 
         :param method:
         :param order:
         :param primary_key:
         """
-        super(OrderedMetadata, self).__init__(method, primary_key)
+        super(OrderedMetadata, self).__init__(method, description, primary_key)
         
         self.order = order
 
@@ -117,10 +117,9 @@ def get_metadata(target: typing.Any, class_filter: typing.Optional[typing.Type[T
     :param class_filter:
     :return:
     """
-    if class_filter is None:
-        class_filter = Metadata
+    class_filter_cls = class_filter or Metadata
 
-    metadata_list: typing.Dict[str, Metadata] = {}
+    metadata_dict: typing.Dict[str, TYPE_METADATA] = {}
 
     for attrib_name in dir(target):
         attrib = getattr(target, attrib_name)
@@ -132,16 +131,21 @@ def get_metadata(target: typing.Any, class_filter: typing.Optional[typing.Type[T
         metadata = attrib.metadata
 
         # Check against class filter
-        if isinstance(metadata, class_filter):
-            metadata = typing.cast(Metadata, metadata)
-            metadata_list[attrib_name] = metadata
+        if isinstance(metadata, class_filter_cls):
+            metadata = typing.cast(TYPE_METADATA, metadata)
+            metadata_dict[attrib_name] = metadata
 
     # If ordered metadata then return ordered dict
-    if all((isinstance(x, OrderedMetadata) for x in metadata_list.values())):
+    if all((isinstance(x, OrderedMetadata) for x in metadata_dict.values())):
         # noinspection PyTypeChecker
-        return collections.OrderedDict(sorted(metadata_list.items(), key=lambda x: x[1]))
+        return collections.OrderedDict(
+            sorted(
+                metadata_dict.items(),
+                key=lambda x: x[1]  # type: ignore
+            )
+        )
 
-    return metadata_list
+    return metadata_dict
 
 
 def register_metadata(metadata_factory: typing.Callable[..., Metadata], *metadata_args,

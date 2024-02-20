@@ -8,17 +8,17 @@ class HardwareEnum(Enum):
     """ An enum base class useful for VISA fields with a fixes number of valid values. """
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[typing.Any]]]:
+    def _get_alias_map(cls: typing.Type[TYPE_ENUM]) -> typing.Dict[TYPE_ENUM, typing.List[typing.Any]]:
         """ Get a mapping of VISAEnums to string aliases that might be used for recognition.
 
         Implementation of this method is optional.
 
         :return: dict
         """
-        return None
+        raise NotImplementedError()
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_description_map(cls: typing.Type[TYPE_ENUM]) -> typing.Dict[TYPE_ENUM, str]:
         """ Get a mapping of VISAEnums to description strings.
 
         :return: dict
@@ -46,14 +46,14 @@ class HardwareEnum(Enum):
         return None
 
     @classmethod
-    def _get_tag_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.Any]]:
+    def _get_tag_map(cls: typing.Type[TYPE_ENUM]) -> typing.Dict[TYPE_ENUM, typing.Any]:
         """ Get a mapping of VISAEnums to tag values.
 
         Implementation of this method is optional.
 
         :return: dict
         """
-        return None
+        return {}
 
     @property
     def tag_value(self) -> typing.Any:
@@ -66,7 +66,7 @@ class HardwareEnum(Enum):
         return tag_map[self]
 
     @classmethod
-    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_command_map(cls: typing.Type[TYPE_ENUM]) -> typing.Dict[TYPE_ENUM, str]:
         """ Get a mapping of VISAEnums to tag VISA strings. This is used for conversion to str in VISA calls and vice
         versa.
 
@@ -85,22 +85,22 @@ class HardwareEnum(Enum):
         return visa_map[self]
 
     @classmethod
-    def from_input(cls, x: typing.Any, allow_direct: bool = False, allow_alias: bool = True,
-                   allow_visa: bool = True) -> HardwareEnum:
-        """ Cast from string to VISAEnum.
+    def from_input(cls: typing.Type[TYPE_ENUM], x: typing.Any, allow_direct: bool = False,
+                   allow_alias: bool = True, allow_visa: bool = True) -> TYPE_ENUM:
+        """ Cast from string to HardwareEnum.
 
         :param x: str input
         :param allow_direct: if True then direct conversion will be attempted (defaults to False)
         :param allow_alias: if True then conversion from alias will be attempted (defaults to True)
         :param allow_visa: if True then conversion from VISA string will be attempted (defaults to True)
-        :return: VISAEnum
+        :return: HardwareEnum
         :raises ValueError: when no match is found
         """
         # Ignore existing enums
-        if isinstance(x, HardwareEnum):
+        if isinstance(x, cls):
             return x
 
-        if type(x) is bytes:
+        if isinstance(x, bytes):
             x = x.decode()
 
         if allow_direct:
@@ -109,8 +109,8 @@ class HardwareEnum(Enum):
             except KeyError:
                 pass
 
-        if type(x) is str:
-            x = x.strip()
+        if isinstance(x, str):
+            x = x.strip().lower()
 
             try:
                 x = int(x)
@@ -118,26 +118,23 @@ class HardwareEnum(Enum):
                 pass
 
         if allow_alias:
-            # Test alias map if it exists
-            alias_map = cls._get_alias_map()
-
-            if type(x) is str:
-                x = x.lower()
-
-            if alias_map is not None:
-                for key, value in alias_map.items():
-                    if x in value:
-                        return key
+            try:
+                for alias_key, alias_value in cls._get_alias_map().items():
+                    if x in alias_value:
+                        return alias_key
+            except NotImplementedError:
+                pass
 
         if allow_visa:
-            # Test against VISA strings
-            visa_map = cls._get_command_map()
+            try:
+                # Test against VISA strings
+                for cmd_key, cmd_value in cls._get_command_map().items():
+                    if x == cmd_value.lower():
+                        return cmd_key
+            except NotImplementedError:
+                pass
 
-            for key, value in visa_map.items():
-                if x == value.lower():
-                    return key
-
-        raise ValueError(f"Unknown VISAEnum string {x}")
+        raise ValueError(f"Unknown {cls.__name__} string {x}")
 
     def __str__(self):
         return self.description

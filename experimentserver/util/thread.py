@@ -80,7 +80,8 @@ class ThreadLock(Logged):
             return False
 
     @contextlib.contextmanager
-    def lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) -> int:
+    def lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) \
+            -> typing.Generator[int, None, None]:
         # Get lock
         self.logger().lock(f"Getting lock for {origin}")
         self.acquire(timeout, quiet)
@@ -146,6 +147,9 @@ class ManagedThread(LoggedAbstract):
         self._thread_daemon = thread_daemon
 
         # Thread exception handling
+        if exception_threshold is None != exception_timeout is None:
+            raise ValueError('exception_threshold and exception_timeout must both be None or provide values')
+
         self._exception_threshold = exception_threshold
         self._exception_timeout = exception_timeout
 
@@ -228,7 +232,7 @@ class ManagedThread(LoggedAbstract):
             else:
                 cls.logger().debug(f"Thread {instance._thread_name} is already stopped")
 
-    def __thread_target_wrapper(self) -> typing.NoReturn:
+    def __thread_target_wrapper(self) -> None:
         self.logger().info('Thread started')
 
         exception_count = 0
@@ -259,6 +263,8 @@ class ManagedThread(LoggedAbstract):
                     self._handle_thread_exception(exc)
 
                     if self._exception_threshold is not None:
+                        assert self._exception_timeout is not None
+
                         # Handle exception threshold
                         exception_count += 1
 
@@ -275,7 +281,7 @@ class ManagedThread(LoggedAbstract):
 
                             self.logger().error('Thread halted')
 
-                            return
+                            raise
                     else:
                         self.logger().exception('Unhandled application exception in thread')
                 except Exception:
@@ -368,7 +374,7 @@ class QueueThread(ManagedThread):
         self._event_callback_kwargs = event_callback_kwargs or {}
 
         # Queue for command objects
-        self._queue = queue.PriorityQueue()
+        self._queue: queue.PriorityQueue[_QueueEntry] = queue.PriorityQueue()
 
         # Thread stop flag
         self._thread_stop = False

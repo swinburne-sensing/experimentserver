@@ -299,7 +299,7 @@ class LinkamSDK(Logged):
         result = self._sdk_process_message(message, ('vPtr', buffer), ('vUint32', buffer_length),
                                            comm_handle=comm_handle)
 
-        if type(result) is bool and not result:
+        if isinstance(result, bool) and not result:
             raise LinkamSDKError(f"Unable to read response to message {message!s}")
 
         return buffer.value.decode().strip()

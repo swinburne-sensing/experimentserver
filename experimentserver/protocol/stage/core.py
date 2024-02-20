@@ -17,7 +17,7 @@ class Delay(BaseStage):
         self._delay_interval: timedelta = parse_timedelta(interval)
         self._delay_sync_minute = sync_minute
 
-        metadata = metadata or {}
+        metadata = dict(metadata or {})
 
         metadata.update({
             'delay_interval': self._delay_interval
@@ -45,7 +45,7 @@ class Delay(BaseStage):
         else:
             return timedelta()
 
-    def get_stage_summary(self) -> typing.MutableSequence[typing.Union[str, typing.MutableSequence[str]]]:
+    def get_stage_summary(self) -> typing.List[typing.Union[str, typing.List[str]]]:
         summary = super(Delay, self).get_stage_summary()
 
         summary.append(f"Delay for {self._delay_interval} ({self._delay_interval.total_seconds()} seconds)")
@@ -56,6 +56,7 @@ class Delay(BaseStage):
         super(Delay, self).stage_enter()
 
         # Calculate exit timestamp
+        assert self._stage_enter_timestamp is not None
         self._delay_exit_timestamp = self._stage_enter_timestamp + self._delay_interval
 
         self._sync_delay_exit_timestamp()
@@ -99,6 +100,8 @@ class Delay(BaseStage):
         return stage
 
     def _sync_delay_exit_timestamp(self, offset: typing.Optional[timedelta] = None):
+        assert self._delay_exit_timestamp is not None
+
         if offset is not None:
             self._delay_exit_timestamp += offset
 

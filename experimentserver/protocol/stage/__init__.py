@@ -99,15 +99,17 @@ class BaseStage(LoggedAbstract):
         :return: compatible time type or None
         """
         # Indicate unknown duration
-        if self.get_stage_duration() is None:
+        duration = self.get_stage_duration()
+
+        if duration is None:
             return None
 
         # Indicate zero duration
-        if self.get_stage_duration().total_seconds() == 0:
+        if duration.total_seconds() == 0:
             return timedelta()
 
         if self._stage_enter_timestamp is not None:
-            remaining = self.get_stage_duration() - (now() - self._stage_enter_timestamp)
+            remaining = duration - (now() - self._stage_enter_timestamp)
 
             if remaining.total_seconds() > 0:
                 return remaining
@@ -116,37 +118,37 @@ class BaseStage(LoggedAbstract):
         else:
             return self.get_stage_duration()
 
-    def get_stage_summary(self) -> typing.MutableSequence[typing.Union[str, typing.MutableSequence[str]]]:
+    def get_stage_summary(self) -> typing.List[typing.Union[str, typing.List[str]]]:
         """ Get a string description (or multiple descriptions) of this stages behaviour.
 
         :return:
         """
-        lines = []
+        lines: typing.List[typing.Union[str, typing.List[str]]] = []
 
         for tag_key, tag_value in self._stage_metadata.items():
             lines.append(f"Add metadata \"{tag_key}\": \"{tag_value}\"")
 
         # If validated use bound commands
         if len(self._stage_hardware_parameters_bound) > 0:
-            for hardware_manager, hardware_parameters in self._stage_hardware_parameters_bound:
+            for hardware_manager, hardware_parameters_list in self._stage_hardware_parameters_bound:
                 hardware = hardware_manager.get_hardware()
 
                 lines.append(f"Configure {hardware.get_hardware_instance_description()}")
 
                 parameter_lines = []
 
-                for parameter_command in hardware_parameters:
+                for parameter_command in hardware_parameters_list:
                     parameter_lines.append(f"{parameter_command!s}")
 
                 lines.append(parameter_lines)
         else:
-            for hardware_identifier, hardware_parameters in self._stage_parameters.items():
+            for hardware_identifier, hardware_parameters_dict in self._stage_parameters.items():
                 lines.append(f"Configure {hardware_identifier}")
 
                 parameter_lines = []
 
-                for parameter_command, parameter_args in hardware_parameters.items():
-                    parameter_lines.append(f"{parameter_command}({parameter_args})")
+                for parameter_command_str, parameter_args in hardware_parameters_dict.items():
+                    parameter_lines.append(f"{parameter_command_str}({parameter_args})")
 
                 lines.append(parameter_lines)
 

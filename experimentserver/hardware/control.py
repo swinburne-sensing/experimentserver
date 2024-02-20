@@ -78,7 +78,7 @@ class HardwareTransition(ManagedTransition):
     PARAMETER = 'parameter'
 
     @classmethod
-    def get_transitions(cls) -> typing.List[typing.Dict[str, str]]:
+    def get_transitions(cls) -> typing.List[typing.Dict[str, typing.Union[str, typing.Sequence[str]]]]:
         return [
             # Connect
             {

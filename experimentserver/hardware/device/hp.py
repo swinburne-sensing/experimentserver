@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import enum
 import re
 import typing
@@ -29,7 +31,7 @@ class HPMultimeterFunction(HardwareEnum):
     PERIOD = enum.auto()
 
     @classmethod
-    def _get_alias_map(cls) -> typing.Optional[typing.Dict[HardwareEnum, typing.List[str]]]:
+    def _get_alias_map(cls) -> typing.Dict[HPMultimeterFunction, typing.List[typing.Any]]:
         return {
             cls.VOLTAGE_DC: ['v', 'volt', 'volts', 'voltage'],
             cls.CURRENT_DC: ['a', 'i', 'amp', 'amps', 'amperage'],
@@ -38,7 +40,7 @@ class HPMultimeterFunction(HardwareEnum):
         }
 
     @classmethod
-    def _get_description_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_description_map(cls) -> typing.Dict[HPMultimeterFunction, str]:
         return {
             cls.VOLTAGE_DC: 'Voltage DC',
             cls.VOLTAGE_AC: 'Voltage AC',
@@ -52,7 +54,7 @@ class HPMultimeterFunction(HardwareEnum):
         }
 
     @classmethod
-    def _get_command_map(cls) -> typing.Dict[HardwareEnum, str]:
+    def _get_command_map(cls) -> typing.Dict[HPMultimeterFunction, str]:
         return {
             cls.VOLTAGE_DC: 'VOLT',
             cls.VOLTAGE_AC: 'VOLT:AC',

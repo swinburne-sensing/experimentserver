@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import threading
 from datetime import datetime
-from typing import Mapping, MutableMapping, Union
+from typing import Mapping, MutableMapping, Optional, Union
 
 import transitions
 import wrapt
@@ -37,16 +37,16 @@ class HardwareStateWrapper(wrapt.ObjectProxy):
             pass
 
 
-class HardwareManager(ManagedStateMachine):
+class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
     """ Hardware manager manager for asynchronous monitoring and control of Hardware objects. """
 
     # Limit the maximum repetition rate of the management thread when no measurements are made
     _MINIMUM_RUN_PERIOD = 1
 
     # Timeout for Hardware reset after errors occur
-    _TIMEOUT_RESET = 30
+    _TIMEOUT_RESET = 30.0
 
-    _WATCHDOG_RESET = 300
+    _WATCHDOG_RESET = 300.0
 
     # List of active hardware manager instances
     _MANAGER_LUT: MutableMapping[str, HardwareManager] = {}
@@ -65,7 +65,7 @@ class HardwareManager(ManagedStateMachine):
                                      HardwareTransition, HardwareState.DISCONNECTED)
 
         # Reset timeout and target state to restore
-        self._reset_time = None
+        self._reset_time: Optional[float] = None
         self._reset_state = HardwareState.DISCONNECTED
 
         # Watchdog
@@ -153,7 +153,7 @@ class HardwareManager(ManagedStateMachine):
                 # Finally reset to clear error state
                 HardwareTransition.RESET.apply(self._hardware)
 
-    def _handle_transition_exception(self, initial_state: TYPE_STATE, transition: TYPE_TRANSITION, exc: Exception):
+    def _handle_transition_exception(self, initial_state: HardwareState, transition: HardwareTransition, exc: Exception):
         super()._handle_transition_exception(initial_state, transition, exc)
 
         # Transition to error state if hardware reported error during transition

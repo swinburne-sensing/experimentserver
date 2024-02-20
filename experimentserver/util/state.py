@@ -40,7 +40,7 @@ class ManagedTransition(enum.Enum):
 
     @classmethod
     @abc.abstractmethod
-    def get_transitions(cls) -> typing.List[typing.Dict[str, str]]:
+    def get_transitions(cls) -> typing.List[typing.Dict[str, typing.Union[str, typing.Sequence[str]]]]:
         """
 
         :return:
@@ -48,12 +48,21 @@ class ManagedTransition(enum.Enum):
         raise NotImplementedError()
 
 
-class ManagedStateMachine(CallbackThread):
+# Type hinting definitions
+TYPE_STATE = typing.TypeVar('TYPE_STATE', bound=ManagedState)
+TYPE_TRANSITION = typing.TypeVar('TYPE_TRANSITION', bound=ManagedTransition)
+
+
+class _SupportsState(typing.Protocol, typing.Generic[TYPE_STATE]):
+    state: TYPE_STATE
+
+
+class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackThread):
     """  """
 
-    def __init__(self, name: typing.Optional[str], model: object, state_type: typing.Type[TYPE_STATE],
-                 transition_type: typing.Type[TYPE_TRANSITION], initial_state: TYPE_STATE,
-                 queued_transitions: bool = False):
+    def __init__(self, name: typing.Optional[str], model: _SupportsState[TYPE_STATE],
+                 state_type: typing.Type[TYPE_STATE], transition_type: typing.Type[TYPE_TRANSITION],
+                 initial_state: TYPE_STATE, queued_transitions: bool = False):
         """
 
         :param model:
@@ -76,7 +85,13 @@ class ManagedStateMachine(CallbackThread):
         self._state_hold = False
 
         # Queue for pending transitions
-        self._transition_pending_queue: typing.List[typing.Tuple[TYPE_TRANSITION, typing.Sequence, typing.Mapping]] = []
+        self._transition_pending_queue: typing.List[
+            typing.Tuple[
+                TYPE_TRANSITION,
+                typing.Tuple[typing.Any, ...],
+                typing.Dict[str, typing.Any]
+            ]
+        ] = []
 
         # Queue for resulting errors
         self._transition_error_queue: typing.List[Exception] = []
@@ -87,8 +102,6 @@ class ManagedStateMachine(CallbackThread):
                                             initial=initial_state.value, send_event=True, queued=queued_transitions)
 
     def _get_state(self) -> TYPE_STATE:
-        # FIXME Bad type hints
-        # noinspection PyUnresolvedReferences
         return self._state_type(self._model.state)
 
     def get_state(self, timeout: typing.Optional[float] = None) -> TYPE_STATE:
@@ -112,19 +125,24 @@ class ManagedStateMachine(CallbackThread):
 
             if len(self._transition_error_queue) > 0:
                 # Empty exception queue then raise exception
-                exc = self._transition_error_queue.copy()
+                exc_list = self._transition_error_queue.copy()
                 self._transition_error_queue.clear()
 
-                if len(exc) == 1:
-                    exc = exc[0]
+                if len(exc_list) == 1:
+                    if raise_exception:
+                        raise exc_list[0]
+                    else:
+                        return exc_list[0]
                 else:
-                    exc = experimentserver.MultipleException('Multiple exceptions thrown while processing manager '
-                                                             'transition', exc)
+                    multi_exc = experimentserver.MultipleException(
+                        'Multiple exceptions thrown while processing manager transition',
+                        exc_list
+                    )
 
-                if raise_exception:
-                    raise exc
-                else:
-                    return exc
+                    if raise_exception:
+                        raise multi_exc
+                    else:
+                        return multi_exc
 
         return None
 
@@ -147,13 +165,13 @@ class ManagedStateMachine(CallbackThread):
             # Clear hold
             self._state_hold = False
 
-    def set_queue_transition_hold(self, flag: bool):
+    def set_queue_transition_hold(self, flag: bool) -> None:
         with self._state_lock:
             self._state_hold = flag
 
-    def queue_transition(self, transition: TYPE_TRANSITION, *args, block: bool = True,
-                         timeout: typing.Optional[float] = None, raise_exception: bool = True, **kwargs) \
-            -> typing.Optional[TYPE_STATE]:
+    def queue_transition(self, transition: TYPE_TRANSITION, *args: typing.Any, block: bool = True,
+                         timeout: typing.Optional[float] = None, raise_exception: bool = True, **kwargs: typing.Any) \
+            -> typing.Optional[ManagedState]:
         """ Queue transition for manager machine.
 
         :param transition:
@@ -184,7 +202,8 @@ class ManagedStateMachine(CallbackThread):
         """ Thread code for handling machine state. No locks are held upon entry! """
         pass
 
-    def _handle_transition_exception(self, initial_state: TYPE_STATE, transition: TYPE_TRANSITION, exc: Exception):
+    def _handle_transition_exception(self, initial_state: TYPE_STATE, transition: TYPE_TRANSITION, exc: Exception) \
+            -> None:
         self._transition_error_queue.append(exc)
 
         # Clear pending transitions
@@ -192,7 +211,7 @@ class ManagedStateMachine(CallbackThread):
             (queued_transition, _, _) = self._transition_pending_queue.pop(0)
             self.logger().warning(f"Discarding pending transition {queued_transition.value}")
 
-    def _process_transition(self) -> typing.Tuple[bool, ManagedState]:
+    def _process_transition(self) -> typing.Tuple[bool, TYPE_STATE]:
         """ Handle pending transitions.
 
         :return: tuple containing True when state has changed, false otherwise; and current state
@@ -214,9 +233,9 @@ class ManagedStateMachine(CallbackThread):
                     while len(self._transition_pending_queue) > 0:
                         # Get pending transition
                         (queued_transition, queued_args, queued_kwargs) = self._transition_pending_queue.pop(0)
-                        queued_args = queued_args or []
+                        queued_args = queued_args
                         queued_args_str = ', '.join(map(str, queued_args))
-                        queued_kwargs = queued_kwargs or {}
+                        queued_kwargs = queued_kwargs
                         queued_kwargs_str = ', '.join((f"{k}={v}" for k, v in queued_kwargs.items()))
 
                         self.logger().info(f"Performing transition {queued_transition.value} from {state.value} "
@@ -251,8 +270,3 @@ class ManagedStateMachine(CallbackThread):
                     self._state_lock.notify_all()
 
             return state_change, state
-
-
-# Type hinting definitions
-TYPE_STATE = typing.TypeVar('TYPE_STATE', bound=ManagedState)
-TYPE_TRANSITION = typing.TypeVar('TYPE_TRANSITION', bound=ManagedTransition)
