@@ -105,13 +105,17 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
         """ Force hardware to disconnected state regardless of current state. """
         # Get current state
         with self._state_lock:
-            self.logger().warning('Forcing disconnect')
-
             # Clear pending transitions
             self.clear_transition()
 
             # Check current state
             hardware_state = self._get_state()
+
+            if hardware_state == HardwareState.DISCONNECTED:
+                self.logger().debug('Already disconnected disconnect')
+                return
+            
+            self.logger().warning('Forcing disconnect')
 
             try:
                 with self._hardware.hardware_lock('force_disconnect'):
@@ -153,6 +157,26 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
                 # Finally reset to clear error state
                 HardwareTransition.RESET.apply(self._hardware)
 
+    def quick_start(self, connect: bool = True, configure: bool = True, start: bool = True):
+        if connect:
+            self.queue_transition(HardwareTransition.CONNECT)
+
+        if configure:
+            self.queue_transition(HardwareTransition.CONFIGURE)
+
+        if start:
+            self.queue_transition(HardwareTransition.START)
+
+    def quick_stop(self, stop: bool = True, cleanup: bool = True, disconnect: bool = True):
+        if stop:
+            self.queue_transition(HardwareTransition.STOP)
+
+        if cleanup:
+            self.queue_transition(HardwareTransition.CLEANUP)
+
+        if disconnect:
+            self.queue_transition(HardwareTransition.DISCONNECT)
+    
     def _handle_transition_exception(self, initial_state: HardwareState, transition: HardwareTransition, exc: Exception):
         super()._handle_transition_exception(initial_state, transition, exc)
 
