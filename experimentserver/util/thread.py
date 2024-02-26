@@ -1,12 +1,16 @@
 from __future__ import annotations
 import abc
+import atexit
 import contextlib
 import enum
 import queue
 import _thread
+import sys
 import threading
 import time
+import traceback
 import typing
+from io import StringIO
 
 from experimentlib.logging.classes import LoggedAbstract, Logged
 
@@ -38,7 +42,8 @@ class ThreadLock(Logged):
 
         if not locked:
             if not quiet:
-                self.logger().lock('Waiting for lock')
+                with self._lock_origin_lock:
+                    self.logger().lock(f"Waiting for lock held by {self._lock_origin}")
 
             # Try again with timeout
             locked = self._lock.acquire(timeout=timeout)
@@ -55,15 +60,19 @@ class ThreadLock(Logged):
 
         return True
 
-    def release(self, quiet: bool = False):
+    def release(self, quiet: bool = False) -> None:
         self._depth -= 1
+
+        if self._depth == 0:
+            with self._lock_origin_lock:
+                self._lock_origin = None
 
         if not quiet:
             self.logger().lock(f"Lock {self._identifier} released (depth: {self._depth})")
 
         self._lock.release()
 
-    def is_held(self):
+    def is_held(self) -> bool:
         # Attempt non-blocking call to get lock
         locked = self._lock.acquire(False)
 
@@ -214,6 +223,17 @@ class ManagedThread(LoggedAbstract):
                     cls.logger().debug(f"Ignoring daemon {instance._thread_name}")
                 else:
                     cls.logger().debug(f"Joining {instance._thread_name}")
+
+                    if instance._thread.ident is not None:
+                        try:
+                            str_io = StringIO()
+                            frame = sys._current_frames()[instance._thread.ident]
+                            traceback.print_stack(frame, file=str_io)
+
+                            cls.logger().debug(f"Thread traceback: {str_io.getvalue()!s}")
+                        except KeyError:
+                            cls.logger().debug(f"Couldn't get {instance._thread_name} trace")
+
                     instance._thread.join(timeout)
             else:
                 cls.logger().debug(f"Thread {instance._thread_name} is not running")
@@ -437,3 +457,6 @@ def stop_all(join: bool = True, timeout: typing.Optional[float] = None):
 
     if join:
         ManagedThread.join_all_thread(timeout)
+
+
+atexit.register(stop_all)
