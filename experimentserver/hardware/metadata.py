@@ -32,7 +32,14 @@ class _MeasurementMetadata(OrderedMetadata):
         """
         super().__init__(method, description, order)
 
-        return_annotation = inspect.signature(method).return_annotation
+        # return_annotation = inspect.signature(method).return_annotation
+        type_hints = typing.get_type_hints(method)
+
+        if 'return' not in type_hints:
+            raise MeasurementError(f"Registered measurement method {method!r} does not provide required return "
+                                   "annotation")
+
+        return_annotation = type_hints['return']
 
         if return_annotation != 'Measurement' and return_annotation != Measurement and \
                 return_annotation != T_MEASUREMENT_SEQUENCE and return_annotation != 'T_MEASUREMENT_SEQUENCE' and \
