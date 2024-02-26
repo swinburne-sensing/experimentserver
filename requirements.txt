@@ -1,6 +1,7 @@
 Flask>=2.0.2
 influxdb-client[ciso]>=1.21.0
 Jinja2>=3.0.1
+pandas~=2.2.0
 pint~=0.17
 pylinkam~=1.2.4
 pymodbus~=2.5.3

@@ -26,11 +26,7 @@ class DatabaseError(experimentserver.ApplicationException):
 class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
     _INFLUXDB_RETRY = urllib3.Retry()
 
-    _TAG_STR_SAFE = {int, GasProperties, Component, Mixture, Quantity}
-
-    _BASE_UNITS = {unit_abs, registry.sccm, registry.degC, registry.m, registry.V, registry.A, registry.W, registry.ohm,
-                   registry.F, registry.H, registry.Pa}
-    _PASS_UNITS = {registry.delta_degC / registry.min}
+    _TAG_STR_SAFE = {int, GasProperties, HardwareEnum, Component, Mixture, Quantity}
 
     def __init__(self, identifier: str, connect_args: typing.MutableMapping[str, typing.Any]):
         self._identifier = identifier
@@ -80,9 +76,6 @@ class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
 
                 # Use local time for tag value
                 tag_value = tag_value.astimezone(get_localzone()).isoformat()
-            elif isinstance(tag_value, HardwareEnum):
-                # Extract value
-                tag_value = str(tag_value.tag_value)
             elif any(isinstance(tag_value, t) for t in self._TAG_STR_SAFE):
                 # Known safe conversion to string
                 tag_value = str(tag_value)
