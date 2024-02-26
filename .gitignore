@@ -4,6 +4,8 @@
 *.lsk
 *.dll
 *.pdb
+*.csv
+*.json
 
 projects
 license.py
