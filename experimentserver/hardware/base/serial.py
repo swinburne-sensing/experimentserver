@@ -64,7 +64,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
 
 class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
     # Maximum bytes to request in a single read
-    _BLOCK_SIZE = 32
+    #_BLOCK_SIZE = 256
 
     # Maximum buffer length
     _BUFFER_MAX_LENGTH = 4096
@@ -127,7 +127,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
                     # noinspection PyUnresolvedReferences
                     if self._serial_port.in_waiting > 0:
                         # Read and append to buffer
-                        serial_buffer.extend(self._serial_port.read(self._BLOCK_SIZE))
+                        serial_buffer.extend(self._serial_port.read(self._serial_port.in_waiting))
             except serial.SerialException as exc:
                 raise CommunicationError('Error reading from serial port') from exc
 
