@@ -2,14 +2,6 @@
 ---
 version: 1
 disable_existing_loggers: False
-objects:
-  pushover_queue:
-    class: queue.Queue
-    maxsize: 32
-
-filters:
-  notify_filter:
-    (): experimentlib.logging.filters.only_notify_factory
 
 formatters:
   console_format:
@@ -23,7 +15,7 @@ handlers:
   stdout_handler:
     class: experimentlib.logging.handlers.console.ColoramaStreamHandler
     formatter: console_format
-    level: INFO
+    level: DEBUG
     stream: ext://sys.stdout
 
   debug_file_handler:
@@ -42,36 +34,10 @@ handlers:
     filename: !format "{root_path}/log/run_{datetime}.log"
     encoding: "utf-8"
 
-  database_handler:
-    class: experimentlib.logging.handlers.db.InfluxDBHandler
-    name: !format "{app_name}"
-    level: INFO
-    client_args:
-      url: !env INFLUXDB_V2_URL http://localhost:8086
-      token: !env INFLUXDB_V2_TOKEN token
-      org: !env INFLUXDB_V2_ORG org
-    bucket:
-      INFO: !env INFLUXDB_V2_BUCKET log
-
-  pushover_handler:
-    class: experimentlib.logging.handlers.push.PushoverHandler
-    api_token: !env PUSHOVER_API_KEY
-    user_key: !env PUSHOVER_USER_KEY
-    title: !format "{app_name}"
-
-  pushover_queue_handler:
-    class: experimentlib.logging.handlers.QueueListenerHandler
-    queue: cfg://objects.pushover_queue
-    level: INFO
-    filters:
-      - notify_filter
-    handlers:
-      - cfg://handlers.pushover_handler
-
 loggers:
   root:
     level: NOTSET
-    handlers: [stdout_handler, debug_file_handler, instance_file_handler, database_handler, pushover_queue_handler]
+    handlers: [stdout_handler, debug_file_handler, instance_file_handler]
 
   # Silence some built-in loggers
   urllib3:
@@ -81,8 +47,6 @@ loggers:
   pyvisa:
     level: INFO
   transitions.core:
-    level: WARNING
+    level: INFO
   pymodbus:
     level: INFO
-  werkzeug:
-    lavel: WARNING

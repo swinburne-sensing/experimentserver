@@ -1,16 +1,16 @@
 %YAML 1.2
 ---
-logging: !include logging.yaml
+logging: !include logging_no-db.yaml
 
 url:
   grafana: !env GRAFANA_URL
 
 database:
   default:
-    url: !envreq INFLUXDB_V2_URL
-    org: !envreq INFLUXDB_V2_ORG
-    token: !envreq INFLUXDB_V2_TOKEN
-    bucket: !envreq INFLUXDB_V2_BUCKET
+    url: !env INFLUXDB_V2_URL http://localhost:8086
+    org: !env INFLUXDB_V2_ORG org
+    token: !env INFLUXDB_V2_TOKEN token
+    bucket: !env INFLUXDB_V2_BUCKET data
 
 hardware: !include '{config_path}/hardware.yaml;C:/GasSensing/config/hardware.yaml'
 
