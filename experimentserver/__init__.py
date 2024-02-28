@@ -11,7 +11,7 @@ import typing
 
 
 __app_name__ = 'experimentserver'
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 __author__ = 'Chris Harrison'
 __credits__ = ['Chris Harrison']
