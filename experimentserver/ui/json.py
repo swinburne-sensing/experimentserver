@@ -4,7 +4,6 @@ import typing
 from datetime import datetime
 
 import flask
-import jinja2
 import transitions
 import yaml
 from experimentlib.util.constant import FORMAT_TIMESTAMP_CONSOLE, FORMAT_TIMESTAMP_FILENAME
@@ -246,24 +245,13 @@ def register_json(ui: WebServer):
         ui.logger().info(f"Uploaded content:\n{procedure_file_content}")
 
         if file_ext.lower() == '.j2':
-            template_env = jinja2.Environment(
-                loader=jinja2.loaders.DictLoader({}),
-                autoescape=jinja2.select_autoescape()
-            )
-
-            procedure_file_template = template_env.from_string(
-                procedure_file_content,
-                {
-                    'hex_str': hex_str
-                }
-            )
-
-            procedure_file_content = procedure_file_template.render()
-
+            procedure_file_content = Procedure.render_template(procedure_file_content)
             ui.logger().info(f"Rendered content:\n{procedure_file_content}")
 
         procedure_store_filename = os.path.join(
-            experimentserver.CONFIG_PATH, f"procedure_upload_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml")
+            experimentserver.CONFIG_PATH, 
+            f"procedure_upload_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.yaml"
+        )
 
         with open(procedure_store_filename, 'w', encoding='utf-8') as procedure_store_file:
             procedure_store_file.write(procedure_file_content)

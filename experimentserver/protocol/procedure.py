@@ -3,6 +3,7 @@ import time
 import typing
 from datetime import timedelta
 
+import jinja2
 import transitions
 import yaml
 from experimentlib.data import unit
@@ -13,7 +14,7 @@ from experimentlib.util.time import now
 
 from experimentserver import ApplicationException
 from experimentserver.protocol.control import ProcedureState, ProcedureTransition
-from .file import YAMLProcedureLoader, HEADER
+from .file import YAMLProcedureLoader
 from .stage import BaseStage, TYPE_STAGE
 from experimentserver.config import ConfigManager, ConfigNode
 from experimentserver.hardware.control import HardwareState, HardwareTransition
@@ -470,6 +471,22 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             hardware_manager.force_disconnect()
 
         self._procedure_hardware_managers = {}
+    
+    @staticmethod
+    def render_template(template_content: str) -> str:
+        template_env = jinja2.Environment(
+            loader=jinja2.loaders.DictLoader({}),
+            autoescape=jinja2.select_autoescape()
+        )
+
+        procedure_file_template = template_env.from_string(
+            template_content,
+            {
+                'hex_str': hex_str
+            }
+        )
+
+        return procedure_file_template.render()
 
     # Import/export
     @classmethod
@@ -552,38 +569,42 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
                 # Handle running state
                 if current_state == ProcedureState.RUNNING:
-                    assert self._procedure_stage_current is not None
+                    if self._procedure_stage_current is not None:
+                        # Get current stage
+                        current_stage = self._procedure_stages[self._procedure_stage_current]
 
-                    # Get current stage
-                    current_stage = self._procedure_stages[self._procedure_stage_current]
+                        # Run and check for completion
+                        self._procedure_stage_advance |= not current_stage.stage_run()
 
-                    # Run and check for completion
-                    self._procedure_stage_advance |= not current_stage.stage_run()
+                        if self._procedure_stage_advance:
+                            # Exit current stage
+                            current_stage.stage_exit()
 
-                    if self._procedure_stage_advance:
-                        # Exit current stage
-                        current_stage.stage_exit()
+                            # Check for completion
+                            if self._procedure_stage_next is None:
+                                ProcedureTransition.STOP.apply(self)
+                                return
+                            else:
+                                self._procedure_stage_current = self._procedure_stage_next
 
-                        # Check for completion
-                        if self._procedure_stage_next is None:
-                            ProcedureTransition.STOP.apply(self)
-                        else:
-                            self._procedure_stage_current = self._procedure_stage_next
+                                # Enter next stage
+                                current_stage = self._procedure_stages[self._procedure_stage_current]
+                                current_stage.stage_enter()
 
-                            # Enter next stage
-                            current_stage = self._procedure_stages[self._procedure_stage_current]
-                            current_stage.stage_enter()
+                                # Update procedure metadata
+                                Measurement.add_global_tag('procedure_stage_index', self._procedure_stage_current)
 
-                            # Update procedure metadata
-                            Measurement.add_global_tag('procedure_stage_index', self._procedure_stage_current)
+                                # Update next stage
+                                self._procedure_stage_next += 1
 
-                            # Update next stage
-                            self._procedure_stage_next += 1
+                                if self._procedure_stage_next >= len(self._procedure_stages):
+                                    self._procedure_stage_next = None
 
-                            if self._procedure_stage_next >= len(self._procedure_stages):
-                                self._procedure_stage_next = None
-
-                        self._procedure_stage_advance = False
+                            self._procedure_stage_advance = False
+                    else:
+                        self.logger().warning('No current stage')
+                        ProcedureTransition.STOP.apply(self)
+                        return
             except (ProcedureLoadError, ProcedureRuntimeError):
                 self.logger().exception('Unhandled error in procedure')
 

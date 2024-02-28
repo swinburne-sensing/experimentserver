@@ -123,7 +123,12 @@ class WebServer(LoggedAbstract, MeasurementSource):
 
         if startup_procedure_path is not None:
             with open(startup_procedure_path, 'r') as startup_procedure_file:
-                startup_procedure = Procedure.procedure_import(startup_procedure_file.read())
+                procedure_content = startup_procedure_file.read()
+
+                if startup_procedure_path.endswith('.j2'):
+                    procedure_content = Procedure.render_template(procedure_content)
+
+                startup_procedure = Procedure.procedure_import(procedure_content)
 
             self.set_procedure(startup_procedure)
 
