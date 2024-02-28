@@ -11,6 +11,7 @@ import threading
 import time
 import typing
 import sys
+from pathlib import Path
 
 from yaml import dump
 from experimentlib.file.git import get_git_hash, GitError
@@ -21,7 +22,7 @@ from experimentlib.util.time import now
 import experimentserver
 import experimentserver.util.thread
 from experimentserver.config import ConfigManager
-from experimentserver.measurement import Measurement, MeasurementTarget
+from experimentserver.measurement import CSVTarget, JSONTarget, Measurement, MeasurementTarget
 from experimentserver.database import setup_database
 from experimentserver.hardware import device
 from experimentserver.hardware.base.core import Hardware
@@ -45,7 +46,8 @@ def __exit_handler(exit_logger):
 
 
 def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str, str],
-         procedure_path: typing.Optional[str] = None) -> int:
+         procedure_path: typing.Optional[str], use_db: bool, csv_target: typing.Optional[Path], 
+         json_target: typing.Optional[Path]) -> int:
     """ Launch the experimentserver application.
 
     :param debug: if True application will launch in debug mode
@@ -133,20 +135,34 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
         # Add global metadata
         Measurement.add_global_tags(app_metadata)
 
-        # Setup database connections
-        for database_identifier, database_connect_args in app_config['database'].items():
-            # Strip empty values
-            database_connect_args = {k: v for k, v in database_connect_args.items() if v != ''}
+        if csv_target:
+            if csv_target.is_file():
+                raise experimentserver.ApplicationException('CSV path must be a directory')
 
-            root_logger.info(f"Database connection: {database_identifier} (args: {database_connect_args})")
-            setup_database(database_identifier, database_connect_args, debug)
+            csv_target.mkdir(parents=True, exist_ok=True)
 
-        # Setup database remapping
-        remap_config = app_config.get('remap', default={})
+            root_logger.info(f"Saving CSV measurements to {csv_target.absolute()}")
+            CSVTarget(csv_target.absolute())
 
-        if remap_config is not None:
-            for exporter_source, database_target in remap_config.items():
-                MeasurementTarget.measurement_target_remap(exporter_source, database_target)
+        if json_target:
+            root_logger.info(f"Saving JSON measurements to {json_target.absolute()}")
+            JSONTarget(json_target)
+
+        if use_db:
+            # Setup database connections
+            for database_identifier, database_connect_args in app_config['database'].items():
+                # Strip empty values
+                database_connect_args = {k: v for k, v in database_connect_args.items() if v != ''}
+
+                root_logger.info(f"Database connection: {database_identifier} (args: {database_connect_args})")
+                setup_database(database_identifier, database_connect_args, debug)
+
+            # Setup database remapping
+            remap_config = app_config.get('remap', default={})
+
+            if remap_config is not None:
+                for exporter_source, database_target in remap_config.items():
+                    MeasurementTarget.measurement_target_remap(exporter_source, database_target)
 
         app_metadata_string = '\n'.join((f"    {k!s}: {v!s}" for k, v in app_metadata.items()))
         root_logger.info(f"Startup\nGlobal metadata:\n{app_metadata_string}")
@@ -288,7 +304,10 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
 parser = argparse.ArgumentParser(description=f"{experimentserver.__app_name__} v{experimentserver.__version__}")
 
 parser.add_argument('config', default=[experimentserver.CONFIG_DEFAULT], help='YAML configuration file', nargs='*')
+parser.add_argument('--csv', dest='csv_target', help='Save measurements to CSV directory', metavar='PATH', type=Path)
 parser.add_argument('--debug', action='store_true', dest='debug', help='Enable debug mode')
+parser.add_argument('--json', dest='json_target', help='Save measurements to JSON file', metavar='FILENAME', type=Path)
+parser.add_argument('--no-db', action='store_false', dest='db', help='Disable database connections')
 parser.add_argument('-t', '--tag', action='append', dest='tag', help='Additional metadata ags (key=value)')
 
 parser.add_argument('-p', '--procedure', dest='procedure', help='Load and validate specified procedure on startup')
@@ -309,7 +328,17 @@ if app_args.tag is not None:
         app_tags[arg_tag_split[0]] = arg_tag_split[1]
 
 try:
-    exit(main(app_args.debug, app_args.config, app_tags, app_args.procedure))
+    exit(
+        main(
+            app_args.debug,
+            app_args.config,
+            app_tags,
+            app_args.procedure,
+            app_args.db,
+            app_args.csv_target,
+            app_args.json_target
+        )
+    )
 except Exception:
     raise
 finally:

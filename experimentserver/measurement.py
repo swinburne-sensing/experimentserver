@@ -11,6 +11,7 @@ import threading
 import typing
 from collections import defaultdict
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from experimentlib.util.constant import FORMAT_TIMESTAMP_FILENAME
 from experimentlib.data.humidity import unit_abs
@@ -416,11 +417,11 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
 class CSVTarget(LoggedAbstract, MeasurementTarget):
     _SLEEP_PERIOD = 1.0
 
-    def __init__(self, dir_path: str, write_period: float = 30.0):
+    def __init__(self, target_dir: Path, write_period: float = 30.0):
         LoggedAbstract.__init__(self)
         MeasurementTarget.__init__(self)
 
-        self._dir_path = dir_path
+        self._target_dir = target_dir
         self._write_period = write_period
 
         self._measurement_queue: queue.Queue[Measurement] = queue.Queue()
@@ -475,7 +476,7 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
             pass
 
         if len(write_buffer) > 0:
-            filename = os.path.join(self._dir_path, f"data_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.csv")
+            file_path = self._target_dir.joinpath(f"data_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.csv")
 
             # Create dataframe and write CSV
             df = pd.DataFrame.from_dict(write_buffer)
@@ -496,14 +497,14 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
                 ).total_seconds()
             )
 
-            df_grouped.to_csv(filename)
+            df_grouped.to_csv(file_path)
 
-            self.logger().info(f"Wrote {filename}")
+            self.logger().info(f"Wrote {file_path.absolute()!s}")
         
         time_resume = time.time() + self._write_period
         
         while not self._file_write_thread.thread_stop_requested() and time.time() < time_resume:
-            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer')
+            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer', quiet=True)
 
 
 class DummyTarget(LoggedAbstract, MeasurementTarget):
@@ -520,11 +521,11 @@ class DummyTarget(LoggedAbstract, MeasurementTarget):
 class JSONTarget(LoggedAbstract, MeasurementTarget):
     _SLEEP_PERIOD = 1.0
 
-    def __init__(self, file_path: str, write_period: float = 10.0):
+    def __init__(self, target_file: Path, write_period: float = 10.0):
         LoggedAbstract.__init__(self)
         MeasurementTarget.__init__(self)
 
-        self._file_path = os.path.abspath(file_path)
+        self._target_file = target_file
         self._write_period = write_period
 
         self._measurement_queue: queue.Queue[Measurement] = queue.Queue()
@@ -583,15 +584,15 @@ class JSONTarget(LoggedAbstract, MeasurementTarget):
             pass
 
         if len(write_buffer) > 0:
-            with open(self._file_path, 'a', encoding='utf8') as json_file:
-                json_file.writelines(line +'\n' for line in write_buffer)
+            with self._target_file.open('a', encoding='utf8') as target_file:
+                target_file.writelines(line +'\n' for line in write_buffer)
             
-            self.logger().debug(f"Wrote {len(write_buffer)} JSON objects to {self._file_path}")
+            self.logger().debug(f"Wrote {len(write_buffer)} JSON objects to {self._target_file.absolute()!s}")
         
         time_resume = time.time() + self._write_period
         
         while not self._file_write_thread.thread_stop_requested() and time.time() < time_resume:
-            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer')
+            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer', quiet=True)
 
 
 # Type hinting definitions for measurements
