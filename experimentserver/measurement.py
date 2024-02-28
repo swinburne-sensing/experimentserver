@@ -64,7 +64,7 @@ class Measurement(Logged):
     contain dynamic fields (calculated on initialisation) and inherit globally configured tags. Tags and dynamic fields
     are metadata which is held in a stack. The app_metadata stack may be pused to or pulled from as necessary. """
 
-    metadata_global_lock = threading.RLock()
+    metadata_global_lock = thread.ThreadLock('Measurement.metadata_global_lock', 5.0, True)
 
     _metadata_global_dynamic_fields: typing.MutableMapping[T_FIELD_NAME, T_DYNAMIC_FIELD] = {}
     _metadata_global_tags: typing.MutableMapping[T_TAG_NAME, T_TAG_VALUE] = {}
@@ -102,7 +102,7 @@ class Measurement(Logged):
 
         dynamic_fields = dict(dynamic_fields) if dynamic_fields is not None else {}
 
-        with self.metadata_global_lock:
+        with self.metadata_global_lock.lock('Measurement.__init__'):
             # Default to global tags
             self._tags.update(self._metadata_global_tags)
 
@@ -249,7 +249,7 @@ class Measurement(Logged):
         :param name:
         :param callback:
         """
-        with cls.metadata_global_lock:
+        with cls.metadata_global_lock.lock('Measurement.add_global_dynamic_field'):
             cls._metadata_global_dynamic_fields[name] = callback
 
             cls.logger().info(f"Registered global dynamic field {name} = {callback!r}")
@@ -261,7 +261,7 @@ class Measurement(Logged):
         :param tag:
         :param value:
         """
-        with cls.metadata_global_lock:
+        with cls.metadata_global_lock.lock('Measurement.add_global_tag'):
             cls._metadata_global_tags[tag] = value
 
             cls.logger().info(f"Registered global tag {tag} = {value!r}")
@@ -275,7 +275,7 @@ class Measurement(Logged):
         if len(tags) == 0:
             return
 
-        with cls.metadata_global_lock:
+        with cls.metadata_global_lock.lock('Measurement.add_global_tags'):
             cls._metadata_global_tags.update(tags)
 
             cls.logger().info(f"Registered global tags {tags!r}")
@@ -283,7 +283,7 @@ class Measurement(Logged):
     @classmethod
     def push_global_metadata(cls) -> None:
         """ Pop metadata stack (save current metadata). """
-        with cls.metadata_global_lock:
+        with cls.metadata_global_lock.lock('Measurement.push_global_metadata'):
             cls._metadata_global_metadata_stack.append((dict(cls._metadata_global_dynamic_fields),
                                                         dict(cls._metadata_global_tags)))
 
@@ -295,7 +295,7 @@ class Measurement(Logged):
         if len(cls._metadata_global_metadata_stack) > 0:
             return
 
-        with cls.metadata_global_lock:
+        with cls.metadata_global_lock.lock('Measurement.pop_global_metadata'):
             (cls._metadata_global_dynamic_fields, cls._metadata_global_tags) = cls._metadata_global_metadata_stack.pop()
 
             cls.logger().info(f"Popped global tag stack (depth: {len(cls._metadata_global_metadata_stack)})")
@@ -303,7 +303,7 @@ class Measurement(Logged):
     @classmethod
     def flush_global_metadata(cls) -> None:
         """ Clear metadata stack. """
-        with cls.metadata_global_lock:
+        with cls.metadata_global_lock.lock('Measurement.flush_global_metadata'):
             if len(cls._metadata_global_metadata_stack) > 0:
                 (cls._metadata_global_dynamic_fields,
                  cls._metadata_global_tags) = cls._metadata_global_metadata_stack.pop(0)

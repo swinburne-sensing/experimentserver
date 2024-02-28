@@ -288,7 +288,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             self._procedure_stage_next = None
 
         # Setup metadata
-        with Measurement.metadata_global_lock:
+        with Measurement.metadata_global_lock.lock('Procedure._procedure_validate'):
             Measurement.push_global_metadata()
 
             Measurement.add_global_tags({
@@ -361,7 +361,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             self.logger().debug(f"{hardware_identifier} ready")
 
         # Add procedure metadata
-        with Measurement.metadata_global_lock:
+        with Measurement.metadata_global_lock.lock('Procedure._procedure_start'):
             Measurement.add_global_tags({
                 'procedure_time': now(),
                 'procedure_stage_index': 0,
@@ -382,7 +382,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             initial_stage.stage_enter()
 
     def _procedure_pause(self, _: transitions.EventData):
-        with Measurement.metadata_global_lock:
+        with Measurement.metadata_global_lock.lock('Procedure._procedure_pause'):
             assert self._procedure_stage_current is not None
             current_stage = self._procedure_stages[self._procedure_stage_current]
             current_stage.stage_pause()
@@ -393,7 +393,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         self.logger().info(f"Procedure {self._procedure_uid} paused", event=True)
 
     def _procedure_resume(self, _: transitions.EventData):
-        with Measurement.metadata_global_lock:
+        with Measurement.metadata_global_lock.lock('Procedure._procedure_resume'):
             assert self._procedure_stage_current is not None
             current_stage = self._procedure_stages[self._procedure_stage_current]
             current_stage.stage_resume()
@@ -403,15 +403,18 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         self.logger().info(f"Procedure {self._procedure_uid} resumed", event=True)
 
     def _procedure_stop(self, _: transitions.EventData):
-        with Measurement.metadata_global_lock:
-            # Stop measurements and cleanup configured hardware
-            for hardware_manager in self._procedure_hardware_managers.values():
-                hardware_manager.force_disconnect()
-
-            self._procedure_hardware_managers = {}
+        with Measurement.metadata_global_lock.lock('Procedure._procedure_stop'):
+            # Clear current stage
+            self._procedure_stage_current = None
 
             # Restore metadata
             Measurement.flush_global_metadata()
+        
+        # Stop measurements and cleanup configured hardware
+        for hardware_manager in self._procedure_hardware_managers.values():
+            hardware_manager.force_disconnect()
+
+        self._procedure_hardware_managers = {}
 
         self.logger().info(f"Procedure {self._procedure_uid} stopped", event=True, notify=True)
 
