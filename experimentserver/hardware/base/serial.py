@@ -119,7 +119,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
 
         while not self._thread_serial_consumer.thread_stop_requested():
             try:
-                with self._serial_lock.lock('_thread_serial_consumer_callback'):
+                with self._serial_lock.lock('_thread_serial_consumer_callback', quiet=True):
                     # Break upon disconnection
                     if self._serial_port is None:
                         return
@@ -179,7 +179,7 @@ class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
 
     def _thread_payload_consumer_event(self, payload: typing.Optional[typing.Tuple[bytes, datetime]]) -> None:
         if payload is None:
-            self.logger().error('No payload')
+            self.logger().debug('Empty payload')
             return
 
         # Attempt to decode payload

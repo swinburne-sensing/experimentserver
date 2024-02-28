@@ -12,7 +12,7 @@ from .base.core import Hardware
 from .control import HardwareState, HardwareTransition
 from .error import HardwareError, HardwareIdentifierError, CommunicationError, CommandError, ExternalError, \
     NoResetHandler
-from experimentserver.util.state import ManagedStateMachine, TYPE_STATE, TYPE_TRANSITION
+from experimentserver.util.state import ManagedStateMachine
 from experimentserver.util.thread import LockTimeout
 
 
@@ -262,31 +262,32 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
             self._reset_state = current_state
 
         # If running then attempt to take measurement
-        if current_state.is_running():
-            with self._hardware.hardware_lock('_thread_manager'):
-                try:
-                    activity_flag |= self._hardware.produce_measurement()
-                except CommandError:
-                    self.logger().exception('Command error occurred while gathering measurements')
+        running_flag = current_state.is_running()
 
-                    # Transition to error state
-                    HardwareTransition.ERROR.apply(self._hardware)
-                except CommunicationError:
-                    self.logger().exception('Hardware communication error occurred while gathering measurements')
+        if running_flag:
+            try:
+                activity_flag |= self._hardware.produce_measurement()
+            except CommandError:
+                self.logger().exception('Command error occurred while gathering measurements')
 
-                    # Transition to error state
-                    HardwareTransition.ERROR.apply(self._hardware)
-                except ExternalError:
-                    self.logger().exception('Hardware reported error while gathering measurements')
+                # Transition to error state
+                HardwareTransition.ERROR.apply(self._hardware)
+            except CommunicationError:
+                self.logger().exception('Hardware communication error occurred while gathering measurements')
 
-                    # Transition to error state
-                    HardwareTransition.ERROR.apply(self._hardware)
-                except Exception:
-                    # Transition to error state
-                    HardwareTransition.ERROR.apply(self._hardware)
+                # Transition to error state
+                HardwareTransition.ERROR.apply(self._hardware)
+            except ExternalError:
+                self.logger().exception('Hardware reported error while gathering measurements')
 
-                    # Bump to main thread
-                    raise
+                # Transition to error state
+                HardwareTransition.ERROR.apply(self._hardware)
+            except Exception:
+                # Transition to error state
+                HardwareTransition.ERROR.apply(self._hardware)
+
+                # Bump to main thread
+                raise
 
         # Kick watchdog
         self._watchdog.set()
@@ -296,4 +297,4 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
             delta_time = time.time() - start_time
 
             if delta_time < self._MINIMUM_RUN_PERIOD:
-                time.sleep(self._MINIMUM_RUN_PERIOD - delta_time)
+                self.sleep(self._MINIMUM_RUN_PERIOD - delta_time, 'no measurement activity', quiet=True)

@@ -22,53 +22,68 @@ class LockTimeout(experimentserver.ApplicationException):
 
 
 class ThreadLock(Logged):
-    def __init__(self, identifier: str, timeout_default: float):
+    def __init__(self, identifier: str, timeout_default: float, quiet: bool = False):
         Logged.__init__(self, logger_instance_name=identifier)
 
         self._identifier = identifier
+        self._timeout_default = timeout_default
+        self._quiet = quiet
 
         self._depth = 0
-        self._timeout_default = timeout_default
         self._lock = threading.RLock()
 
-        self._lock_origin: typing.Optional[str] = None
+        self._lock_origin: typing.List[str] = []
         self._lock_origin_lock = threading.RLock()
 
-    def acquire(self, timeout: typing.Optional[float] = None, quiet: bool = False) -> bool:
+    def _get_origin(self) -> str:
+        with self._lock_origin_lock:
+            if len(self._lock_origin) == 0:
+                return '<unlocked>'
+
+            return ', '.join(self._lock_origin)
+
+    def acquire(self, timeout: typing.Optional[float] = None, origin: typing.Optional[str] = None,
+                quiet: typing.Optional[bool] = None) -> bool:
         timeout = timeout or self._timeout_default
+        origin = origin or '<unknown>'
+        if quiet is None:
+            quiet = self._quiet
 
         # Attempt non-blocking call to get lock
         locked = self._lock.acquire(False)
 
         if not locked:
             if not quiet:
-                with self._lock_origin_lock:
-                    self.logger().lock(f"Waiting for lock held by {self._lock_origin}")
+                self.logger().lock(f"Waiting for lock held by {self._get_origin()}")
 
             # Try again with timeout
             locked = self._lock.acquire(timeout=timeout)
 
             if not locked:
-                with self._lock_origin_lock:
-                    raise LockTimeout(f"Unable to acquire lock {self._identifier} before timeout, held by "
-                                      f"{self._lock_origin}")
+                raise LockTimeout(f"Unable to acquire lock {self._identifier} before timeout, held by "
+                                    f"{self._get_origin()}")
+        
+        with self._lock_origin_lock:
+            self._lock_origin.append(origin)
 
         self._depth += 1
 
         if not quiet:
-            self.logger().lock(f"Lock {self._identifier} acquired (depth: {self._depth})")
+            self.logger().lock(f"{self._identifier} locked by {origin} (depth: {self._depth})")
 
         return True
 
-    def release(self, quiet: bool = False) -> None:
+    def release(self, quiet: typing.Optional[bool] = None) -> None:
+        if quiet is None:
+            quiet = self._quiet
+
         self._depth -= 1
 
-        if self._depth == 0:
-            with self._lock_origin_lock:
-                self._lock_origin = None
+        with self._lock_origin_lock:
+            origin = self._lock_origin.pop()
 
         if not quiet:
-            self.logger().lock(f"Lock {self._identifier} released (depth: {self._depth})")
+            self.logger().lock(f"{self._identifier} released by {origin} (depth: {self._depth})")
 
         self._lock.release()
 
@@ -92,21 +107,12 @@ class ThreadLock(Logged):
     def lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) \
             -> typing.Generator[int, None, None]:
         # Get lock
-        self.logger().lock(f"Getting lock for {origin}")
-        self.acquire(timeout, quiet)
-
-        with self._lock_origin_lock:
-            self._lock_origin = origin
-
-        self.logger().lock(f"Got lock for {origin}")
+        self.acquire(timeout, origin, quiet)
 
         try:
             yield self._depth
         finally:
             self.release(quiet)
-
-            with self._lock_origin_lock:
-                self._lock_origin = None
 
 
 class ThreadException(experimentserver.ApplicationException):
@@ -193,7 +199,7 @@ class ManagedThread(LoggedAbstract):
         :param kwargs:
         :return:
         """
-        self.logger().warning('Managed thread stopping')
+        self.logger().info('Managed thread stopping')
 
     def thread_join(self, timeout: typing.Optional[float] = None):
         if self.is_thread_alive():

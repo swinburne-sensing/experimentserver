@@ -37,7 +37,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
     _HARDWARE_LUT_LOCK = threading.RLock()
 
     # Timeout to prevent deadlocks
-    _HARDWARE_LOCK_TIMEOUT = 60
+    _HARDWARE_LOCK_TIMEOUT = 30
 
     def __init__(self, identifier: str, parameters: typing.Optional[TYPE_PARAMETER_DICT] = None):
         """ Instantiate Hardware object.
@@ -268,12 +268,12 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         measurement_flag = False
 
+        if self._measurement_delay is not None:
+            self.sleep(self._measurement_delay, 'measurement rate limit')
+
         with self._enabled_measurement_lock:
             if self._enabled_measurement is None:
                 raise MeasurementError('Measurements have not been configured, hardware may be disconnected')
-
-            if self._measurement_delay is not None:
-                self.sleep(self._measurement_delay, 'measurement rate limit')
 
             # Get enabled measurements
             measurement_meta: typing.MutableMapping[str, _MeasurementMetadata] = self.get_hardware_measurement_metadata()
