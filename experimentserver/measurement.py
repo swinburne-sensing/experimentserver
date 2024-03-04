@@ -19,6 +19,7 @@ from experimentlib.data.unit import Quantity, dimensionless, registry
 from experimentlib.logging.classes import LoggedAbstract, Logged
 from experimentlib.util.time import now, get_localzone
 import pandas as pd
+import pint
 
 import experimentserver
 from experimentserver.hardware.base.enum import HardwareEnum
@@ -99,6 +100,15 @@ class Measurement(Logged):
         self._fields: typing.Dict[str, typing.Any] = dict(fields)
         self.timestamp = timestamp or now()
         self._tags: typing.Dict[str, typing.Any] = {}
+
+        # Fix/replace pint Quantities
+        for field_name, field_value in self._fields.items():
+            if isinstance(field_value, pint.Quantity):
+                self._fields[field_name] = Quantity(field_value.magnitude, field_value.units)
+
+        for tag_name, tag_value in self._tags.items():
+            if isinstance(tag_value, pint.Quantity):
+                self._tags[tag_name] = Quantity(tag_value.magnitude, field_value.units)
 
         dynamic_fields = dict(dynamic_fields) if dynamic_fields is not None else {}
 
@@ -233,6 +243,10 @@ class Measurement(Logged):
 
         raise ValueError(f"{item} not a valid field or tag")
 
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(source={self.source}, measurement_group={self.measurement_group}, " \
+               f"fields={self.get_fields()!r}, timestamp={self.timestamp}, tags={self.get_tags()})"
+
     def __str__(self) -> str:
         fields = {k: str(v) for k, v in self._fields.items()}
         tags = {k: str(v) for k, v in self._tags.items()}
@@ -279,6 +293,16 @@ class Measurement(Logged):
             cls._metadata_global_tags.update(tags)
 
             cls.logger().info(f"Registered global tags {tags!r}")
+    
+    @classmethod
+    def get_global_tags(cls) -> T_TAG_MAP:
+        """ TODO
+
+        :param tags:
+        """
+        with cls.metadata_global_lock.lock('Measurement.get_global_tags'):
+            return dict(cls._metadata_global_tags)
+
 
     @classmethod
     def push_global_metadata(cls) -> None:
@@ -439,7 +463,7 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
         self._measurement_queue.put(measurement)
     
     def _write_queue(self) -> None:
-        write_buffer = []
+        write_buffer = defaultdict(list)
 
         try:
             while True:
@@ -468,38 +492,42 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
                         row_dict['field_' + field_name] = field_value.magnitude
                     elif isinstance(field_value, timedelta):
                         row_dict['field_' + field_name] = field_value.total_seconds()
+                    elif isinstance(field_value, str):
+                        # Discard string fields
+                        pass
                     else:
                         row_dict['field_' + field_name] = field_value
 
-                write_buffer.append(row_dict)
+                write_buffer[measurement.source.get_export_source_name()].append(row_dict)
         except queue.Empty:
             pass
 
         if len(write_buffer) > 0:
-            file_path = self._target_dir.joinpath(f"data_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.csv")
+            for source_name, source_buffer in write_buffer.items():
+                file_path = self._target_dir.joinpath(f"{source_name}_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}.csv")
 
-            # Create dataframe and write CSV
-            df = pd.DataFrame.from_dict(write_buffer)
+                # Create dataframe and write CSV
+                df = pd.DataFrame.from_dict(source_buffer)
 
-            # Group rows into reasonable intervals
-            df_grouped = df.groupby(
-                [pd.Grouper(key='datetime', freq='1s')] + 
-                [c for c in df.columns if c.startswith('tag_')],
-                dropna=False
-            ).mean()
+                # Group rows into reasonable intervals
+                df_grouped = df.groupby(
+                    [pd.Grouper(key='datetime', freq='1s')] + 
+                    [c for c in df.columns if c.startswith('tag_')],
+                    dropna=False
+                ).mean()
 
-            # Add timestamp offset field
-            df_grouped.insert(
-                0,
-                'timestamp',
-                (
-                    df_grouped.index.get_level_values('datetime') - self._init_datetime
-                ).total_seconds()
-            )
+                # Add timestamp offset field
+                df_grouped.insert(
+                    0,
+                    'timestamp',
+                    (
+                        df_grouped.index.get_level_values('datetime') - self._init_datetime
+                    ).total_seconds()
+                )
 
-            df_grouped.to_csv(file_path)
+                df_grouped.to_csv(file_path)
 
-            self.logger().info(f"Wrote {file_path.absolute()!s}")
+                self.logger().info(f"Wrote {file_path.absolute()!s}")
         
         time_resume = time.time() + self._write_period
         
@@ -579,7 +607,7 @@ class JSONTarget(LoggedAbstract, MeasurementTarget):
 
                     write_buffer.append(json.dumps(measurement_dict))
                 except TypeError as exc:
-                    self.logger().error(f"Measurement {measurement!r} could not be serialized (error: {exc!s})")
+                    self.logger().error(f"Measurement {measurement!s} could not be serialized (error: {exc!s})")
         except queue.Empty:
             pass
 
