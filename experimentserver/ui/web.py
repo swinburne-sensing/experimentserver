@@ -116,7 +116,7 @@ class WebServer(LoggedAbstract, MeasurementSource):
     def run(self):
         self._thread.thread_start()
 
-        self.logger().info(f"{experimentserver.__app_name__} {experimentserver.__version__} ready", notify=True)
+        self.logger().info(f"OK! {experimentserver.__app_name__} {experimentserver.__version__} IS NOW READY!", notify=True)
 
         # Load startup procedure if specified
         startup_procedure_path = self._config.get('startup.procedure')

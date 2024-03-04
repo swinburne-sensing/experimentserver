@@ -141,7 +141,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
             while eol_index >= 0:
                 payload = bytes(serial_buffer[:eol_index])
 
-                self.logger().debug(f"Payload found: {payload!r}")
+                self.logger().comm(f"Payload found: {payload!r}")
 
                 # Place in consumer queue
                 try:
@@ -179,7 +179,7 @@ class SerialStringHardware(SerialStreamHardware, metaclass=abc.ABCMeta):
 
     def _thread_payload_consumer_event(self, payload: typing.Optional[typing.Tuple[bytes, datetime]]) -> None:
         if payload is None:
-            self.logger().debug('Empty payload')
+            self.logger().comm('Empty payload')
             return
 
         # Attempt to decode payload
