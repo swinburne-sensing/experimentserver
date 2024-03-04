@@ -15,7 +15,7 @@ from pathlib import Path
 
 from yaml import dump
 from experimentlib.file.git import get_git_hash, GitError
-from experimentlib.logging import basic_logging, get_logger, shutdown, DEBUG, INFO
+from experimentlib.logging import ExtendedLogger, basic_logging, get_logger, shutdown, DEBUG, INFO
 from experimentlib.util.classes import instance_from_dict
 from experimentlib.util.time import now
 
@@ -41,7 +41,7 @@ LOCK_FILENAME = './experimentserver.lock'
 REGEX_DATABASE_URL = re.compile(r'^http([s]?):\/\/([^:\/]+):?([0-9]*)(.*)$')
 
 
-def __exit_handler(exit_logger):
+def __exit_handler(exit_logger: ExtendedLogger) -> None:
     exit_logger.critical('Stopped abnormally', notify=True, event=True)
 
 

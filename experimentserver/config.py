@@ -32,18 +32,18 @@ class ConfigurationError(experimentserver.ApplicationException):
     pass
 
 
-class ConfigNode(collections.defaultdict):
+class ConfigNode(collections.defaultdict[str, typing.Any]):
     def __str__(self) -> str:
         return self.__class__.__name__ + '({' + ', '.join((f"{k!s}: {v!s}" for k, v in self.items())) + '})'
 
 
 class ConfigManager(object):
-    def __init__(self):
+    def __init__(self) -> None:
         self._config = self._create_node()
         self._config_lock = threading.RLock()
 
     @classmethod
-    def _dump_helper(cls, data) -> typing.Dict[str, typing.Any]:
+    def _dump_helper(cls, data: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any]:
         data_dict: typing.Dict[str, typing.Any] = {}
 
         for key, value in data.items():
@@ -84,7 +84,7 @@ class ConfigManager(object):
 
         self.update(content)
 
-    def update(self, content) -> None:
+    def update(self, content: typing.Dict[str, typing.Any]) -> None:
         """
 
         :param content:
@@ -137,14 +137,14 @@ class ConfigManager(object):
 
             node[key_set[-1]] = value
 
-    def __contains__(self, value):
+    def __contains__(self, value: typing.Any) -> bool:
         try:
             self.get(value, required=True)
             return True
         except KeyError:
             return False
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: typing.Any) -> typing.Any:
         return self.get(key, required=True)
 
     @classmethod

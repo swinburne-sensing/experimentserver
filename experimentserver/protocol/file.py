@@ -1,4 +1,5 @@
 import types
+import typing
 from collections import ChainMap
 
 import yaml
@@ -9,6 +10,7 @@ from experimentlib.util.generate import hex_str
 
 import experimentserver
 from .stage import BaseStage
+
 
 HEADER = f"""%YAML 1.2
 ---
@@ -177,7 +179,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
     _SAMPLE_PARSER.add_argument('channel', converter=int)
     _SAMPLE_PARSER.add_argument('sample')
 
-    def __init__(self, stream):
+    def __init__(self, stream: typing.Union[bytes, str, typing.TextIO]):
         yaml.SafeLoader.__init__(self, stream)
 
     def _parse_node_args(self, parser: arg_helper.SimpleArgParser, node: yaml.ScalarNode) -> types.SimpleNamespace:
@@ -186,7 +188,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
         except arg_helper.ArgumentError as exc:
             raise ConstructorError('Error parsing arguments to command', node) from exc
 
-    def command_set(self, node: yaml.ScalarNode):
+    def command_set(self, node: yaml.ScalarNode) -> typing.Dict[str, typing.Any]:
         args = self._parse_node_args(self._SET_PARSER, node)
 
         return {
@@ -199,7 +201,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         }
 
-    def command_delay(self, node):
+    def command_delay(self, node: yaml.ScalarNode) -> typing.Dict[str, typing.Any]:
         args = self._parse_node_args(self._DELAY_PARSER, node)
         tags = dict(ChainMap(*args.tags)) if len(args.tags) > 0 else {}
 
@@ -210,7 +212,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             'metadata': tags
         }
 
-    def command_pause(self, node):
+    def command_pause(self, node: yaml.ScalarNode) -> typing.Dict[str, typing.Any]:
         args = self._parse_node_args(self._PAUSE_PARSER, node)
         tags = dict(ChainMap(*args.tags)) if args.tags else {}
 
@@ -220,7 +222,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             'metadata': tags
         }
 
-    def command_stage(self, node):
+    def command_stage(self, node: yaml.ScalarNode) -> typing.Dict[str, typing.Any]:
         args = self._parse_node_args(self._STAGE_PARSER, node)
 
         if args.type == 'temperature':
@@ -272,8 +274,10 @@ class YAMLProcedureLoader(yaml.SafeLoader):
                     }
                 }
             }
+        else:
+            raise ValueError(f"Unknown stage type {args.type}")
 
-    def command_notify(self, node):
+    def command_notify(self, node: yaml.ScalarNode) -> typing.Dict[str, typing.Any]:
         args = self._parse_node_args(self._NOTIFY_PARSER, node)
 
         return {
@@ -282,7 +286,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             'message': args.message
         }
 
-    def command_flow(self, node):
+    def command_flow(self, node: yaml.ScalarNode) -> typing.Dict[str, typing.Any]:
         args = self._parse_node_args(self._FLOW_PARSER, node)
 
         return {
@@ -295,7 +299,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         }
 
-    def command_pulse(self, node):
+    def command_pulse(self, node: yaml.ScalarNode) -> typing.List[typing.Dict[str, typing.Any]]:
         args = self._parse_node_args(self._PULSE_PARSER, node)
         tags = dict(ChainMap(*args.tags)) if args.tags else {}
 
@@ -403,7 +407,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
 
         return pulse_sequence
 
-    def command_interlock(self, _):
+    def command_interlock(self, _: yaml.ScalarNode) -> typing.List[typing.Dict[str, typing.Any]]:
         return [
             {
                 'class': 'core.Setup',
@@ -418,7 +422,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         ]
 
-    def command_led(self, node):
+    def command_led(self, node: yaml.ScalarNode) -> typing.Dict[str, typing.Any]:
         args = self._parse_node_args(self._LED_PARSER, node)
 
         if args.current is None:
@@ -439,7 +443,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         }
 
-    def command_led_setup(self, node):
+    def command_led_setup(self, node: yaml.ScalarNode) -> typing.List[typing.Dict[str, typing.Any]]:
         args = self._parse_node_args(self._LED_SETUP_PARSER, node)
 
         if args.current is None:
@@ -464,7 +468,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             }
         ]
 
-    def command_add_sample(self, node):
+    def command_add_sample(self, node: yaml.ScalarNode) -> typing.List[typing.Dict[str, typing.Any]]:
         args = self._parse_node_args(self._SAMPLE_PARSER, node)
 
         return [
@@ -488,7 +492,7 @@ class YAMLProcedureLoader(yaml.SafeLoader):
             },
         ]
 
-    def command_set_sample(self, node):
+    def command_set_sample(self, node: yaml.ScalarNode) -> typing.List[typing.Dict[str, typing.Any]]:
         args = self._parse_node_args(self._SAMPLE_PARSER, node)
 
         return [

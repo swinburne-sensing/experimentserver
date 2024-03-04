@@ -40,6 +40,13 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
         self._serial_lock = ThreadLock(f"{self.get_hardware_identifier(True)}SerialLock", 5)
         self._serial_port: typing.Optional[serial.SerialBase] = None
 
+    @property
+    def serial_port(self) -> serial.SerialBase:
+        if self._serial_port is None:
+            raise CommunicationError('Serial port not available')
+
+        return self._serial_port
+
     def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(SerialHardware, self).transition_connect(event)
 
@@ -114,10 +121,10 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
 
         super().transition_disconnect(event)
 
-    def _thread_serial_consumer_callback(self):
+    def _thread_serial_consumer_callback(self) -> None:
         serial_buffer = bytearray()
 
-        while not self._thread_serial_consumer.thread_stop_requested():
+        while self._thread_serial_consumer is not None and not self._thread_serial_consumer.thread_stop_requested():
             try:
                 with self._serial_lock.lock('_thread_serial_consumer_callback', quiet=True):
                     # Break upon disconnection
@@ -145,6 +152,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
 
                 # Place in consumer queue
                 try:
+                    assert self._thread_payload_consumer is not None
                     self._thread_payload_consumer.append((payload, now()))
                 except ThreadException:
                     self.logger().warning('Payload consumer thread not running')

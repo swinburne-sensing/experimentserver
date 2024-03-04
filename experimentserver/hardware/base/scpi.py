@@ -17,7 +17,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
     Programmable Instruments (SCPI) commands. Note that not all SCPI instrument implement all SCPI commands. """
     _SCPI_DISPLAY_TIMEOUT = 1
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: typing.Any, **kwargs: typing.Any):
         """ Constructs a SCPIHardware object. This is an abstract class and shouldn't be implemented directly.
 
         :param args: passed to parent
@@ -137,7 +137,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         return transaction.query('*OPT?')
 
     @staticmethod
-    def scpi_set_event_status_enable(transaction: VISAHardware.VISATransaction, mask) -> None:
+    def scpi_set_event_status_enable(transaction: VISAHardware.VISATransaction, mask: int) -> None:
         """
 
         :param transaction:
@@ -147,7 +147,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write(f"*ESE {mask}")
 
     @staticmethod
-    def scpi_set_service_request_enable(transaction: VISAHardware.VISATransaction, mask) -> None:
+    def scpi_set_service_request_enable(transaction: VISAHardware.VISATransaction, mask: int) -> None:
         """
 
         :param transaction:
@@ -157,7 +157,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         transaction.write(f"*SRE {mask}")
 
     @staticmethod
-    def scpi_set_event_status_opc(transaction: VISAHardware.VISATransaction):
+    def scpi_set_event_status_opc(transaction: VISAHardware.VISATransaction) -> None:
         """ TODO
 
         :param transaction:
@@ -186,7 +186,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
         """
         transaction.write('*WAI')
 
-    def transition_connect(self, event: typing.Optional[EventData] = None):
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
         with self.visa_transaction() as transaction:
@@ -214,7 +214,7 @@ class SCPIHardware(VISAHardware, metaclass=abc.ABCMeta):
                 # If no display is available then skip
                 self.logger().warning('Unable to display instrument identifier')
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None):
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         with self.visa_transaction(error_check=False) as transaction:
             try:
                 # Show disconnected message on display

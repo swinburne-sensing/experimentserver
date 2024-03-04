@@ -17,7 +17,7 @@ from experimentserver.util.thread import CallbackThread
 
 
 # Suppress werkzeug logging for status updates
-def _filter_werkzeug(record: LogRecord):
+def _filter_werkzeug(record: LogRecord) -> bool:
     return '/server/state' not in record.getMessage()
 
 
@@ -71,7 +71,7 @@ class WebServer(LoggedAbstract, MeasurementSource):
         self.app = flask.Flask(__name__)
 
         @self.app.route('/ping')
-        def ping():
+        def ping() -> str:
             return ''
 
         # Thread for hosting
@@ -95,7 +95,7 @@ class WebServer(LoggedAbstract, MeasurementSource):
     def get_procedure(self) -> Procedure:
         return self._procedure
 
-    def set_procedure(self, procedure: Procedure):
+    def set_procedure(self, procedure: Procedure) -> None:
         if self._procedure.get_state().is_valid():
             raise ProcedureLoadError('Procedure currently validated or running, stop before attempting import')
 
@@ -110,10 +110,10 @@ class WebServer(LoggedAbstract, MeasurementSource):
     def get_event_buffer(self) -> BufferedHandler:
         return self._event_buffer
 
-    def get_thread(self):
+    def get_thread(self) -> CallbackThread:
         return self._thread
 
-    def run(self):
+    def run(self) -> None:
         self._thread.thread_start()
 
         self.logger().info(f"OK! {experimentserver.__app_name__} {experimentserver.__version__} IS NOW READY!", notify=True)

@@ -92,17 +92,16 @@ class GenericSerial(SerialHardware):
         return 'Generic Arduino Device'
 
     @SerialHardware.register_parameter(description='Send raw command')
-    def send(self, cmd: str):
+    def send(self, cmd: str) -> None:
         # Encode command
         cmd_enc = bytes(cmd, "utf-8").decode("unicode_escape").encode()
 
-        with self._serial_lock.lock(f"send:{cmd_enc!r}"):
+        with self._serial_lock.lock():
             # Send command
-            assert self._serial_port is not None
-            self._serial_port.write(cmd_enc)
+            self.serial_port.write(cmd_enc)
 
             # Wait for response
-            response = self._serial_port.read_until()
+            response = self.serial_port.read_until()
             response = response.strip()
 
         self.logger().info(f"Response: {response}")
@@ -114,9 +113,8 @@ class GenericSerial(SerialHardware):
             self.sleep(1, 'rate limit, receive disabled')
             return {}
 
-        with self._serial_lock.lock('receive'):
-            assert self._serial_port is not None
-            response = self._serial_port.read_until()
+        with self._serial_lock.lock():
+            response = self.serial_port.read_until()
 
         response = response.strip()
 
@@ -137,32 +135,6 @@ class GenericSerial(SerialHardware):
 
     def transition_error(self, event: typing.Optional[EventData] = None) -> None:
         super(GenericSerial, self).transition_error(event)
-
-
-class GrblController(SerialHardware):
-    def __init__(self, identifier: str, port: str):
-        super().__init__(identifier, port, serial_args={
-            'baudrate': 115200
-        })
-
-    @staticmethod
-    def get_hardware_class_description() -> str:
-        return 'grbl-compatible Motion Controller'
-
-    def send_cmd(self, cmd: str):
-        pass
-
-    def increment_axis(self, axis: str, distance: float):
-        pass
-
-    def transition_configure(self, event: typing.Optional[EventData] = None) -> None:
-        super(GrblController, self).transition_configure(event)
-
-    def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
-        super(GrblController, self).transition_cleanup(event)
-
-    def transition_error(self, event: typing.Optional[EventData] = None) -> None:
-        super(GrblController, self).transition_error(event)
 
 
 class ValvePosition(HardwareEnum):
@@ -200,16 +172,15 @@ class ValveController(SerialHardware):
         self._measurement_delay = 1
 
     @SerialHardware.register_parameter(description='Valve position')
-    def set_position(self, position: typing.Union[TYPE_ENUM_CAST, ValvePosition]):
+    def set_position(self, position: typing.Union[TYPE_ENUM_CAST, ValvePosition]) -> None:
         channel = ValvePosition.from_input(position)
 
-        with self._serial_lock.lock('set_position'):
+        with self._serial_lock.lock():
             # Send command
-            assert self._serial_port is not None
-            self._serial_port.write(channel.command_value.encode())
+            self.serial_port.write(channel.command_value.encode())
 
             # Wait for response
-            response = self._serial_port.read_until()
+            response = self.serial_port.read_until()
             response = response.strip()
 
         self.logger().info(f"Valve position: {response}")
@@ -217,10 +188,9 @@ class ValveController(SerialHardware):
     @SerialHardware.register_measurement(description='Valve position', measurement_group=MeasurementGroup.VALVE,
                                          force=True)
     def get_position(self) -> T_FIELD_MAP:
-        with self._serial_lock.lock('get_position'):
-            assert self._serial_port is not None
-            self._serial_port.write('?'.encode())
-            response = self._serial_port.read_until()
+        with self._serial_lock.lock():
+            self.serial_port.write('?'.encode())
+            response = self.serial_port.read_until()
             response = response.strip()
 
         response_position = ValvePosition.from_input(response)

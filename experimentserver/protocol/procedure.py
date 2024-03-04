@@ -1,3 +1,4 @@
+from __future__ import annotations
 import threading
 import time
 import typing
@@ -111,7 +112,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         # Active hardware
         self._procedure_hardware_managers: typing.Dict[str, HardwareManager] = {}
 
-    def __del__(self):
+    def __del__(self) -> None:
         current_state = self.get_state()
 
         if current_state != ProcedureState.SETUP:
@@ -123,7 +124,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
     # Stage management
     def add_stage(self, stage_class: typing.Type[TYPE_STAGE], index: typing.Optional[int] = None,
-                  **stage_kwargs) -> None:
+                  **stage_kwargs: typing.Any) -> None:
         if self.get_state().is_valid():
             raise ProcedureLoadError('Procedure is read-only once validated')
 
@@ -177,7 +178,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
                 'stage_next': self._procedure_stage_next
             }
 
-    def get_stages_summary(self, in_seconds: bool = False):
+    def get_stages_summary(self, in_seconds: bool = False) -> typing.List[typing.Dict[str, typing.Union[str, float]]]:
         stage_summary = []
         stage_index = 0
 
@@ -264,7 +265,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
                 return None
 
     # Event handling
-    def _procedure_validate(self, _: transitions.EventData):
+    def _procedure_validate(self, _: transitions.EventData) -> None:
         if len(self._procedure_stages) == 0:
             raise ProcedureLoadError('Procedure is empty')
 
@@ -301,7 +302,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
             Measurement.add_global_tag('procedure_state', 'ready')
 
-    def _procedure_start(self, _: transitions.EventData):
+    def _procedure_start(self, _: transitions.EventData) -> None:
         # Connect required hardware
         for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
             self.logger().info(f"Connecting {hardware_identifier}")
@@ -382,8 +383,8 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         initial_stage = self._procedure_stages[self._procedure_stage_current]
         initial_stage.stage_enter()
 
-    def _procedure_pause(self, _: transitions.EventData):
-        with Measurement.metadata_global_lock.lock('Procedure._procedure_pause'):
+    def _procedure_pause(self, _: transitions.EventData) -> None:
+        with Measurement.metadata_global_lock.lock():
             assert self._procedure_stage_current is not None
             current_stage = self._procedure_stages[self._procedure_stage_current]
             current_stage.stage_pause()
@@ -393,8 +394,8 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         self.logger().info(f"Procedure {self._procedure_uid} paused", event=True)
 
-    def _procedure_resume(self, _: transitions.EventData):
-        with Measurement.metadata_global_lock.lock('Procedure._procedure_resume'):
+    def _procedure_resume(self, _: transitions.EventData) -> None:
+        with Measurement.metadata_global_lock.lock():
             assert self._procedure_stage_current is not None
             current_stage = self._procedure_stages[self._procedure_stage_current]
             current_stage.stage_resume()
@@ -403,8 +404,8 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         self.logger().info(f"Procedure {self._procedure_uid} resumed", event=True)
 
-    def _procedure_stop(self, _: transitions.EventData):
-        with Measurement.metadata_global_lock.lock('Procedure._procedure_stop'):
+    def _procedure_stop(self, _: transitions.EventData) -> None:
+        with Measurement.metadata_global_lock.lock():
             # Clear current stage
             self._procedure_stage_current = None
 
@@ -419,13 +420,13 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         self.logger().info(f"Procedure {self._procedure_uid} stopped", event=True, notify=True)
 
-    def _stage_next(self, _: transitions.EventData):
+    def _stage_next(self, _: transitions.EventData) -> None:
         # Queue next stage
         self.logger().info('Skip to next stage', event=True)
 
         self._procedure_stage_advance = True
 
-    def _stage_previous(self, _: transitions.EventData):
+    def _stage_previous(self, _: transitions.EventData) -> None:
         # Queue previous stage
         self.logger().info('Jump to previous stage', event=True)
 
@@ -437,7 +438,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         self._procedure_stage_advance = True
 
-    def _stage_repeat(self, _: transitions.EventData):
+    def _stage_repeat(self, _: transitions.EventData) -> None:
         # Queue current stage
         self.logger().info('Repeat current stage', event=True)
 
@@ -446,13 +447,13 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         self._procedure_stage_advance = True
 
-    def _stage_finish(self, _: transitions.EventData):
+    def _stage_finish(self, _: transitions.EventData) -> None:
         # Queue completion after current stage
         self.logger().info('Complete current stage then finish', event=True)
 
         self._procedure_stage_next = None
 
-    def _stage_goto(self, event: transitions.EventData):
+    def _stage_goto(self, event: transitions.EventData) -> None:
         self._procedure_stage_next = int(event.args[0])
 
         self.logger().info(f'Queue next stage {self._procedure_stage_next}', event=True)
@@ -465,7 +466,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         # self._procedure_stage_advance = True
 
-    def _handle_error(self, _: transitions.EventData):
+    def _handle_error(self, _: transitions.EventData) -> None:
         # Stop any active hardware
         for hardware_manager in self._procedure_hardware_managers.values():
             hardware_manager.force_disconnect()
@@ -490,7 +491,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
     # Import/export
     @classmethod
-    def procedure_import(cls, data: typing.Union[str, typing.Dict[str, typing.Any]]):
+    def procedure_import(cls, data: typing.Union[str, typing.Dict[str, typing.Any]]) -> Procedure:
         """ Generate Procedure from previously exported dict.
 
         :param data:

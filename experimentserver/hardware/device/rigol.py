@@ -66,7 +66,7 @@ class PowerSupplyChannel(HardwareEnum):
 class DP832PowerSupply(SCPIHardware):
     _RE_ERROR = re.compile(r'([0-9]+),"([\w\d\; ]+)"')
 
-    def __init__(self, *args, output_failsafe: bool = True, **kwargs):
+    def __init__(self, *args: typing.Any, output_failsafe: bool = True, **kwargs: typing.Any):
         super(DP832PowerSupply, self).__init__(*args, **kwargs)
 
         self._measurement_delay = 1.0
@@ -108,7 +108,7 @@ class DP832PowerSupply(SCPIHardware):
         return 'Rigol DP832 3-Channel Power Supply'
 
     # Instrument manager
-    def get_ocp_alarm(self, channel: PowerSupplyChannel):
+    def get_ocp_alarm(self, channel: PowerSupplyChannel) -> bool:
         with self.visa_transaction() as transaction:
             alarm = transaction.query(':OUTP:OCP:ALAR? {}', channel)
 
@@ -119,7 +119,7 @@ class DP832PowerSupply(SCPIHardware):
         else:
             raise RigolError(f"Unexpected response to OCP alarm query: {alarm!r}")
 
-    def get_ovp_alarm(self, channel: PowerSupplyChannel):
+    def get_ovp_alarm(self, channel: PowerSupplyChannel) -> None:
         with self.visa_transaction() as transaction:
             alarm = transaction.query(':OUTP:OVP:ALAR? {}', channel)
 
@@ -131,7 +131,8 @@ class DP832PowerSupply(SCPIHardware):
             raise RigolError(f"Unexpected response to OVP alarm query: {alarm!r}")
 
     @SCPIHardware.register_parameter(description='Enable/disable output channel', order=90, primary_key=['channel'])
-    def set_output(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], enable: typing.Union[bool, str]):
+    def set_output(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], enable: typing.Union[bool, str]) \
+            -> None:
         channel = PowerSupplyChannel.from_input(channel)
 
         if isinstance(enable, str):
@@ -142,7 +143,7 @@ class DP832PowerSupply(SCPIHardware):
 
     @SCPIHardware.register_parameter(description='Set output current limit', order=40, primary_key=['channel'])
     def set_ocp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel],
-                current: typing.Optional[T_PARSE_QUANTITY] = None):
+                current: typing.Optional[T_PARSE_QUANTITY] = None) -> None:
         channel = PowerSupplyChannel.from_input(channel)
         current = parse(current, registry.A).magnitude if current is not None else current
 
@@ -155,7 +156,7 @@ class DP832PowerSupply(SCPIHardware):
 
     @SCPIHardware.register_parameter(description='Set output voltage limit', order=40, primary_key=['channel'])
     def set_ovp(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel],
-                voltage: typing.Optional[T_PARSE_QUANTITY] = None):
+                voltage: typing.Optional[T_PARSE_QUANTITY] = None) -> None:
         channel = PowerSupplyChannel.from_input(channel)
         voltage = parse(voltage, registry.V).magnitude if voltage is not None else None
 
@@ -167,7 +168,7 @@ class DP832PowerSupply(SCPIHardware):
                 transaction.write(':OUTP:OVP {},OFF', channel)
 
     @SCPIHardware.register_parameter(description='Set output voltage', primary_key=['channel'])
-    def set_voltage(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], voltage: T_PARSE_QUANTITY):
+    def set_voltage(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], voltage: T_PARSE_QUANTITY) -> None:
         channel = PowerSupplyChannel.from_input(channel)
         voltage = parse(voltage, registry.V).magnitude
 
@@ -175,7 +176,7 @@ class DP832PowerSupply(SCPIHardware):
             transaction.write(':SOUR{}:VOLT {}', channel, voltage)
 
     @SCPIHardware.register_parameter(description='Set output voltage', primary_key=['channel'])
-    def set_current(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: T_PARSE_QUANTITY):
+    def set_current(self, channel: typing.Union[TYPE_ENUM_CAST, PowerSupplyChannel], current: T_PARSE_QUANTITY) -> None:
         channel = PowerSupplyChannel.from_input(channel)
         current = parse(current, 'amp').magnitude
 

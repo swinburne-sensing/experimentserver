@@ -30,31 +30,41 @@ class HumiSysGenerator(SerialStringHardware):
         WATER_LEVEL_SENSOR = auto()
         MODE_MANUAL = auto()
 
+    # ADC input max voltage
     _ADC_FULL_SCALE = 5.0
-    _DAC_FULL_SCALE = 4095
 
+    # DAC max output code
+    _DAC_CODE_FULL_SCALE = 4095
+
+    # MFC calibration
     _MFC_DRY_INTERCEPT = -0.2
     _MFC_DRY_SLOPE = 21.1828
     _MFC_WET_INTERCEPT = -0.2
     _MFC_WET_SLOPE = 21.1912
 
+    # RH1 calibration
     _RH1_RH_INTERCEPT = -0.2
     _RH1_RH_SLOPE = 21.1828
     _RH1_TEMP_INTERCEPT = -0.2
     _RH1_TEMP_SLOPE = 21.1912
 
+    # RH2 calibration
     _RH2_RH_INTERCEPT = -0.2
     _RH2_RH_SLOPE = 21.1131
     _RH2_TEMP_INTERCEPT = -0.2
     _RH2_TEMP_SLOPE = 21.1558
 
+    # RTD1 calibration
     _RTD1_INTERCEPT = -18.9484
     _RTD1_SLOPE = 25.5698
 
+    # RTD2 calibration
     _RTD2_INTERCEPT = -19.6134
     _RTD2_SLOPE = 25.5933
 
     _FLOW_FULL_SCALE = 200.0
+
+    # DAC output voltage
     _OUTPUT_FULL_SCALE = 5.0
 
     def __init__(self, identifier: str, port: str, parameters: typing.Optional[TYPE_PARAMETER_DICT] = None):
@@ -62,6 +72,7 @@ class HumiSysGenerator(SerialStringHardware):
             'baudrate': 19200
         }, ','.encode())
 
+        # Dry/wet gas composition
         self._gas_dry = gas_registry.air
         self._gas_wet = gas_registry.humid_air
 
@@ -75,9 +86,21 @@ class HumiSysGenerator(SerialStringHardware):
     def get_hardware_class_description() -> str:
         return 'InstruQuest HumiSys Humidity Generation System'
 
-    def command_request_all(self):
-        with self._serial_lock.lock('request_all'):
-            self._serial_port.write(b'rs,')
+    def command_request_all(self) -> None:
+        with self._serial_lock.lock():
+            self.serial_port.write(b'rs,')
+
+    @SerialStringHardware.register_parameter(description='Output humidity')
+    def set_humidity(self, humidity: T_PARSE_QUANTITY) -> None:
+        self._target_humidity = parse(humidity, registry.pct)
+    
+    @SerialStringHardware.register_parameter(description='Target gas flow rate')
+    def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY) -> None:
+        self._target_flow_rate = parse(flow_rate_raw, registry.sccm)
+    
+    @SerialStringHardware.register_parameter(description='Target gas flow rate')
+    def set_total_flow_rate(self, total_flow_rate_raw: T_PARSE_QUANTITY) -> None:
+        self._total_flow_rate = parse(total_flow_rate_raw, registry.sccm)
     
     @SerialStringHardware.register_measurement(description='Get reading', force=True)
     def get_measurement(self) -> typing.Sequence[Measurement]:
@@ -88,18 +111,17 @@ class HumiSysGenerator(SerialStringHardware):
 
         return []
 
-    def _command_dac_set(self, channel: int, value: float):
+    def _command_dac_set(self, channel: int, value: float) -> None:
         assert 0 < channel <= 4
 
-    def _set_port_a(self, flag: PortA, state: bool):
+    def _set_port_a(self, flag: PortA, state: bool) -> None:
         if state:
             self._port_a |= flag
         else:
             self._port_a &= ~flag
 
-        with self._serial_lock.lock('set_port_a'):
-            assert self._serial_port is not None
-            self._serial_port.write(f"pA{self._port_a.value},".encode())
+        with self._serial_lock.lock():
+            self.serial_port.write(f"pA{self._port_a.value},".encode())
 
     def _handle_payload(self, payload: str, received: datetime) -> typing.Optional[typing.List[Measurement]]:
         if payload == 'READY':
@@ -109,7 +131,7 @@ class HumiSysGenerator(SerialStringHardware):
             try:
                 if payload.startswith('da3'):
                     # FIXME
-                    value = int(payload[3:]) / self._DAC_FULL_SCALE * self._OUTPUT_FULL_SCALE
+                    value = int(payload[3:]) / self._DAC_CODE_FULL_SCALE * self._OUTPUT_FULL_SCALE
                     self.logger().comm(f"Saturator TC1 (voltage): {value}")
 
                     return [Measurement(
@@ -409,7 +431,7 @@ class HumiSysGenerator(SerialStringHardware):
                             MeasurementGroup.MFC,
                             {
                                 'flow_target': parse(
-                                    float(value_int) / self._DAC_FULL_SCALE * self._FLOW_FULL_SCALE,
+                                    float(value_int) / self._DAC_CODE_FULL_SCALE * self._FLOW_FULL_SCALE,
                                     registry.sccm,
                                     mag_round=0
                                 ),
@@ -430,7 +452,7 @@ class HumiSysGenerator(SerialStringHardware):
                             MeasurementGroup.MFC,
                             {
                                 'flow_target': parse(
-                                    float(value_int) / self._DAC_FULL_SCALE * self._FLOW_FULL_SCALE,
+                                    float(value_int) / self._DAC_CODE_FULL_SCALE * self._FLOW_FULL_SCALE,
                                     registry.sccm,
                                     mag_round=0
                                 ),

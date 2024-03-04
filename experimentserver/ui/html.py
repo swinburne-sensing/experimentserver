@@ -21,7 +21,7 @@ def _render_list(items: typing.List[typing.Any]) -> str:
     return f"<ul class=\"uk-list uk-list-bullet\">{html}</ul>"
 
 
-def _render_html(ui: WebServer, page: str, **kwargs):
+def _render_html(ui: WebServer, page: str, **kwargs: typing.Any) -> str:
     hardware_class_list = []
 
     # Generate list of hardware classes
@@ -80,15 +80,15 @@ def _render_html(ui: WebServer, page: str, **kwargs):
                                  stages=ui.get_procedure().get_stages_summary(), render_list=_render_list, **kwargs)
 
 
-def register_html(ui: WebServer):
+def register_html(ui: WebServer) -> None:
     @ui.app.route('/')
-    def page_index():
+    def page_index() -> str:
         return _render_html(ui, 'index.html')
 
     @ui.app.route('/edit')
-    def page_edit():
+    def page_edit() -> str:
         return _render_html(ui, 'edit.html')
 
     @ui.app.route('/debug')
-    def page_debug():
+    def page_debug() -> str:
         return _render_html(ui, 'debug.html', hardware_transitions=[x.value for x in HardwareTransition])

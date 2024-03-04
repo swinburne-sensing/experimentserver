@@ -16,7 +16,8 @@ class _MeasurementMetadata(OrderedMetadata):
     def __init__(self, method: CALLABLE_MEASUREMENT, description: str,
                  measurement_group: typing.Optional[MeasurementGroup] = None, default: bool = False,
                  force: bool = False, order: int = 50, user: bool = True, setup: typing.Optional[str] = None,
-                 setup_args: typing.Optional[typing.List] = None, setup_kwargs: typing.Optional[typing.Dict] = None):
+                 setup_args: typing.Optional[typing.List[typing.Any]] = None,
+                 setup_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None):
         """ Initialise _HardwareMeasurement.
 
         :param method:
@@ -79,7 +80,7 @@ class _ParameterMetadata(OrderedMetadata):
 
         self.validation = validation
 
-    def bind(self, target: object, **kwargs) -> BoundMetadataCall:
+    def bind(self, target: object, **kwargs: typing.Any) -> BoundMetadataCall:
         # Validate arguments if enabled
         if self.validation is not None:
             for kwarg_name, kwarg_value in kwargs.items():

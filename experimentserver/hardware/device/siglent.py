@@ -14,7 +14,7 @@ __email__ = 'cjharrison@swin.edu.au'
 
 
 class SDGWaveformGenerator(SCPIHardware):
-    def __init__(self, *args, external_reference: bool = True, **kwargs):
+    def __init__(self, *args: typing.Any, external_reference: bool = True, **kwargs: typing.Any):
         super(SDGWaveformGenerator, self).__init__(*args, **kwargs)
 
         self._external_reference = external_reference

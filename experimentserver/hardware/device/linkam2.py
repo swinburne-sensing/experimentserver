@@ -25,8 +25,8 @@ class T96Controller(Hardware):
 
     _CONNECT_ATTEMPTS = 5
 
-    def __init__(self, *args, sdk_root_path: typing.Optional[str] = None, sdk_log_path: typing.Optional[str] = None, sdk_license_path: typing.Optional[str] = None,
-                 **kwargs):
+    def __init__(self, *args: typing.Any, sdk_root_path: typing.Optional[str] = None, sdk_log_path: typing.Optional[str] = None, sdk_license_path: typing.Optional[str] = None,
+                 **kwargs: typing.Any):
         """ Create an instance of the class.
 
         :param sdk_root_path: optional SDK root path for binary loading, defaults to None

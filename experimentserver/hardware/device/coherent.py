@@ -12,7 +12,7 @@ __email__ = 'cjharrison@swin.edu.au'
 
 
 class FieldMasterGSPowerMeter(SerialHardware):
-    def __init__(self, *args, termination: str = '\r\n', **kwargs):
+    def __init__(self, *args: typing.Any, termination: str = '\r\n', **kwargs: typing.Any):
         if 'serial_args' not in kwargs:
             kwargs['serial_args'] = {
                 'baudrate': 9600
@@ -30,23 +30,21 @@ class FieldMasterGSPowerMeter(SerialHardware):
         return 'Coherent FieldMaster GS Optical Power Meter'
 
     @SerialHardware.register_parameter(description='Configure wavelength')
-    def set_wavelength(self, wavelength: float):
+    def set_wavelength(self, wavelength: float) -> None:
         wavelength = parse(wavelength, registry.nm).to(registry.m).magnitude
 
         # Configure wavelength
-        with self._serial_lock.lock('set_wavelength'):
-            assert self._serial_port is not None
-            self._serial_port.write(f"wv {wavelength:e}{self._termination}".encode())
+        with self._serial_lock.lock():
+            self.serial_port.write(f"wv {wavelength:e}{self._termination}".encode())
 
     @SerialHardware.register_measurement(description='Optical power', force=True)
     def get_power(self) -> Measurement:
-        with self._serial_lock.lock('get_power'):
-            assert self._serial_port is not None
-            self._serial_port.write(f"pw?{self._termination}".encode())
-            power = self._serial_port.read_until(self._termination.encode()).decode().strip()
+        with self._serial_lock.lock():
+            self.serial_port.write(f"pw?{self._termination}".encode())
+            power = self.serial_port.read_until(self._termination.encode()).decode().strip()
 
-            self._serial_port.write(f"wv?{self._termination}".encode())
-            wavelength = self._serial_port.read_until(self._termination.encode()).decode().strip()
+            self.serial_port.write(f"wv?{self._termination}".encode())
+            wavelength = self.serial_port.read_until(self._termination.encode()).decode().strip()
 
         self.logger().debug(f"Read power: {power}")
         self.logger().debug(f"Read wavelength: {wavelength}")
@@ -66,16 +64,15 @@ class FieldMasterGSPowerMeter(SerialHardware):
     def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
-        with self._serial_lock.lock('transition_connect'):
-            assert self._serial_port is not None
-            self._serial_port.write(f"*ind{self._termination}".encode())
-            identity = self._serial_port.read_until(self._termination.encode()).decode().strip()
+        with self._serial_lock.lock(reason='connect'):
+            self.serial_port.write(f"*ind{self._termination}".encode())
+            identity = self.serial_port.read_until(self._termination.encode()).decode().strip()
 
-            self._serial_port.write(f"v{self._termination}".encode())
-            version = self._serial_port.read_until(self._termination.encode()).decode().strip()
+            self.serial_port.write(f"v{self._termination}".encode())
+            version = self.serial_port.read_until(self._termination.encode()).decode().strip()
 
-            self._serial_port.write(f"*dt?{self._termination}".encode())
-            detector = self._serial_port.read_until(self._termination.encode()).decode().strip()
+            self.serial_port.write(f"*dt?{self._termination}".encode())
+            detector = self.serial_port.read_until(self._termination.encode()).decode().strip()
 
         self.logger().info(f"System: {identity}")
         self.logger().info(f"Version: {version}")
@@ -85,9 +82,8 @@ class FieldMasterGSPowerMeter(SerialHardware):
         super().transition_configure(event)
 
         # Reset
-        with self._serial_lock.lock('transition_configure'):
-            assert self._serial_port is not None
-            self._serial_port.write(f"*rst{self._termination}".encode())
+        with self._serial_lock.lock(reason='configure'):
+            self.serial_port.write(f"*rst{self._termination}".encode())
 
     def transition_cleanup(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_cleanup(event)

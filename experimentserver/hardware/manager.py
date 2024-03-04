@@ -22,7 +22,7 @@ class HardwareStateWrapper(wrapt.ObjectProxy):
     def __init__(self, wrapped: Hardware):
         super(HardwareStateWrapper, self).__init__(wrapped)
 
-    def _wrapped_transition_error(self, event: transitions.EventData):
+    def _wrapped_transition_error(self, event: transitions.EventData) -> None:
         try:
             self.transition_error(event)
         except CommunicationError:
@@ -30,7 +30,7 @@ class HardwareStateWrapper(wrapt.ObjectProxy):
         except ExternalError:
             self.logger().exception('Hardware reported error while handling error')
 
-    def _wrapped_transition_reset(self, event: transitions.EventData):
+    def _wrapped_transition_reset(self, event: transitions.EventData) -> None:
         try:
             self.transition_reset(event)
         except NoResetHandler:
@@ -91,7 +91,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
     def get_hardware(self) -> Hardware:
         return self._hardware.__wrapped__
 
-    def check_watchdog(self):
+    def check_watchdog(self) -> None:
         if not self.is_thread_alive():
             raise HardwareError('Thread stopped')
 
@@ -101,7 +101,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
         if not self._watchdog.wait(self._WATCHDOG_RESET):
             raise HardwareError('Watchdog timeout')
 
-    def force_disconnect(self):
+    def force_disconnect(self) -> None:
         """ Force hardware to disconnected state regardless of current state. """
         # Get current state
         with self._state_lock:
@@ -157,7 +157,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
                 # Finally reset to clear error state
                 HardwareTransition.RESET.apply(self._hardware)
 
-    def quick_start(self, connect: bool = True, configure: bool = True, start: bool = True):
+    def quick_start(self, connect: bool = True, configure: bool = True, start: bool = True) -> None:
         if connect:
             self.queue_transition(HardwareTransition.CONNECT)
 
@@ -167,7 +167,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
         if start:
             self.queue_transition(HardwareTransition.START)
 
-    def quick_stop(self, stop: bool = True, cleanup: bool = True, disconnect: bool = True):
+    def quick_stop(self, stop: bool = True, cleanup: bool = True, disconnect: bool = True) -> None:
         if stop:
             self.queue_transition(HardwareTransition.STOP)
 
@@ -177,7 +177,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
         if disconnect:
             self.queue_transition(HardwareTransition.DISCONNECT)
     
-    def _handle_transition_exception(self, initial_state: HardwareState, transition: HardwareTransition, exc: Exception):
+    def _handle_transition_exception(self, initial_state: HardwareState, transition: HardwareTransition, exc: Exception) -> None:
         super()._handle_transition_exception(initial_state, transition, exc)
 
         # Transition to error state if hardware reported error during transition
@@ -202,8 +202,8 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
                 return
 
             # Process pending transitions and ff state has changed then set activity flag
-            activity_flag, current_state = self._process_transition()
-
+            activity_flag, _ = self._process_transition()
+            
         # Check for error state and handle automatic reset
         if current_state.is_error():
             if self._reset_time is None:

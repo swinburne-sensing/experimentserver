@@ -5,6 +5,7 @@ import functools
 import time
 import threading
 import typing
+from types import TracebackType
 
 import pyvisa
 import pyvisa.constants
@@ -69,7 +70,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             self._visa_resource: pyvisa.resources.MessageBasedResource = parent._visa_resource
     
             self._timeout = timeout
-            self._timeout_enter = None
+            self._timeout_enter: typing.Optional[float] = None
 
             # Error check enabled flag
             self._error_check = error_check
@@ -79,14 +80,14 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             self._command_history: typing.List[str] = []
 
         @classmethod
-        def _get_number(cls):
+        def _get_number(cls) -> int:
             with cls._transaction_number_lock:
                 transaction_number = cls._transaction_number
                 cls._transaction_number += 1
 
             return transaction_number
 
-        def __enter__(self):
+        def __enter__(self) -> VISAHardware.VISATransaction:
             # Get lock
             self._parent._hardware_lock.acquire()
 
@@ -111,7 +112,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             if exc_type is not None:
                 # Restore timeout
                 if self._timeout_enter is not None:
-                    self._parent._visa_resource.timeout = self._timeout_enter
+                    self._parent._visa_resource.timeout = self._timeout_enter  # type: ignore
 
                     self._timeout_enter = None
 
@@ -157,7 +158,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
         # VISA command formatting
         @staticmethod
-        def _visa_format_arg(x) -> str:
+        def _visa_format_arg(x: typing.Any) -> str:
             """ Cast value to a VISA friendly string.
 
             :param x: input variable
@@ -170,10 +171,11 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             elif isinstance(x, str):
                 return f"\"{x}\""
             else:
-                return x
+                return str(x)
 
         @classmethod
-        def _visa_format_command(cls, x: str, format_args, format_kwargs):
+        def _visa_format_command(cls, x: str, format_args: typing.Tuple[typing.Any],
+                                 format_kwargs: typing.Dict[str, typing.Any]) -> str:
             """
 
             :param x:
@@ -182,10 +184,10 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             :return:
             """
             # Cast parameters
-            format_args = list(map(cls._visa_format_arg, format_args))
+            format_args_list = (cls._visa_format_arg(x) for x in format_args)
             format_kwargs = {k: cls._visa_format_arg(v) for k, v in format_kwargs.items()}
 
-            return x.format(*format_args, **format_kwargs)
+            return x.format(*format_args_list, **format_kwargs)
 
         # VISA transaction operations
         def __visa_command_wrapper(func: typing.Callable[TParam, TReturn]) -> typing.Callable[TParam, TReturn]:
@@ -197,7 +199,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
             # noinspection PyProtectedMember
             @functools.wraps(func)
-            def wrapper(self: VISAHardware.VISATransaction, *args, **kwargs) -> TReturn:
+            def wrapper(self: VISAHardware.VISATransaction, *args: typing.Any, **kwargs: typing.Any) -> TReturn:
                 if self._parent._visa_rate_limit is not None and self._parent._visa_comm_timestamp is not None:
                     # Delay for minimum write interval
                     delay = self._parent._visa_rate_limit - (time.time() - self._parent._visa_comm_timestamp)
@@ -217,7 +219,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             return wrapper  # type: ignore
 
         @__visa_command_wrapper
-        def flush(self, timeout: float = 0.1):
+        def flush(self, timeout: float = 0.1) -> None:
             # Flush transaction
             flushed_buffer = bytearray()
 
@@ -240,8 +242,9 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 self.logger().comm(f"Flushed \"{flushed_buffer}\" from VISA resource read buffer")
 
         @__visa_command_wrapper
-        def write(self, command: str, *format_args, visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                  **format_kwargs) -> int:
+        def write(self, command: str, *format_args: typing.Any,
+                  visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None, **format_kwargs: typing.Any
+                  ) -> int:
             """ Write command to VISA resource.
 
             Transaction lock is always held when this method is called.
@@ -266,9 +269,9 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             return self._visa_resource.write(command, **visa_kwargs)
 
         @__visa_command_wrapper
-        def write_binary(self, command: str, payload: typing.Sequence[typing.Any], *format_args,
+        def write_binary(self, command: str, payload: typing.Sequence[typing.Any], *format_args: typing.Any,
                          visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                         **format_kwargs) -> int:
+                         **format_kwargs: typing.Any) -> int:
             """ Write binary payload to VISA resource.
 
             Transaction lock is always held when this method is called.
@@ -291,30 +294,30 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             else:
                 self.logger().comm(f"Write binary {command!r} (payload: {payload!r}) (args: {visa_kwargs!s})")
 
-            return self._visa_resource.write_binary_values(command, payload, **visa_kwargs)
+            return int(self._visa_resource.write_binary_values(command, payload, **visa_kwargs))
         
         @typing.overload
-        def query(self, command: typing.Optional[str], *format_args, binary: typing.Literal[False] = False, 
+        def query(self, command: typing.Optional[str], *format_args: typing.Any, binary: typing.Literal[False] = False, 
                   raw: typing.Literal[False] = False, visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                  **format_kwargs) -> str:
+                  **format_kwargs: typing.Any) -> str:
             ...
 
         @typing.overload
-        def query(self, command: typing.Optional[str], *format_args, binary: typing.Literal[True],
+        def query(self, command: typing.Optional[str], *format_args: typing.Any, binary: typing.Literal[True],
                   raw: bool = False, visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                  **format_kwargs) -> typing.Sequence[typing.Union[int, float]]:
+                  **format_kwargs: typing.Any) -> typing.Sequence[typing.Union[int, float]]:
             ...
         
         @typing.overload
-        def query(self, command: typing.Optional[str], *format_args, binary: typing.Literal[False] = False, 
+        def query(self, command: typing.Optional[str], *format_args: typing.Any, binary: typing.Literal[False] = False, 
                   raw: typing.Literal[True], visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                  **format_kwargs) -> bytes:
+                  **format_kwargs: typing.Any) -> bytes:
             ...
 
         @__visa_command_wrapper
-        def query(self, command: typing.Optional[str], *format_args, binary: bool = False, raw: bool = False,
-                  visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
-                  **format_kwargs) -> typing.Union[typing.Sequence[typing.Union[int, float]], bytes, str]:
+        def query(self, command: typing.Optional[str], *format_args: typing.Any, binary: bool = False,
+                  raw: bool = False, visa_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
+                  **format_kwargs: typing.Any) -> typing.Union[typing.Sequence[typing.Union[int, float]], bytes, str]:
             """ Send query to VISA resource, return the string sent in reply.
 
             Transaction lock is always held when this method is called.
@@ -473,7 +476,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         """
         return self.VISATransaction(self, timeout, error_check, error_raise)
 
-    def _visa_disconnect(self):
+    def _visa_disconnect(self) -> None:
         if self._visa_resource is None:
             self.logger().warning('VISA resource must be connected before requesting disconnect')
             return
@@ -490,7 +493,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Released VISA resource {self._visa_address}")
 
     @classmethod
-    def _visa_resource_configure(cls, resource):
+    def _visa_resource_configure(cls, resource: pyvisa.resources.messagebased.MessageBasedResource) -> None:
         pass
 
     # State transition handling
@@ -505,6 +508,9 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
         try:
             resource = self.get_visa_resource_manager().open_resource(self._visa_address, **self._visa_open_args)
+
+            if not isinstance(resource, pyvisa.resources.messagebased.MessageBasedResource):
+                raise VISACommunicationError(self, 'Non-message based VISA resources are unsupported')
 
             self._visa_resource_configure(resource)
         except pyvisa.errors.VisaIOError as exc:

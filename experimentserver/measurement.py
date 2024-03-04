@@ -156,7 +156,7 @@ class Measurement(Logged):
         
         return data_dict
 
-    def add_field(self, name: T_FIELD_NAME, value: T_FIELD_VALUE):
+    def add_field(self, name: T_FIELD_NAME, value: T_FIELD_VALUE) -> None:
         """ TODO
 
         :param name:
@@ -177,7 +177,7 @@ class Measurement(Logged):
 
         return fields
 
-    def add_tag(self, name: T_TAG_NAME, value: T_FIELD_VALUE):
+    def add_tag(self, name: T_TAG_NAME, value: T_FIELD_VALUE) -> None:
         """
 
         :param name:
@@ -186,7 +186,7 @@ class Measurement(Logged):
         """
         self._tags[name] = value
 
-    def add_tags(self, tags: T_TAG_MAP):
+    def add_tags(self, tags: T_TAG_MAP) -> None:
         """
 
         :param tags:
@@ -355,7 +355,7 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
     # Cache for measurements
     _measurement_cache: typing.Dict[int, Measurement] = {}
 
-    def __init__(self, measurement_target_name: typing.Optional[str] = None, **kwargs):
+    def __init__(self, measurement_target_name: typing.Optional[str] = None, **kwargs: typing.Any):
         """ Instantiate a new ExporterTarget.
 
         :param measurement_target_name:
@@ -630,7 +630,7 @@ T_MEASUREMENT_RETURN = typing.Union[Measurement, T_MEASUREMENT_SEQUENCE, T_FIELD
 
 # Basic dynamic fields
 def dynamic_field_time_delta(initial_time: datetime) -> T_DYNAMIC_FIELD:
-    def func(measurement: Measurement):
+    def func(measurement: Measurement) -> float:
         return round((measurement.timestamp - initial_time).total_seconds(), 6)
 
     return func

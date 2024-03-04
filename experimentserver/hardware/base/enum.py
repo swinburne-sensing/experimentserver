@@ -136,7 +136,7 @@ class HardwareEnum(Enum):
 
         raise ValueError(f"Unknown {cls.__name__} string {x}")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.description
 
 

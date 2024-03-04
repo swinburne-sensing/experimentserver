@@ -148,7 +148,7 @@ class LCRMeasurement(HardwareEnum):
 class GWInstekLCR6000Series(SCPIHardware):
     """  """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: typing.Any, **kwargs: typing.Any):
         """
 
         :param args:
@@ -160,14 +160,14 @@ class GWInstekLCR6000Series(SCPIHardware):
         }, visa_rate_limit=0.2, **kwargs)
 
     @SCPIHardware.register_parameter(description='Set measurement mode')
-    def set_mode(self, mode: typing.Union[TYPE_ENUM_CAST, LCRMeasurement]):
+    def set_mode(self, mode: typing.Union[TYPE_ENUM_CAST, LCRMeasurement]) -> None:
         mode_enum = LCRMeasurement.from_input(mode)
 
         with self.visa_transaction() as transaction:
             transaction.write(':FUNC {}', mode_enum)
 
     @SCPIHardware.register_parameter(description='Source output DC bias')
-    def set_source_bias(self, voltage: T_PARSE_QUANTITY):
+    def set_source_bias(self, voltage: T_PARSE_QUANTITY) -> None:
         """
 
         :param voltage:
@@ -184,7 +184,7 @@ class GWInstekLCR6000Series(SCPIHardware):
             transaction.write(":BISA {}", voltage)
 
     @SCPIHardware.register_parameter(description='Source output frequency')
-    def set_source_frequency(self, frequency: T_PARSE_QUANTITY):
+    def set_source_frequency(self, frequency: T_PARSE_QUANTITY) -> None:
         if isinstance(frequency, str) and frequency.upper() == 'MAX':
             frequency = 'MAX'
         elif isinstance(frequency, str) and frequency.upper() == 'MIN':
@@ -196,7 +196,7 @@ class GWInstekLCR6000Series(SCPIHardware):
             transaction.write(':FREQ {}', frequency)
 
     @SCPIHardware.register_parameter(description='Source output voltage')
-    def set_source_voltage(self, voltage: T_PARSE_QUANTITY):
+    def set_source_voltage(self, voltage: T_PARSE_QUANTITY) -> None:
         """
 
         :param voltage:
@@ -222,24 +222,24 @@ class GWInstekLCR6000Series(SCPIHardware):
             measure_function_str = transaction.query(':FUNC?')
 
             # Measurement settings
-            measure_bias = transaction.query(':BIAS?')
-            measure_freq = transaction.query(':FREQ?')
+            measure_bias_str = transaction.query(':BIAS?')
+            measure_freq_str = transaction.query(':FREQ?')
             measure_voltage = transaction.query(':LEV:VOLT?')
 
             # Get reading
-            measure_fields = transaction.query(':FETC:MAIN?')
+            measure_fields_str = transaction.query(':FETC:MAIN?')
 
         # Parse config
-        if measure_bias.lower() == 'off':
-            measure_bias = 0
+        if measure_bias_str.lower() == 'off':
+            measure_bias_str = '0'
 
-        measure_bias = parse(measure_bias, registry.V)
-        measure_freq = parse(measure_freq, registry.Hz)
+        measure_bias = parse(measure_bias_str, registry.V)
+        measure_freq = parse(measure_freq_str, registry.Hz)
         measure_voltage = parse(measure_voltage, registry.V)
 
         # Parse reading and determine measurement mode
         measure_function = LCRMeasurement.from_input(measure_function_str)
-        measure_fields = measure_fields.split(',')
+        measure_fields = measure_fields_str.split(',')
 
         # Get measurement mode metadata
         measure_meta_map = LCRMeasurement.get_reading_map()

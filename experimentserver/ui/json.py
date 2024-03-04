@@ -90,7 +90,7 @@ def _json_response_wrapper(ui: WebServer):
     return outer_wrapper
 
 
-def register_json(ui: WebServer):
+def register_json(ui: WebServer) -> None:
     @ui.app.route('/server/state')
     @_json_response_wrapper(ui)
     def server_state() -> TJSONWrappable:

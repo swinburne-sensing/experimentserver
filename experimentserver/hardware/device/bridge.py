@@ -35,48 +35,48 @@ class GasAlanyzer(SerialStringHardware):
     def get_hardware_class_description() -> str:
         return 'Bridge Exhaust Gas Analyzer'
 
-    def command_data_start(self):
+    def command_data_start(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'!DA1\r')
+            self.serial_port.write(b'!DA1\r')
 
-    def command_data_stop(self):
+    def command_data_stop(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'!DA0\r')
+            self.serial_port.write(b'!DA0\r')
 
-    def command_zero(self):
+    def command_zero(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'!ZRO\r')
+            self.serial_port.write(b'!ZRO\r')
 
-    def command_zero_calibration(self):
+    def command_zero_calibration(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'!ZCL\r')
+            self.serial_port.write(b'!ZCL\r')
 
-    def command_zero_fast(self):
+    def command_zero_fast(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'!ZFS\r')
+            self.serial_port.write(b'!ZFS\r')
 
-    def command_gas_hexane(self):
+    def command_gas_hexane(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'#GAS,2.1\r')
+            self.serial_port.write(b'#GAS,2.1\r')
 
-    def command_gas_propane(self):
+    def command_gas_propane(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'#GAS,2.2\r')
+            self.serial_port.write(b'#GAS,2.2\r')
 
-    def command_gas_methane(self):
+    def command_gas_methane(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'#GAS,2.3\r')
+            self.serial_port.write(b'#GAS,2.3\r')
 
-    def command_gas_query(self):
+    def command_gas_query(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'?GAS,2.1\r')
+            self.serial_port.write(b'?GAS,2.1\r')
 
-    def command_serial_number_query(self):
+    def command_serial_number_query(self) -> None:
         with self._serial_lock.lock():
-            self._serial_port.write(b'?S/N\r')
+            self.serial_port.write(b'?S/N\r')
 
     @SerialStringHardware.register_parameter(description='Trigger zero')
-    def zero(self):
+    def zero(self) -> None:
         self.logger().info('Zeroing', event=True)
 
         self.command_zero()
@@ -84,7 +84,7 @@ class GasAlanyzer(SerialStringHardware):
         self._zero_timeout = now()
 
     @SerialStringHardware.register_parameter(description='Trigger fast zero')
-    def zero_fast(self):
+    def zero_fast(self) -> None:
         self.command_zero_fast()
 
         self._zero_timeout = now()

@@ -51,20 +51,20 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
     def get_hardware_class_description(cls) -> str:
         return cls.get_child_class().get_hardware_class_description() + ' [+DAQ]'
 
-    def pre_channel_close(self, channel: int):
+    def pre_channel_close(self, channel: int) -> None:
         pass
 
-    def post_channel_close(self, channel: int):
+    def post_channel_close(self, channel: int) -> None:
         # Switch open time
         self.sleep(self.SWITCH_DELAY, 'contact close time')
 
         self.sleep(self._post_channel_delay, 'channel delay')
 
-    def pre_channel_open(self, channel: int):
+    def pre_channel_open(self, channel: int) -> None:
         pass
 
     # noinspection PyUnusedLocal
-    def post_channel_open(self, channel: int):
+    def post_channel_open(self, channel: int) -> None:
         # Switch open time
         self.sleep(self.SWITCH_DELAY, 'contact open time')
 
@@ -84,7 +84,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
         return channel_tags
 
-    def _daq_open_all(self):
+    def _daq_open_all(self) -> None:
         with self._daq_hardware.visa_transaction() as daq_transaction:
             # Turn off all relays
             daq_transaction.write('ROUT:OPEN:ALL')
@@ -94,7 +94,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
 
     # Parameters
     @Hardware.register_parameter(description='Add channel to scan list')
-    def add_channel(self, channel: typing.Any):
+    def add_channel(self, channel: typing.Any) -> None:
         channel = int(channel)
 
         if channel not in self._channel_list:
@@ -104,7 +104,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Added channel {channel}")
 
     @Hardware.register_parameter(description='Append metadata to measurements from channel')
-    def add_channel_metadata(self, channel: typing.Any, tag: str, value: typing.Any):
+    def add_channel_metadata(self, channel: typing.Any, tag: str, value: typing.Any) -> None:
         channel = int(channel)
         tag = str(tag)
         value = str(value)
@@ -113,7 +113,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Added channel {channel} metadata: {tag} = {value}")
 
     @Hardware.register_parameter(description='Remove channel from scan list')
-    def remove_channel(self, channel: typing.Any):
+    def remove_channel(self, channel: typing.Any) -> None:
         channel = int(channel)
 
         if channel in self._channel_list:
@@ -128,7 +128,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
             self.logger().warning(f"Channel {channel} not in scan list")
 
     @Hardware.register_parameter(description='Set scan list to single channel')
-    def set_channel(self, channel: typing.Any):
+    def set_channel(self, channel: typing.Any) -> None:
         channel = int(channel)
 
         with self._enabled_measurement_lock:
@@ -143,7 +143,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Selecting channel {channel}")
 
     @Hardware.register_parameter(description='Time to make measurements from selected channel')
-    def set_channel_duration(self, duration: T_PARSE_TIMEDELTA):
+    def set_channel_duration(self, duration: T_PARSE_TIMEDELTA) -> None:
         duration = parse_timedelta(duration)
 
         with self._enabled_measurement_lock:
@@ -155,7 +155,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Set channel duration to {self.set_channel_duration}")
 
     @Hardware.register_parameter(description='Set channel repeat reading count')
-    def set_channel_repeat(self, count: typing.Any):
+    def set_channel_repeat(self, count: typing.Any) -> None:
         count = int(count)
 
         with self._enabled_measurement_lock:
@@ -164,7 +164,7 @@ class MultiChannelHardware(Hardware, metaclass=abc.ABCMeta):
         self.logger().info(f"Set channel repeat to {self._channel_repeat}")
 
     @Hardware.register_parameter(description='Delay before commencing measurements after channel switch')
-    def set_post_channel_delay(self, delay: T_PARSE_TIMEDELTA):
+    def set_post_channel_delay(self, delay: T_PARSE_TIMEDELTA) -> None:
         delay = parse_timedelta(delay)
 
         with self._enabled_measurement_lock:

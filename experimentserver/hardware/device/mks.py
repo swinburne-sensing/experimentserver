@@ -122,7 +122,7 @@ class GE50MassFlowController(Hardware):
     _TRACE_NAME = 'XXX'
 
     def __init__(self, identifier: str, host: str, composition: typing.Dict[str, str], port: int = 80,
-                 pressure: typing.Optional[T_PARSE_QUANTITY] = None, sample_period: float = 0.25, **kwargs):
+                 pressure: typing.Optional[T_PARSE_QUANTITY] = None, sample_period: float = 0.25, **kwargs: typing.Any):
         """
 
         :param identifier: passed to parent
@@ -155,7 +155,7 @@ class GE50MassFlowController(Hardware):
         self._thread_trace_consumer: typing.Optional[CallbackThread] = None
 
     # Utility methods
-    def _get_url(self, path: str):
+    def _get_url(self, path: str) -> str:
         # noinspection HttpUrlsUsage
         return f"http://{self._host}:{self._port}/{path}"
 
@@ -279,7 +279,7 @@ class GE50MassFlowController(Hardware):
 
     # Helper for parameters
     @contextlib.contextmanager
-    def _setup_lock(self):
+    def _setup_lock(self) -> typing.Generator[None, None, None]:
         with self._http_lock:
             # Switch to SETUP mode
             self._fetch_url('configure_html_check', {'CONFIG_PASSWORD': self._CONFIG_PASSWORD, 'SUBMIT': ''})
@@ -290,7 +290,7 @@ class GE50MassFlowController(Hardware):
             # Return to MONITOR mode
             self._fetch_url('signout.html')
 
-    def auto_zero(self):
+    def auto_zero(self) -> None:
         with self._setup_lock():
             self._fetch_url('configure_html_zero', {'SUBMIT_FLOW': 'Zero Flow'})
 
@@ -298,7 +298,7 @@ class GE50MassFlowController(Hardware):
 
     # Parameters
     @Hardware.register_parameter(description='Target gas flow rate')
-    def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY):
+    def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY) -> None:
         # Enable digital control
         self.set_config_control(True)
 
@@ -333,7 +333,7 @@ class GE50MassFlowController(Hardware):
         self._fetch_url('flow_setpoint_html', data={'iobuf.setpoint_unit': flow_rate.magnitude})
 
     @Hardware.register_parameter(description='Working pressure')
-    def set_pressure(self, pressure: T_PARSE_QUANTITY):
+    def set_pressure(self, pressure: T_PARSE_QUANTITY) -> None:
         pressure = parse(pressure, registry.psi).magnitude
 
         if pressure <= 0:

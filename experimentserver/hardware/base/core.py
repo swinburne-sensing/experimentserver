@@ -101,9 +101,9 @@ class Hardware(LoggedAbstract, MeasurementSource):
         if hasattr(class_module, '__author__') and hasattr(class_module, '__email__'):
             return f"{getattr(class_module, '__author__')} <{getattr(class_module, '__email__')}>"
         elif hasattr(class_module, '__author__'):
-            return getattr(class_module, '__author__')
+            return str(getattr(class_module, '__author__'))
         elif hasattr(class_module, '__email__'):
-            return getattr(class_module, '__email__')
+            return str(getattr(class_module, '__email__'))
 
         # Last resort raise an exception
         raise NotImplementedError()
@@ -141,8 +141,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
     # Instrument lock
     @contextlib.contextmanager
-    def hardware_lock(self, origin: str, timeout: typing.Optional[float] = None, quiet: bool = False) \
-            -> typing.Generator[int, None, None]:
+    def hardware_lock(self, timeout: typing.Optional[float] = None, quiet: bool = False, **kwargs: typing.Any) \
+            -> typing.Generator[None, None, None]:
         """ Acquire exclusive reentrant hardware lock. Checks for any errors when released.
 
         :param origin:
@@ -190,7 +190,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         return metadata.get_metadata(self, _ParameterMetadata)
 
     # Parameter/measurement getter and setter
-    def _validate_measurement(self, name):
+    def _validate_measurement(self, name: str) -> bool:
         measurement_metadata = self.get_hardware_measurement_metadata()
 
         return name in measurement_metadata

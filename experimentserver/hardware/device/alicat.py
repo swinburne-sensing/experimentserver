@@ -28,7 +28,7 @@ class MCMassFlowController(Hardware):
 
     REGISTER_SET_FLOW_SETPOINT = 1010
 
-    def __init__(self, identifier: str, host: str, composition: typing.Mapping[str, str], **kwargs):
+    def __init__(self, identifier: str, host: str, composition: typing.Mapping[str, str], **kwargs: typing.Any):
         Hardware.__init__(self, identifier, **kwargs)
 
         self._measurement_delay = 0.25
@@ -79,7 +79,7 @@ class MCMassFlowController(Hardware):
         pass
 
     @Hardware.register_parameter(description='Target gas flow rate')
-    def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY):
+    def set_flow_rate(self, flow_rate_raw: T_PARSE_QUANTITY) -> None:
         flow = parse(flow_rate_raw, registry.sccm)
 
         # Apply gas correction factor
@@ -124,12 +124,12 @@ class MCMassFlowController(Hardware):
         decoder = BinaryPayloadDecoder.fromRegisters(response.registers, byteorder=Endian.Big, wordorder=Endian.Big)
         value = decoder.decode_32bit_float()
 
-        return value
+        return float(value)
 
     def get_mass_flow_setpoint(self) -> Quantity:
         return Quantity(self._modbus_read_input_float(self.REGISTER_GET_FLOW_SETPOINT), self._alicat_mass_flow_unit)
 
-    def set_mass_flow_setpoint(self, flow: Quantity):
+    def set_mass_flow_setpoint(self, flow: Quantity) -> None:
         flow = flow.m_as(registry.sccm)
 
         # noinspection PyArgumentEqualDefault

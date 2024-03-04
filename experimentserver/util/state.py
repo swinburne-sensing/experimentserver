@@ -27,7 +27,7 @@ class ManagedState(enum.Enum):
 
 class ManagedTransition(enum.Enum):
     """  """
-    def apply(self, model, *args, **kwargs) -> bool:
+    def apply(self, model: typing.Any, *args: typing.Any, **kwargs: typing.Any) -> bool:
         """ Apply transition to provided model.
 
         :param model:
@@ -60,7 +60,7 @@ class _SupportsState(typing.Protocol, typing.Generic[TYPE_STATE]):
 class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackThread):
     """  """
 
-    def __init__(self, name: typing.Optional[str], model: _SupportsState[TYPE_STATE],
+    def __init__(self, name: str, model: _SupportsState[TYPE_STATE],
                  state_type: typing.Type[TYPE_STATE], transition_type: typing.Type[TYPE_TRANSITION],
                  initial_state: TYPE_STATE, queued_transitions: bool = False):
         """
@@ -187,7 +187,7 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
             self._transition_pending_queue.append((transition, args, kwargs))
 
             if block:
-                # Wait for notification of completion
+                # Wait for notification of completion (this also blocks waiting for the transition to occur)
                 error = self.get_error(timeout, raise_exception)
 
                 if error is not None:
@@ -238,7 +238,7 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
                         queued_kwargs = queued_kwargs
                         queued_kwargs_str = ', '.join((f"{k}={v}" for k, v in queued_kwargs.items()))
 
-                        self.logger().info(f"Performing transition {queued_transition.value} from {state.value} "
+                        self.logger().info(f"Performing transition {queued_transition.value} from state {state.value} "
                                            f"(args: {queued_args_str}, kwargs: {queued_kwargs_str})")
 
                         # Attempt to apply requested transition

@@ -85,7 +85,7 @@ class _KeithleyInstrument(SCPIHardware, metaclass=abc.ABCMeta):
 
     _RE_ERROR = re.compile(r'([0-9]+),"([^\"]+)"')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: typing.Any, **kwargs: typing.Any):
         super(_KeithleyInstrument, self).__init__(*args, **kwargs)
 
     @classmethod
@@ -113,7 +113,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
     # Channels used for internal switching
     _CHANNEL_INTERNAL: typing.List[int] = [23, 24, 25]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: typing.Any, **kwargs: typing.Any):
         """ Create Hardware instance for a Keithley DAQ6510.
 
         :param args:
@@ -290,7 +290,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
 class Picoammeter6487(_KeithleyInstrument):
     """ Hardware interface for communication with Keithley 6487 Picoammeter. """
 
-    def __init__(self, *args, use_rs232: bool = True, **kwargs):
+    def __init__(self, *args: typing.Any, use_rs232: bool = True, **kwargs: typing.Any):
         """
 
         :param args:
@@ -340,7 +340,7 @@ class Picoammeter6487(_KeithleyInstrument):
         return not (transaction.query(':SOUR:VOLT:INT:FAIL?') == '1')
 
     @SCPIHardware.register_parameter(description='Measurement range', order=40)
-    def set_measure_range(self, measure_range: T_PARSE_QUANTITY):
+    def set_measure_range(self, measure_range: T_PARSE_QUANTITY) -> None:
         if isinstance(measure_range, str) and measure_range.lower() == 'auto':
             with self.visa_transaction() as transaction:
                 transaction.write(':RANG:AUTO')
@@ -351,14 +351,14 @@ class Picoammeter6487(_KeithleyInstrument):
                 transaction.write(":RANG {}", measure_range)
 
     @SCPIHardware.register_parameter(description='Measurement rate', order=40)
-    def set_measure_rate(self, rate: T_PARSE_QUANTITY):
+    def set_measure_rate(self, rate: T_PARSE_QUANTITY) -> None:
         rate = float(rate)
 
         with self.visa_transaction() as transaction:
             transaction.write(":NPLC {}", rate)
 
     @SCPIHardware.register_parameter(description='Enable resistance measurement')
-    def set_measure_ohms(self, enable: typing.Union[bool, str]):
+    def set_measure_ohms(self, enable: typing.Union[bool, str]) -> None:
         if isinstance(enable, str):
             enable = enable.strip().lower() in ['true', '1', 'on']
 
@@ -377,14 +377,14 @@ class Picoammeter6487(_KeithleyInstrument):
                 transaction.write(':OHMS OFF')
 
     @SCPIHardware.register_parameter(description='Source current limit', order=40)
-    def set_source_current(self, current: T_PARSE_QUANTITY):
+    def set_source_current(self, current: T_PARSE_QUANTITY) -> None:
         current = parse(current, registry.A).magnitude
 
         with self.visa_transaction() as transaction:
             transaction.write(":SOUR:VOLT:ILIM {}", current)
 
     @SCPIHardware.register_parameter(description='Source voltage')
-    def set_source_voltage(self, voltage: T_PARSE_QUANTITY):
+    def set_source_voltage(self, voltage: T_PARSE_QUANTITY) -> None:
         voltage = parse(voltage, registry.V).magnitude
 
         with self.visa_transaction() as transaction:
@@ -407,7 +407,7 @@ class Picoammeter6487(_KeithleyInstrument):
             transaction.write(":SOUR:VOLT {}", voltage)
 
     @SCPIHardware.register_parameter(description='Source output enable', order=60)
-    def set_source_enable(self, enable: typing.Union[bool, str]):
+    def set_source_enable(self, enable: typing.Union[bool, str]) -> None:
         if isinstance(enable, str):
             enable = enable.strip().lower() in ['true', '1', 'on']
 
@@ -415,7 +415,7 @@ class Picoammeter6487(_KeithleyInstrument):
             transaction.write(":SOUR:VOLT:STAT {}", enable)
 
     @SCPIHardware.register_parameter(description='Source sweep range start, step and stop', order=30)
-    def set_source_sweep(self, start: T_PARSE_QUANTITY, step: T_PARSE_QUANTITY, stop: T_PARSE_QUANTITY):
+    def set_source_sweep(self, start: T_PARSE_QUANTITY, step: T_PARSE_QUANTITY, stop: T_PARSE_QUANTITY) -> None:
         start = parse(start, registry.V)
         step = parse(step, registry.V)
         stop = parse(stop, registry.V)
@@ -431,7 +431,7 @@ class Picoammeter6487(_KeithleyInstrument):
         self.logger().info(f"Sweep values: {', '.join(map(str, self._source_sweep_range))}")
 
     @SCPIHardware.register_parameter(description='Source sweep measurement delay')
-    def set_source_sweep_settling(self, settling_time: T_PARSE_TIMEDELTA):
+    def set_source_sweep_settling(self, settling_time: T_PARSE_TIMEDELTA) -> None:
         settling_time = parse_timedelta(settling_time)
 
         if settling_time.total_seconds() > 0:
@@ -451,20 +451,19 @@ class Picoammeter6487(_KeithleyInstrument):
     
         # Fetch reading from instrument
         with self.visa_transaction() as transaction:
-            reading = transaction.query(':READ?')
+            reading_str = transaction.query(':READ?')
             source_voltage = parse(transaction.query(':SOUR:VOLT?'), registry.V)
             source_enabled = int(transaction.query(':SOUR:VOLT:STAT?')) == 1
 
         # Get reading
-        reading = reading.split(',', 1)
-        reading = reading[0]
+        reading_str = reading_str.split(',', 1)[0]
 
         # If ohms reading then convert case
-        if 'ohm' in reading.lower():
-            reading = reading.lower()
+        if 'ohm' in reading_str.lower():
+            reading_str = reading_str.lower()
 
         # Parse unit
-        reading = parse(reading)
+        reading = parse(reading_str)
 
         if self._expect_ohms != (reading.units == registry.ohm):
             raise MeasurementError('Measurement returned wrong unit')

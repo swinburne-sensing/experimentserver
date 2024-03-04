@@ -36,7 +36,7 @@ CONFIG_DEFAULT = os.path.abspath(os.path.join(APP_PATH, '..', 'config/experiment
 
 
 class ApplicationException(Exception):
-    def __init__(self, *args, fatal: bool = False):
+    def __init__(self, *args: typing.Any, fatal: bool = False):
         super(ApplicationException, self).__init__(*args)
 
         self.fatal = fatal

@@ -71,7 +71,7 @@ class HPMultimeterFunction(HardwareEnum):
 class HP34401AMultimeter(SCPIHardware):
     _RE_ERROR = re.compile(r'([+-][0-9]+),"([^\"]+)"')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: typing.Any, **kwargs: typing.Any):
         """ Create Hardware instance for a HP 34401A Multimeter.
 
         :param args:
@@ -87,7 +87,7 @@ class HP34401AMultimeter(SCPIHardware):
         self._function = HPMultimeterFunction.VOLTAGE_DC
 
     @classmethod
-    def scpi_display(cls, transaction: VISAHardware.VISATransaction, msg: typing.Optional[str] = None):
+    def scpi_display(cls, transaction: VISAHardware.VISATransaction, msg: typing.Optional[str] = None) -> None:
         # Clear display
         transaction.write('DISP:TEXT:CLE')
 
@@ -99,14 +99,14 @@ class HP34401AMultimeter(SCPIHardware):
 
             transaction.write('DISP:TEXT {}', msg)
 
-    def _scpi_reset_pre(self, transaction: VISAHardware.VISATransaction):
+    def _scpi_reset_pre(self, transaction: VISAHardware.VISATransaction) -> None:
         self.sleep(0.1, 'flow control hack')
 
         transaction.flush()
 
         self.sleep(0.1, 'flow control hack')
 
-    def _scpi_reset_post(self, transaction: VISAHardware.VISATransaction):
+    def _scpi_reset_post(self, transaction: VISAHardware.VISATransaction) -> None:
         # Delay before running next command
         self.sleep(1, 'visa reset')
 
@@ -134,7 +134,7 @@ class HP34401AMultimeter(SCPIHardware):
     def get_hardware_class_description() -> str:
         return 'HP 34401A Multimeter'
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None):
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         # Return to local control
         with self.visa_transaction() as transaction:
             transaction.write('SYST:LOC')
@@ -142,7 +142,7 @@ class HP34401AMultimeter(SCPIHardware):
         super().transition_disconnect(event)
 
     @SCPIHardware.register_parameter(description='Configure measurement function')
-    def set_mode(self, func: typing.Union[TYPE_ENUM_CAST, HPMultimeterFunction]):
+    def set_mode(self, func: typing.Union[TYPE_ENUM_CAST, HPMultimeterFunction]) -> None:
         func = HPMultimeterFunction.from_input(func)
 
         self._function = func
@@ -154,7 +154,7 @@ class HP34401AMultimeter(SCPIHardware):
             self.sleep(0.05, 'mode switch')
 
     @SCPIHardware.register_parameter(description='Set number of power line cycles per measurement')
-    def set_nplc(self, nplc: typing.Union[str, float]):
+    def set_nplc(self, nplc: typing.Union[str, float]) -> None:
         with self.visa_transaction() as transaction:
             transaction.write(f"{{}}:NPLC {nplc}", self._function)
 
@@ -191,7 +191,7 @@ class HP34401AMultimeter(SCPIHardware):
         else:
             raise MeasurementError(f"Unknown measurement for configured function {self._function!s}")
 
-    def transition_connect(self, event: typing.Optional[EventData] = None):
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         for attempt in range(3):
             # noinspection PyBroadException
             try:
