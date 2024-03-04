@@ -369,18 +369,18 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
                 'procedure_state': 'running'
             })
 
-            # Notify for start
-            completion_datetime = now() + self.get_procedure_duration()
-
-            self.logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
-                               f"{completion_datetime.strftime(FORMAT_TIMESTAMP_CONSOLE)}", event=True, notify=True)
-
             Measurement.add_global_dynamic_field('time_delta_procedure', dynamic_field_time_delta(now()))
 
-            # Enter first stage
-            assert self._procedure_stage_current is not None
-            initial_stage = self._procedure_stages[self._procedure_stage_current]
-            initial_stage.stage_enter()
+        # Notify for start
+        completion_datetime = now() + self.get_procedure_duration()
+
+        self.logger().info(f"Starting procedure: {self._procedure_uid}, estimated completion: "
+                            f"{completion_datetime.strftime(FORMAT_TIMESTAMP_CONSOLE)}", event=True, notify=True)
+
+        # Enter first stage
+        assert self._procedure_stage_current is not None
+        initial_stage = self._procedure_stages[self._procedure_stage_current]
+        initial_stage.stage_enter()
 
     def _procedure_pause(self, _: transitions.EventData):
         with Measurement.metadata_global_lock.lock('Procedure._procedure_pause'):
