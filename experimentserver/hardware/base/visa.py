@@ -102,7 +102,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
             return self
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
+        def __exit__(self, exc_type: typing.Type[BaseException], exc_val: BaseException, exc_tb):
             # Release lock
             self._parent._hardware_lock.release()
 

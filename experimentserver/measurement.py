@@ -586,7 +586,7 @@ class JSONTarget(LoggedAbstract, MeasurementTarget):
                         if isinstance(field_value, Quantity):
                             field_dict[field_name] = {
                                 'value': field_value.magnitude,
-                                'units': '{:~}'.format(field_value.units)
+                                'units': '{:~}'.format(field_value.units)  # type: ignore
                             }
                     
                     assert isinstance(tag_dict, dict)
@@ -594,7 +594,7 @@ class JSONTarget(LoggedAbstract, MeasurementTarget):
                         if isinstance(tag_value, Quantity):
                             tag_dict[tag_name] = {
                                 'value': tag_value.magnitude,
-                                'units': '{:~}'.format(tag_value.units)
+                                'units': '{:~}'.format(tag_value.units)  # type: ignore
                             }
                         elif isinstance(tag_value, timedelta):
                             tag_dict[tag_name] = tag_value.total_seconds()
