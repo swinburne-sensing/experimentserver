@@ -296,5 +296,6 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
         if not activity_flag:
             delta_time = time.time() - start_time
 
-            if delta_time < self._MINIMUM_RUN_PERIOD:
-                self.sleep(self._MINIMUM_RUN_PERIOD - delta_time, 'no measurement activity', quiet=True)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(hardware={self._hardware!r})"

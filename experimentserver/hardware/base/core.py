@@ -578,7 +578,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         return self.get_hardware_instance_description()
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__module__}.{self.__class__.__qualname__} ({self.get_hardware_identifier()}) object>"
+        return f"{self.__class__.__module__}.{self.__class__.__qualname__}(identifier={self.get_hardware_identifier()})"
 
     # Convert decorators to static methods
     register_measurement = staticmethod(register_measurement)  # type: ignore

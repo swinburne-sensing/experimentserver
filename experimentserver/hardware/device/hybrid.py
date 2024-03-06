@@ -336,7 +336,7 @@ class HP34401AMultimeterMultiChannel(MultiChannelHardware):
         super(HP34401AMultimeterMultiChannel, self).__init__(identifier, daq_args, child_args, parameters)
 
     @classmethod
-    def get_child_class(cls) -> typing.Type:
+    def get_child_class(cls) -> typing.Type[Hardware]:
         return HP34401AMultimeter
 
 
@@ -346,16 +346,16 @@ class Picoammeter6487MultiChannel(MultiChannelHardware):
         super(Picoammeter6487MultiChannel, self).__init__(identifier, daq_args, child_args, parameters)
 
     @classmethod
-    def get_child_class(cls) -> typing.Type:
+    def get_child_class(cls) -> typing.Type[Hardware]:
         return Picoammeter6487
 
-    def post_channel_close(self, channel: int):
+    def post_channel_close(self, channel: int) -> None:
         super().post_channel_close(channel)
 
         # Enable supply
         self._child_hardware.set_source_enable(True)
 
-    def pre_channel_open(self, channel: int):
+    def pre_channel_open(self, channel: int) -> None:
         super().pre_channel_open(channel)
 
         # Disable supply

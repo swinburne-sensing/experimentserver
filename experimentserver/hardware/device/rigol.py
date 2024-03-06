@@ -239,14 +239,14 @@ class DP832PowerSupply(SCPIHardware):
         return status
 
     # Event handling
-    def transition_connect(self, event: typing.Optional[EventData] = None):
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
         # Enable remote mode
         with self.visa_transaction() as transaction:
             transaction.write(':SYST:REM')
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None):
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         # Return to local control
         with self.visa_transaction() as transaction:
             transaction.write(':SYST:LOC')

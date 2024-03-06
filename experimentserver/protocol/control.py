@@ -17,10 +17,10 @@ class ProcedureState(ManagedState):
     # Paused procedure
     PAUSED = 'paused'
 
-    def is_valid(self):
+    def is_valid(self) -> bool:
         return self != self.SETUP
 
-    def is_running(self):
+    def is_running(self) -> bool:
         return self == self.RUNNING or self == self.PAUSED
 
 

@@ -48,7 +48,7 @@ class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
         # Setup write API
         self.write_api: influxdb_client.WriteApi = self.client.write_api(write_options=ASYNCHRONOUS)
 
-    def __del__(self):
+    def __del__(self) -> None:
         if hasattr(self, 'write_api') and self.write_api is not None:
             self.write_api.close()
             self.write_api = None
@@ -162,7 +162,7 @@ class _InfluxDBv2Client(LoggedAbstract, MeasurementTarget):
 _db_client: typing.Dict[str, _InfluxDBv2Client] = {}
 
 
-def setup_database(identifier: str, connect_args: typing.MutableMapping[str, typing.Any], debug: bool):
+def setup_database(identifier: str, connect_args: typing.MutableMapping[str, typing.Any], debug: bool) -> _InfluxDBv2Client:
     if identifier in _db_client:
         raise KeyError(f"Database connection with identifier {identifier} already exists")
 

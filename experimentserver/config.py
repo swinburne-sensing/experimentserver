@@ -162,7 +162,7 @@ class ConfigManager(object):
         return d
 
     @classmethod
-    def _flatten_helper(cls, node) -> typing.List[typing.Any]:
+    def _flatten_helper(cls, node: typing.Any) -> typing.List[typing.Any]:
         """ Removes lists of lists from child nodes in configuration.
 
         :param node:
@@ -179,7 +179,7 @@ class ConfigManager(object):
         return flat_node
 
     @classmethod
-    def _update_helper(cls, node):
+    def _update_helper(cls, node: typing.Any) -> ConfigNode:
         if isinstance(node, dict):
             parent = cls._create_node()
 

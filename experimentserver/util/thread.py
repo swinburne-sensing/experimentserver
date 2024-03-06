@@ -127,7 +127,7 @@ class ManagedThread(LoggedAbstract):
     """
     _thread_instances: typing.List[ManagedThread] = []
 
-    def __init__(self, thread_target: typing.Callable,
+    def __init__(self, thread_target: typing.Callable[..., None],
                  thread_target_args: typing.Optional[typing.List[typing.Any]] = None,
                  thread_target_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None,
                  thread_name_prefix: typing.Optional[str] = None, thread_name: typing.Optional[str] = None,
@@ -331,7 +331,7 @@ class ManagedThread(LoggedAbstract):
 class CallbackThread(ManagedThread):
     """  """
 
-    def __init__(self, name: typing.Optional[str], callback: typing.Callable,
+    def __init__(self, name: typing.Optional[str], callback: typing.Callable[..., None],
                  callback_args: typing.Optional[typing.List[typing.Any]] = None,
                  callback_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None, thread_daemon: bool = False,
                  run_final: bool = False):
@@ -390,7 +390,7 @@ class _QueueEntry:
 class QueueThread(ManagedThread):
     QUEUE_TIMEOUT = 1
 
-    def __init__(self, name: str, event_callback: typing.Callable,
+    def __init__(self, name: str, event_callback: typing.Callable[..., None],
                  event_callback_args: typing.Optional[typing.List[typing.Any]] = None,
                  event_callback_kwargs: typing.Optional[typing.Dict[str, typing.Any]] = None):
         super().__init__(thread_name_postfix=':' + name, thread_target=self._thread_queue, run_final=True)

@@ -234,7 +234,9 @@ class Measurement(Logged):
         """
         return self.generate_source_hash(self.source.get_export_source_name(), self.measurement_group)
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: typing.Any) -> typing.Union[T_FIELD_VALUE, T_TAG_VALUE]:
+        assert isinstance(item, str)
+
         if item in self._fields:
             return self._fields[item]
 
@@ -350,7 +352,7 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
     _measurement_target_list: typing.Dict[str, typing.List[MeasurementTarget]] = {}
 
     # Remapping of exporter sources to targets
-    _measurement_target_remap: typing.List[typing.Tuple[typing.Pattern, str]] = []
+    _measurement_target_remap: typing.List[typing.Tuple[typing.Pattern[str], str]] = []
 
     # Cache for measurements
     _measurement_cache: typing.Dict[int, Measurement] = {}
@@ -538,7 +540,7 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
 class DummyTarget(LoggedAbstract, MeasurementTarget):
     """ A dumb target that just logs all Measurements received. Used for testing only."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         LoggedAbstract.__init__(self)
         MeasurementTarget.__init__(self)
 

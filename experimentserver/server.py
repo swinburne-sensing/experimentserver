@@ -10,7 +10,7 @@ class ServerException(ApplicationException):
     pass
 
 
-def start_server(config: ConfigManager, app_metadata: T_TAG_MAP, user_metadata: T_TAG_MAP):
+def start_server(config: ConfigManager, app_metadata: T_TAG_MAP, user_metadata: T_TAG_MAP) -> None:
     # Setup web server
     ui = WebServer(config, app_metadata, user_metadata)
     register_html(ui)

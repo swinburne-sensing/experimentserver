@@ -524,9 +524,6 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 raise VISACommunicationError(f"Unexpected VISA error occurred during acquisition of "
                                              f"{self._visa_address}") from exc
 
-        if not isinstance(resource, pyvisa.resources.messagebased.MessageBasedResource):
-            raise VISACommunicationError(self, 'Non-message based VISA resources are unsupported')
-
         # Set optional timeout
         if self._visa_timeout is not None:
             resource.timeout = self._visa_timeout * 1000

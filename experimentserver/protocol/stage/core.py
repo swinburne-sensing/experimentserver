@@ -99,7 +99,7 @@ class Delay(BaseStage):
 
         return stage
 
-    def _sync_delay_exit_timestamp(self, offset: typing.Optional[timedelta] = None):
+    def _sync_delay_exit_timestamp(self, offset: typing.Optional[timedelta] = None) -> None:
         assert self._delay_exit_timestamp is not None
 
         if offset is not None:

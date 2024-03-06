@@ -23,7 +23,7 @@ class T96Controller(Hardware):
     # Linkam only produces measurements data every ~0.25s
     _REFRESH_PERIOD = 0.25
 
-    _CONNECT_ATTEMPTS = 5
+    _CONNECT_ATTEMPTS = 3
 
     def __init__(self, *args: typing.Any, sdk_root_path: typing.Optional[str] = None, sdk_log_path: typing.Optional[str] = None, sdk_license_path: typing.Optional[str] = None,
                  **kwargs: typing.Any):
@@ -228,8 +228,8 @@ class T96Controller(Hardware):
         super(T96Controller, self).transition_connect(event)
 
         # Ensure SDK is initialised and connect
-        try:
-            for attempt in range(self._CONNECT_ATTEMPTS):
+        for attempt in range(self._CONNECT_ATTEMPTS):
+            try:
                 self._connection = self._sdk.connect_usb()
 
                 controller = self._connection.get_controller_config()
@@ -268,11 +268,13 @@ class T96Controller(Hardware):
                 self.logger().info(f"Stage hardware version: {self._connection.get_stage_hardware_version()}")
 
                 return
-        except sdk.ControllerConnectError as exc:
-            if attempt >= self._CONNECT_ATTEMPTS - 1:
-                raise
+            except sdk.ControllerConnectError as exc:
+                if attempt >= self._CONNECT_ATTEMPTS - 1:
+                    raise CommunicationError('Unable to connect to Linkam controller. Ensure controller is turned on '
+                                             'and power-cycle if necessary.') from exc
 
-            self.logger().warning(f"Error starting Linkam (error: {exc!s})")
+                self.sleep(0.25, 'reconnect retry')
+                self.logger().warning(f"Error starting Linkam (error: {exc!s})")
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         if self._connection is not None:

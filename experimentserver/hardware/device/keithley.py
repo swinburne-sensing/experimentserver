@@ -150,7 +150,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
         return 'Keithley DAQ6510 Data Acquisition/Multimeter System'
 
     # SCPI overrides
-    def transition_connect(self, event: typing.Optional[EventData] = None):
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
         with self.visa_transaction() as transaction:
@@ -164,7 +164,7 @@ class MultimeterDAQ6510(_KeithleyInstrument):
                 else:
                     self._slot_module[slot] = card_idn
 
-    def transition_disconnect(self, event: typing.Optional[EventData] = None):
+    def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
         # Clear available slots
         for slot in self._slot_module.keys():
             self._slot_module[slot] = None
@@ -520,7 +520,7 @@ class Picoammeter6487(_KeithleyInstrument):
 
         return measurement_list
 
-    def transition_connect(self, event: typing.Optional[EventData] = None):
+    def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super().transition_connect(event)
 
         # Enable remote operation
