@@ -342,4 +342,5 @@ try:
 except Exception:
     raise
 finally:
-    exit(experimentserver.EXIT_ERROR_EXCEPTION)
+    if not app_args.debug:
+        exit(experimentserver.EXIT_ERROR_EXCEPTION)
