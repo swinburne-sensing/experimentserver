@@ -70,22 +70,18 @@
 
 {% block content %}
     <div>
-        <h1>Experimental Procedure</h1>
-
         <h2 class="uk-heading-bullet">Import/Export</h2>
         <p>Upload new procedure or download the currently loaded procedure. Procedures are stored in <a href="https://yaml.org/">YAML files</a> that can be altered in any text editor. Users should familiarise themselves with the file format to facilitate editing and error checking.</p>
-        <p>Remember that indenting is important. Files should use spaces, not tabs.</p>
         <div id="control-edit" class="uk-display-inline-block">
             <div uk-form-custom="target: true">
                 <input type="file" id="procedure-import-file" accept="application/x-yaml,.yml,.yaml,.j2">
-                <input class="uk-input uk-form-width-medium uk-form-small" type="text" placeholder="Select file" disabled>
+                <input class="uk-input uk-form-width-medium uk-form-small uk-text-bold" type="text" placeholder="Click to select a file" disabled>
             </div>
             <!-- <button class="uk-button uk-button-default uk-button-small procedure-edit" uk-tooltip="title: Import procedure from a file; pos: bottom" id="procedure-import"><span uk-icon="icon: upload"></span> Import</button> -->
             <button class="uk-button uk-button-default uk-button-small" uk-tooltip="title: Export procedure to a file; pos: bottom" id="procedure-export"><span uk-icon="icon: download"></span> Export</button>
         </div>
 
-        <h2 class="uk-heading-bullet">Loaded Procedure</h2>
-        <p>The currently loaded procedure is shown below.</p>
+        <h2 class="uk-heading-bullet">Current Procedure</h2>
 
         {% include 'procedure.html' %}
     </div>

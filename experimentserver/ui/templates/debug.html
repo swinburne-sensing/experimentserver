@@ -23,7 +23,7 @@
             </tr>
         </thead>
         <tbody>
-            {% for hardware_metadata in hardware %}
+            {% for hardware_metadata in hardware.values() %}
                 <tr>
                     <td>{{ hardware_metadata.identifier }}</td>
                     <td class="uk-text-capitalize">{{ hardware_metadata.state }}</td>

@@ -33,7 +33,7 @@
         <p class=".uk-text-muted">Hardware utilised in this procedure. Include <b>all</b> hardware used for control or measurements.</p>
 
         <ul>
-            {% for hardware_metadata in hardware %}
+            {% for hardware_metadata in hardware.values() %}
                 <li class="uk-active es-hardware-identifier"><input class="uk-checkbox procedure-edit hardware-enable" type="checkbox"{% if hardware_metadata.active %} checked{% endif %} identifier="{{ hardware_metadata.identifier }}"> {{ hardware_metadata.identifier }}</li>
                 <li class="es-hardware-description">{{ hardware_metadata.description }}</li>
             {% endfor %}

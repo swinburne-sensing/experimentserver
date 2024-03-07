@@ -34,10 +34,10 @@ TJSONWrappable = typing.Union[
 TJSONWrapped = typing.Mapping[str, typing.Any]
 
 
-def _json_response_wrapper(ui: WebServer):
+def _json_response_wrapper(ui: WebServer) -> typing.Callable[[typing.Callable[TParam, TJSONWrapped]], typing.Callable[TParam, TJSONWrapped]]:
     def outer_wrapper(func: typing.Callable[TParam, TJSONWrappable]) -> typing.Callable[TParam, TJSONWrapped]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: typing.Any, **kwargs: typing.Any) -> flask.Response:
             try:
                 value = func(*args, **kwargs)
 
@@ -91,15 +91,21 @@ def _json_response_wrapper(ui: WebServer):
 
 
 def register_json(ui: WebServer) -> None:
-    @ui.app.route('/server/state')
+    @ui.app.route('/server/state', methods=['GET'])
     @_json_response_wrapper(ui)
     def server_state() -> TJSONWrappable:
+        debug = flask.request.args.get('debug', type=bool)
+
+        if debug:
+            breakpoint()
+
         return {
-            'hardware_state': {identifier: manager.get_state().value for identifier, manager in
-                               HardwareManager.get_all_instances().items()},
+            'hardware_state': {
+                ident: man.get_state_str(0.05) for ident, man in HardwareManager.get_all_instances().items()
+            },
             'procedure': ui.get_procedure().get_procedure_summary(),
             'stages':  ui.get_procedure().get_stages_summary(True),
-            'state': ui.get_procedure().get_state().value
+            'state': ui.get_procedure().get_state_str(0.1)
         }
 
     @ui.app.route('/server/state/next', methods=['GET', 'POST'])
@@ -135,13 +141,11 @@ def register_json(ui: WebServer) -> None:
                     raise APIError('Missing hardware identifier')
 
                 hardware_manager = HardwareManager.get_instance(identifier)
-                hardware_manager.queue_transition(HardwareTransition(transition))
-                final_state = hardware_manager.get_state().value
+                final_state = hardware_manager.queue_transition(HardwareTransition(transition))
             elif target.lower() == 'procedure':
                 identifier = 'Procedure'
                 procedure_manager = ui.get_procedure()
-                procedure_manager.queue_transition(ProcedureTransition(transition))
-                final_state = procedure_manager.get_state().value
+                final_state = procedure_manager.queue_transition(ProcedureTransition(transition))
             else:
                 raise UserInterfaceError('Invalid or missing command target')
         except (KeyError, ValueError):

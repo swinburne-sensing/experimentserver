@@ -48,7 +48,7 @@ def _render_html(ui: WebServer, page: str, **kwargs: typing.Any) -> str:
             continue
 
     # Generate list of hardware
-    hardware_list = []
+    hardware_lut = {}
 
     for identifier, manager in HardwareManager.get_all_instances().items():
         hardware = manager.get_hardware()
@@ -63,18 +63,18 @@ def _render_html(ui: WebServer, page: str, **kwargs: typing.Any) -> str:
         parameter_list = hardware.get_hardware_parameter_metadata()
         measurement_list = hardware.get_hardware_measurement_metadata()
 
-        hardware_list.append({
+        hardware_lut[identifier] = {
             'class': class_fqn,
             'author': hardware.get_author(),
             'identifier': identifier,
-            'state': manager.get_state(),
+            'state': manager.get_state_str(0.1),
             'description': hardware.get_hardware_instance_description(),
             'class_description': hardware.get_hardware_class_description(),
             'parameters': {k: v.description for k, v in parameter_list.items()},
             'measurements': {k: v.description for k, v in measurement_list.items()}
-        })
+        }
 
-    return flask.render_template(page, metadata=ui.get_metadata(), hardware=hardware_list,
+    return flask.render_template(page, metadata=ui.get_metadata(), hardware=hardware_lut,
                                  hardware_class=hardware_class_list,
                                  procedure=ui.get_procedure().get_procedure_summary(),
                                  stages=ui.get_procedure().get_stages_summary(), render_list=_render_list, **kwargs)

@@ -98,7 +98,7 @@ function registerAjax(parent, url, success_callback = null, data = null, error_m
                     notifyError('Server Error', error_message);
                 }
             },
-            timeout: 5000
+            timeout: 15000
         });
     }
 
@@ -137,8 +137,10 @@ function updateStatus() {
     // Stage elements
     const dom_stage = $(".es-stage");
 
-    if (updating)
+    if (updating) {
         console.log('Update already running');
+        return;
+    }
 
     updating = true;
 
@@ -160,7 +162,23 @@ function updateStatus() {
 
             // Update hardware state
             dom_hardware_state.each(function (index) {
-                $(this).html(result.data.hardware_state[$(this).attr('identifier')])
+                let hardware_state = result.data.hardware_state[$(this).attr('identifier')]
+
+                switch (hardware_state.toLowerCase()) {
+                    case 'running':
+                        $(this).addClass('uk-label-success')
+                        break;
+                    
+                    case 'error':
+                        $(this).addClass('uk-label-danger')
+                        break;
+                    
+                    default:
+                        $(this).removeClass('uk-label-success')
+                        $(this).removeClass('uk-label-danger')
+                }
+
+                $(this).html(hardware_state)
             });
 
             // Disable controls
@@ -176,7 +194,7 @@ function updateStatus() {
             const stage_current = result.data.procedure.stage_current;
             const stage_next = result.data.procedure.stage_next;
 
-            switch (state) {
+            switch (state.toLowerCase()) {
                 case 'setup':
                     dom_state
                         .html('Status: Setup')
@@ -215,6 +233,12 @@ function updateStatus() {
 
                     dom_start.prop('disabled', false);
                     dom_stop.prop('disabled', false);
+                    break;
+                
+                case 'unknown':
+                    dom_state
+                        .html('Status: Pending')
+                        .addClass('uk-label-warning');
                     break;
 
                 default:
@@ -256,13 +280,13 @@ function updateStatus() {
         complete: function () {
             updating = false;
         },
-        timeout: 10000
+        timeout: 15000
     })
 }
 
 function autoUpdateStatus() {
     updateStatus();
-    setInterval(updateStatus, 3000);
+    setInterval(updateStatus, 1000);
 }
 
 $(document).ready(function() {

@@ -44,7 +44,7 @@
                     </tr>
                 </thead>
                 <tbody id="hardware-dialog-container-state">
-                    {% for hardware_metadata in hardware %}
+                    {% for hardware_metadata in hardware.values() %}
                         <tr>
                             <td>{{ hardware_metadata.identifier }}</td>
                             <td>{{ hardware_metadata.class }}</td>

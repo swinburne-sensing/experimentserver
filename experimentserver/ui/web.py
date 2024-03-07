@@ -10,7 +10,8 @@ from experimentlib.logging.handlers import BufferedHandler
 import experimentserver
 from experimentserver.measurement import T_TAG_MAP, MeasurementSource, MeasurementTarget, Measurement, MeasurementGroup
 from experimentserver.config import ConfigManager
-from experimentserver.hardware.manager import HardwareError, HardwareManager
+from experimentserver.hardware.error import HardwareError
+from experimentserver.hardware.manager import HardwareManager
 from experimentserver.protocol import Procedure, ProcedureLoadError, ProcedureTransition, ProcedureState
 from experimentserver.protocol.stage.core import Delay
 from experimentserver.util.thread import CallbackThread
