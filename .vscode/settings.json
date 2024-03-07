@@ -1,9 +1,12 @@
 {
     "mypy.runUsingActiveInterpreter": true,
     "mypy.extraArguments": [
-        "--ignore-missing-imports"
+        "--ignore-missing-imports",
+        "--strict",
+        "--allow-untyped-decorators"
     ],
     "mypy.targets": [
         "experimentserver"
-    ]
+    ],
+    "autoDocstring.docstringFormat": "sphinx"
 }
