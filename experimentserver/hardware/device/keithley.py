@@ -516,7 +516,7 @@ class Picoammeter6487(_KeithleyInstrument):
 
                 measurement_list.append(measurement)
             except MeasurementUnavailable:
-                pass
+                self.logger().info(f"Measurement unavailable @ {voltage}")
 
         return measurement_list
 

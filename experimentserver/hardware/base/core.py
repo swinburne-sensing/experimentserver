@@ -341,8 +341,9 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
                             # Indicate a measurement was produced
                             measurement_flag = True
-                    except MeasurementUnavailable:
+                    except MeasurementUnavailable as exc:
                         # Ignore unavailable measurements
+                        self.logger().warning("Measurement unavailable: {exc!s}")
                         pass
 
         return measurement_flag
