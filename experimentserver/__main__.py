@@ -138,11 +138,11 @@ def main(debug: bool, config_paths: typing.List[str], cli_tags: typing.Dict[str,
         if csv_target:
             if csv_target.is_file():
                 raise experimentserver.ApplicationException('CSV path must be a directory')
-
+            
             csv_target.mkdir(parents=True, exist_ok=True)
 
             root_logger.info(f"Saving CSV measurements to {csv_target.absolute()}")
-            CSVTarget(csv_target.absolute())
+            CSVTarget(csv_target)
 
         if json_target:
             root_logger.info(f"Saving JSON measurements to {json_target.absolute()}")

@@ -293,6 +293,12 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         with Measurement.metadata_global_lock.lock('Procedure._procedure_validate'):
             Measurement.push_global_metadata()
 
+            # Tell measurement targets a new group has started
+            MeasurementTarget.trigger_start(
+                procedure_summary=self.get_procedure_summary(),
+                procedure_stages=self.get_stages_summary()
+            )
+
             Measurement.add_global_tags({
                 'procedure_uid': self._procedure_uid,
                 'procedure_state': 'ready'
@@ -408,6 +414,12 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         with Measurement.metadata_global_lock.lock():
             # Clear current stage
             self._procedure_stage_current = None
+
+            # Tell measurement targets a new group has stopped
+            MeasurementTarget.trigger_stop(
+                procedure_summary=self.get_procedure_summary(),
+                procedure_stages=self.get_stages_summary()
+            )
 
             # Restore metadata
             Measurement.flush_global_metadata()

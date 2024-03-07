@@ -368,10 +368,25 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
 
         # Register self into list of target exporters
         with self._measurement_metadata_lock:
-            if self._exporter_target_name in self._measurement_target_list:
-                self._measurement_target_list[self._exporter_target_name].append(self)
-            else:
-                self._measurement_target_list[self._exporter_target_name] = [self]
+            self._measurement_target_list[self._exporter_target_name].append(self)
+    
+    @classmethod
+    def trigger_start(cls, **addon_metadata: typing.Any) -> None:
+        """ Trigger the start of a new group of measurements
+        """
+        with cls._measurement_metadata_lock:
+            for target_list in cls._measurement_target_list.values():
+                for target in target_list:
+                    target._trigger_start(**addon_metadata)
+    
+    @classmethod
+    def trigger_stop(cls, **addon_metadata: typing.Any) -> None:
+        """ Trigger the stop of a group of measurements
+        """
+        with cls._measurement_metadata_lock:
+            for target_list in cls._measurement_target_list.values():
+                for target in target_list:
+                    target._trigger_stop(**addon_metadata)
 
     @classmethod
     def get_cached_measurement(cls, source: str, measurement_group: MeasurementGroup) -> typing.Optional[Measurement]:
@@ -411,6 +426,16 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
         """
         pass
 
+    def _trigger_start(self, **addon_metadata: typing.Any) -> None:
+        """ Trigger the start of a new group of measurements
+        """
+        pass
+    
+    def _trigger_stop(self, **addon_metadata: typing.Any) -> None:
+        """ Trigger the stop of a group of measurements
+        """
+        pass
+
     @classmethod
     def record(cls, measurement: Measurement) -> None:
         """ Record a Measurement.
@@ -443,15 +468,21 @@ class MeasurementTarget(metaclass=abc.ABCMeta):
 class CSVTarget(LoggedAbstract, MeasurementTarget):
     _SLEEP_PERIOD = 1.0
 
-    def __init__(self, target_dir: Path, write_period: float = 30.0):
+    def __init__(self, root_dir: Path, write_period: float = 300.0):
         LoggedAbstract.__init__(self)
         MeasurementTarget.__init__(self)
 
-        self._target_dir = target_dir
+        self._root_dir = root_dir.absolute()
         self._write_period = write_period
 
-        self._measurement_queue: queue.Queue[Measurement] = queue.Queue()
+        # Ensure root directory exists
+        self._root_dir.mkdir(parents=True, exist_ok=True)
+        self._target_dir: typing.Optional[Path] = None
 
+        self._measurement_queue: queue.Queue[Measurement] = queue.Queue()
+        self._write_enabled: bool = False
+
+        self._file_write_request = threading.Event()
         self._file_write_thread = thread.CallbackThread(
             name='csv_write',
             callback=self._write_queue,
@@ -462,7 +493,39 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
         self._init_datetime: typing.Optional[datetime] = None
     
     def _record(self, measurement: Measurement) -> None:
-        self._measurement_queue.put(measurement)
+        if self._write_enabled:
+            self._measurement_queue.put(measurement)
+        else:
+            # Discard measurements while not started
+            self.logger().debug(f"Discarding measurement {measurement!r}")
+
+    def _save_metadata(self, **addon_metadata: typing.Any) -> None:
+        # Dump metadata
+        metadata = dict(Measurement.get_global_tags())
+        metadata.update(addon_metadata)
+
+        # Create summary file
+        assert self._target_dir is not None
+        with open(self._target_dir.joinpath('summary.yaml'), 'w') as summary_file:
+            yaml.dump(metadata, summary_file)
+
+    def _trigger_start(self, **addon_metadata: typing.Any) -> None:
+        super()._trigger_start(**addon_metadata)
+
+        # Create new directory for experiment
+        self._target_dir = self._root_dir.joinpath(f"data_{now().strftime(FORMAT_TIMESTAMP_FILENAME)}")
+        self._target_dir.mkdir()
+
+        self._save_metadata(**addon_metadata, experiment_state='start')
+        
+        self.logger().info(f"Saving CSV measurements to {self._target_dir.absolute()}")
+        self._write_enabled = True
+    
+    def _trigger_stop(self, **addon_metadata: typing.Any) -> None:
+        self._save_metadata(**addon_metadata, experiment_state='stop')
+
+        self._file_write_request.set()
+        self._write_enabled = False
     
     def _write_queue(self) -> None:
         write_buffer = defaultdict(list)
@@ -470,6 +533,7 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
         try:
             while True:
                 measurement = self._measurement_queue.get(False)
+
                 measurement_timestamp = measurement.timestamp.replace(tzinfo=None)
 
                 if self._init_datetime is None:
@@ -502,7 +566,7 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
 
                 write_buffer[measurement.source.get_export_source_name()].append(row_dict)
         except queue.Empty:
-            pass
+            self._file_write_request.clear()
 
         if len(write_buffer) > 0:
             for source_name, source_buffer in write_buffer.items():
@@ -533,8 +597,9 @@ class CSVTarget(LoggedAbstract, MeasurementTarget):
         
         time_resume = time.time() + self._write_period
         
-        while not self._file_write_thread.thread_stop_requested() and time.time() < time_resume:
-            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer', quiet=True)
+        while not self._file_write_thread.thread_stop_requested() and not self._file_write_request.is_set() \
+                and time.time() < time_resume:
+            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer', silent=True)
 
 
 class DummyTarget(LoggedAbstract, MeasurementTarget):
@@ -622,7 +687,7 @@ class JSONTarget(LoggedAbstract, MeasurementTarget):
         time_resume = time.time() + self._write_period
         
         while not self._file_write_thread.thread_stop_requested() and time.time() < time_resume:
-            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer', quiet=True)
+            self.sleep(self._SLEEP_PERIOD, 'waiting for buffer', silent=True)
 
 
 # Type hinting definitions for measurements
