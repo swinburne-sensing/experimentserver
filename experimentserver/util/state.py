@@ -262,16 +262,11 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
                         except (transitions.MachineError, experimentserver.ApplicationException) as exc:
                             # Pass to handler
                             self._handle_transition_exception(state, queued_transition, exc)
-                        except Exception as exc:
-                            # Pass to handler
-                            self._handle_transition_exception(state, queued_transition, exc)
-
-                            raise
                         finally:
-                            current_state = self._get_state()
+                            state = self._get_state()
 
-                            if current_state != state_queue[-1]:
-                                state_queue.append(current_state)
+                            if state != state_queue[-1]:
+                                state_queue.append(state)
                 finally:
                     if len(state_queue) > 1:
                         self.logger().info(f"State updated {' -> '.join((x.value for x in state_queue))}")

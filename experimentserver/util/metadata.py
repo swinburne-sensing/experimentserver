@@ -149,9 +149,12 @@ def get_metadata(target: typing.Any, class_filter: typing.Optional[typing.Type[T
     return metadata_dict
 
 
-def register_metadata(metadata_factory: typing.Callable[..., Metadata], *metadata_args,
-                      **metadata_kwargs):
-    def wrapper(func):
+TFunc = typing.TypeVar('TFunc')
+
+
+def register_metadata(metadata_factory: typing.Callable[..., Metadata], *metadata_args: typing.Any,
+                      **metadata_kwargs: typing.Any) -> typing.Callable[..., Metadata]:
+    def wrapper(func: TFunc) -> TFunc:
         func.metadata = metadata_factory(func, *metadata_args, **metadata_kwargs)
 
         return func

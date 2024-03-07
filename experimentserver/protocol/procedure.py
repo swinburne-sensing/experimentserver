@@ -13,13 +13,14 @@ from experimentlib.util.iterate import flatten_list
 from experimentlib.util.generate import hex_str
 from experimentlib.util.time import now
 
-from experimentserver import ApplicationException
+from experimentserver import ApplicationException, MultipleException
 from experimentserver.protocol.control import ProcedureState, ProcedureTransition
 from .file import YAMLProcedureLoader
 from .stage import BaseStage, TYPE_STAGE
 from experimentserver.config import ConfigManager, ConfigNode
-from experimentserver.hardware.control import HardwareState, HardwareTransition
+from experimentserver.hardware.control import HardwareTransition
 from experimentserver.hardware.manager import HardwareManager
+from experimentserver.measurement import T_TAG_MAP, Measurement, MeasurementTarget, dynamic_field_time_delta
 from experimentserver.util.lock import MonitoredLock
 from experimentserver.util.state import ManagedStateMachine
 
@@ -240,33 +241,33 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         return timedelta(seconds=sum((t.total_seconds() for t in durations if t is not None)))
 
     # Stage management
-    def get_stage_current(self) -> typing.Optional[BaseStage]:
+    def get_stage_current(self) -> typing.Tuple[typing.Optional[int], typing.Optional[BaseStage]]:
         """ Get the current stage.
 
         :return: Stage
         """
         if not self.get_state().is_valid():
-            return None
+            return None, None
 
         with self._procedure_stages_lock.lock():
             if self._procedure_stage_current is not None:
-                return self._procedure_stages[self._procedure_stage_current]
+                return self._procedure_stage_current, self._procedure_stages[self._procedure_stage_current]
             else:
-                return None
+                return None, None
 
-    def get_stage_next(self) -> typing.Optional[BaseStage]:
+    def get_stage_next(self) -> typing.Tuple[typing.Optional[int], typing.Optional[BaseStage]]:
         """ Get the next stage.
 
         :return: Stage
         """
         if not self.get_state().is_valid():
-            return None
+            return None, None
 
         with self._procedure_stages_lock.lock():
             if self._procedure_stage_next is not None:
-                return self._procedure_stages[self._procedure_stage_next]
+                return self._procedure_stage_next, self._procedure_stages[self._procedure_stage_next]
             else:
-                return None
+                return None, None
 
     # Event handling
     def _procedure_validate(self, _: transitions.EventData) -> None:
@@ -312,66 +313,46 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             Measurement.add_global_tags(self._procedure_metadata)
 
             Measurement.add_global_tag('procedure_state', 'ready')
+    
+    def _hardware_error_check(self) -> None:
+        errors = {}
+
+        for identifier, manager in self._procedure_hardware_managers.items():
+            exc = manager.get_error(raise_exception=False)
+
+            if exc is not None:
+                self.logger().warning(f"{identifier} reported errors")
+                errors[identifier] = exc
+            else:
+                self.logger().debug(f"{identifier} reported no errors")
+        
+        if len(errors) == 1:
+            ProcedureTransition.ERROR.apply(self)
+            identifier, exc = next(iter(errors.items()))
+            raise ProcedureRuntimeError(f"Error occurred while starting {identifier}") from exc
+        elif len(errors) > 1:
+            raise ProcedureRuntimeError('Multiple hardware errors occured') from \
+                MultipleException('Multiple hardware errors generated during procedure transition', list(errors.values()))
+
+    def _hardware_transition(self, transition: HardwareTransition) -> None:
+        for manager in self._procedure_hardware_managers.values():
+            self.logger().info(
+                f"Running transition {transition!s} on {manager.get_hardware().get_hardware_identifier()}"
+            )
+            manager.queue_transition(transition, block=False, raise_exception=False)
 
     def _procedure_start(self, _: transitions.EventData) -> None:
-        # Connect required hardware
-        for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            self.logger().info(f"Connecting {hardware_identifier}")
+        # Trigger connect on all hardware
+        self._hardware_transition(HardwareTransition.CONNECT)
+        self._hardware_error_check()
 
-            # Check current state
-            hardware_state = hardware_manager.get_state()
+        # Trigger configure on all hardware
+        self._hardware_transition(HardwareTransition.CONFIGURE)
+        self._hardware_error_check()
 
-            if hardware_state.is_error():
-                raise ProcedureRuntimeError(f"Hardware {hardware_identifier} is in an error state, cannot start "
-                                            f"(during connect)")
-
-            if hardware_state == HardwareState.DISCONNECTED:
-                hardware_manager.queue_transition(HardwareTransition.CONNECT, block=False, raise_exception=False)
-
-        # Configure
-        for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            self.logger().info(f"Configuring {hardware_identifier}")
-
-            # Check current state
-            hardware_state = hardware_manager.get_state()
-
-            if hardware_state.is_error():
-                raise ProcedureRuntimeError(f"Hardware {hardware_identifier} is in an error state, cannot start "
-                                            f"(during configure)")
-
-            if hardware_state == HardwareState.CONNECTED:
-                hardware_manager.queue_transition(HardwareTransition.CONFIGURE, block=False, raise_exception=False)
-
-        for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            self.logger().info(f"Starting {hardware_identifier}")
-
-            # Check current state
-            hardware_state = hardware_manager.get_state()
-
-            if hardware_state.is_error():
-                raise ProcedureRuntimeError(f"Hardware {hardware_identifier} is in an error state, cannot start "
-                                            f"(during start)")
-
-            if hardware_state == HardwareState.CONFIGURED:
-                hardware_manager.queue_transition(HardwareTransition.START, block=False, raise_exception=False)
-
-        # Wait for connection and configuration to complete
-        for hardware_identifier, hardware_manager in self._procedure_hardware_managers.items():
-            try:
-                hardware_manager.get_error()
-            except Exception as exc:
-                # If hardware reported error during transition then go to error state
-                ProcedureTransition.ERROR.apply(self)
-
-                raise ProcedureRuntimeError(f"Error occurred while starting {hardware_identifier}") from exc
-
-            if hardware_manager.get_state() != HardwareState.RUNNING:
-                # If all hardware not running then transition to error state
-                ProcedureTransition.ERROR.apply(self)
-
-                raise ProcedureRuntimeError(f"{hardware_identifier} failed to start")
-
-            self.logger().debug(f"{hardware_identifier} ready")
+        # Trigger start on all hardware
+        self._hardware_transition(HardwareTransition.START)
+        self._hardware_error_check()
 
         # Add procedure metadata
         with Measurement.metadata_global_lock.lock():
@@ -395,27 +376,30 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         initial_stage.stage_enter()
 
     def _procedure_pause(self, _: transitions.EventData) -> None:
-        with Measurement.metadata_global_lock.lock():
-            assert self._procedure_stage_current is not None
-            current_stage = self._procedure_stages[self._procedure_stage_current]
-            current_stage.stage_pause()
+        _, current_stage = self.get_stage_current()
+        assert current_stage is not None
+        current_stage.stage_pause()
 
-            # Indicate procedure paused in metadata
-            Measurement.add_global_tag('procedure_state', 'paused')
+        # Indicate procedure paused in metadata
+        Measurement.add_global_tag('procedure_state', 'paused')
 
         self.logger().info(f"Procedure {self._procedure_uid} paused", event=True)
 
     def _procedure_resume(self, _: transitions.EventData) -> None:
-        with Measurement.metadata_global_lock.lock():
-            assert self._procedure_stage_current is not None
-            current_stage = self._procedure_stages[self._procedure_stage_current]
-            current_stage.stage_resume()
+        _, current_stage = self.get_stage_current()
+        assert current_stage is not None
+        current_stage.stage_resume()
 
-            Measurement.add_global_tag('procedure_state', 'running')
+        Measurement.add_global_tag('procedure_state', 'running')
 
         self.logger().info(f"Procedure {self._procedure_uid} resumed", event=True)
 
     def _procedure_stop(self, _: transitions.EventData) -> None:
+        _, current_stage = self.get_stage_current()
+
+        if current_stage is not None:
+            current_stage.stage_exit()
+
         with Measurement.metadata_global_lock.lock():
             # Clear current stage
             self._procedure_stage_current = None
@@ -475,7 +459,9 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             self._procedure_stage_next = None
 
     def _stage_goto(self, event: transitions.EventData) -> None:
-        self._procedure_stage_next = int(event.args[0])
+        stage_next = int(event.args[0])
+
+        self.logger().info(f'Queue next stage {stage_next}', event=True)
 
         with self._procedure_stages_lock.lock():
             self._procedure_stage_next = stage_next
@@ -576,7 +562,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             procedure['hardware'] = self._procedure_hardware
 
         # Export stages
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             for stage in self._procedure_stages:
                 stages.append(stage.stage_export())
         
@@ -585,54 +571,63 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
     def _thread_manager(self) -> None:
         entry_time = time.time()
 
-        with self._procedure_stages_lock:
-            try:
-                # Apply pending state transitions
-                (_, current_state) = self._process_transition()
+        try:
+            # Apply pending state transitions
+            (_, current_state) = self._process_transition()
 
-                # Handle running state
-                if current_state == ProcedureState.RUNNING:
-                    if self._procedure_stage_current is not None:
-                        # Get current stage
-                        current_stage = self._procedure_stages[self._procedure_stage_current]
+            # Handle running state
+            if current_state == ProcedureState.RUNNING:
+                _, current_stage = self.get_stage_current()
 
-                        # Run and check for completion
-                        self._procedure_stage_advance |= not current_stage.stage_run()
+                if current_stage is None:
+                    self.logger().warning('No current stage')
+                    ProcedureTransition.STOP.apply(self)
+                    return
 
-                        if self._procedure_stage_advance:
-                            # Exit current stage
-                            current_stage.stage_exit()
+                stage_advance = not current_stage.stage_run()
 
-                            # Check for completion
-                            if self._procedure_stage_next is None:
-                                ProcedureTransition.STOP.apply(self)
-                                return
-                            else:
-                                self._procedure_stage_current = self._procedure_stage_next
+                if not stage_advance:
+                    with self._procedure_stages_lock.lock():
+                        stage_advance |= self._procedure_stage_advance
 
-                                # Enter next stage
-                                current_stage = self._procedure_stages[self._procedure_stage_current]
-                                current_stage.stage_enter()
+                if stage_advance:
+                    # Exit current stage and prepare next
+                    current_stage.stage_exit()
+                    _, next_stage = self.get_stage_next()
 
-                                # Update procedure metadata
-                                Measurement.add_global_tag('procedure_stage_index', self._procedure_stage_current)
-
-                                # Update next stage
-                                self._procedure_stage_next += 1
-
-                                if self._procedure_stage_next >= len(self._procedure_stages):
-                                    self._procedure_stage_next = None
-
-                            self._procedure_stage_advance = False
-                    else:
-                        self.logger().warning('No current stage')
+                    # Check for completion
+                    if next_stage is None:
                         ProcedureTransition.STOP.apply(self)
                         return
-            except (ProcedureLoadError, ProcedureRuntimeError):
-                self.logger().exception('Unhandled error in procedure')
 
-                # Transition to error state
-                ProcedureTransition.ERROR.apply(self)
+                    # Enter next stage
+                    with self._procedure_stages_lock.lock():
+                        self._procedure_stage_current = self._procedure_stage_next
+
+                        # Update next stage
+                        if self._procedure_stage_next is not None:
+                            self._procedure_stage_next += 1
+
+                            if self._procedure_stage_next >= len(self._procedure_stages):
+                                self._procedure_stage_next = None
+                        
+                        self._procedure_stage_advance = False
+
+                        _, current_stage = self.get_stage_current()
+                    
+                    if current_stage is None:
+                        ProcedureTransition.STOP.apply(self)
+                        return
+
+                    current_stage.stage_enter()
+
+                    # Update procedure metadata
+                    Measurement.add_global_tag('procedure_stage_index', self._procedure_stage_current)
+        except (ProcedureLoadError, ProcedureRuntimeError):
+            self.logger().exception('Unhandled error in procedure')
+
+            # Transition to error state
+            ProcedureTransition.ERROR.apply(self)
 
         # Limit run rate
         delta_time = time.time() - entry_time
