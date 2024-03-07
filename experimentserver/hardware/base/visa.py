@@ -19,6 +19,7 @@ from .core import Hardware
 from .enum import HardwareEnum
 from ..error import CommunicationError, ExternalError
 from ..metadata import TYPE_PARAMETER_DICT
+from experimentserver.util.lock import LockRequest
 
 
 # Disable pyvisa logging (avoids duplication)
@@ -76,6 +77,8 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             self._error_check = error_check
             self._error_raise = error_raise
 
+            self._lock_request: typing.Optional[LockRequest] = None
+
             # Command cache for debugging
             self._command_history: typing.List[str] = []
 
@@ -89,7 +92,7 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
 
         def __enter__(self) -> VISAHardware.VISATransaction:
             # Get lock
-            self._parent._hardware_lock.acquire()
+            self._lock_request = self._parent._hardware_lock.acquire(frame_offset=1, reason='connect')
 
             if self._parent._visa_resource is None:
                 raise VISACommunicationError('Resource not available')
@@ -101,11 +104,12 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
                 self._timeout_enter = self._parent._visa_resource.timeout
                 self._parent._visa_resource.timeout = 1000 * self._timeout
 
-            return self
+            return self 
 
-        def __exit__(self, exc_type: typing.Type[BaseException], exc_val: BaseException, exc_tb):
+        def __exit__(self, exc_type: typing.Type[BaseException], exc_val: BaseException, exc_tb: TracebackType) -> typing.Literal[False]:
             # Release lock
-            self._parent._hardware_lock.release()
+            assert self._lock_request is not None
+            self._lock_request.release()
 
             command_history = ', '.join(self._command_history)
 
@@ -155,6 +159,8 @@ class VISAHardware(Hardware, metaclass=abc.ABCMeta):
             self._command_history = []
 
             self.logger().comm('Closed')
+
+            return False
 
         # VISA command formatting
         @staticmethod

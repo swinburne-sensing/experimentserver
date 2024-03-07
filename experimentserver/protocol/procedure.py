@@ -20,7 +20,7 @@ from .stage import BaseStage, TYPE_STAGE
 from experimentserver.config import ConfigManager, ConfigNode
 from experimentserver.hardware.control import HardwareState, HardwareTransition
 from experimentserver.hardware.manager import HardwareManager
-from experimentserver.measurement import T_TAG_MAP, Measurement, dynamic_field_time_delta
+from experimentserver.util.lock import MonitoredLock
 from experimentserver.util.state import ManagedStateMachine
 
 
@@ -41,6 +41,9 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
     # Export version indicator
     _EXPORT_VERSION = 2
     _EXPORT_COMPATIBILITY = 2,
+
+    # Timeout to prevent deadlocks
+    _STAGES_LOCK_TIMEOUT = 15
 
     def __init__(self, stages: typing.List[BaseStage], metadata: T_TAG_MAP, uid: typing.Optional[str] = None,
                  config: typing.Union[None, ConfigManager, typing.Dict[str, typing.Any]] = None,
@@ -102,7 +105,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         # Stage storage
         self._procedure_stages: typing.List[BaseStage] = stages or []
-        self._procedure_stages_lock = threading.RLock()
+        self._procedure_stages_lock = MonitoredLock(f"{self._procedure_uid}.stages", self._STAGES_LOCK_TIMEOUT)
 
         # Stage index, next, and advance trigger
         self._procedure_stage_current: typing.Optional[int] = None
@@ -133,7 +136,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
         stage = stage_class(**stage_kwargs)
 
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             if index is None:
                 self._procedure_stages.append(stage)
             else:
@@ -150,7 +153,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         if self.get_state().is_valid():
             raise ProcedureLoadError('Procedure is read-only once validated')
 
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             if index < 0 or index >= len(self._procedure_stages):
                 raise ProcedureLoadError(f"Stage index {index} is outside valid range")
 
@@ -164,11 +167,11 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             self._procedure_hardware.remove(identifier)
 
     def get_stage_count(self) -> int:
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             return len(self._procedure_stages)
 
     def get_procedure_summary(self) -> typing.Dict[str, typing.Any]:
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             return {
                 'uid': self._procedure_uid,
                 'hardware': list(self.get_procedure_hardware()),
@@ -182,7 +185,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         stage_summary = []
         stage_index = 0
 
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             for stage in self._procedure_stages:
                 stage_duration = stage.get_stage_duration()
                 stage_duration_value: typing.Union[str, float] = 0.0
@@ -220,8 +223,9 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         # Get all required hardware
         hardware_identifier_list = self._procedure_hardware.copy()
 
-        for stage in self._procedure_stages:
-            hardware_identifier_list.extend(stage.get_stage_hardware())
+        with self._procedure_stages_lock.lock():
+            for stage in self._procedure_stages:
+                hardware_identifier_list.extend(stage.get_stage_hardware())
 
         return set(hardware_identifier_list)
 
@@ -244,7 +248,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         if not self.get_state().is_valid():
             return None
 
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             if self._procedure_stage_current is not None:
                 return self._procedure_stages[self._procedure_stage_current]
             else:
@@ -258,7 +262,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         if not self.get_state().is_valid():
             return None
 
-        with self._procedure_stages_lock:
+        with self._procedure_stages_lock.lock():
             if self._procedure_stage_next is not None:
                 return self._procedure_stages[self._procedure_stage_next]
             else:
@@ -270,27 +274,28 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             raise ProcedureLoadError('Procedure is empty')
 
         # Validate stages
-        for stage in self._procedure_stages:
-            stage.stage_validate()
+        with self._procedure_stages_lock.lock():
+            for stage in self._procedure_stages:
+                stage.stage_validate()
 
-        # Generate list of active hardware
-        self._procedure_hardware_managers = {}
+            # Generate list of active hardware
+            self._procedure_hardware_managers = {}
 
-        # Get handles to required hardware
-        for hardware_identifier in self.get_procedure_hardware():
-            self._procedure_hardware_managers[hardware_identifier] = HardwareManager.get_instance(hardware_identifier)
+            # Get handles to required hardware
+            for hardware_identifier in self.get_procedure_hardware():
+                self._procedure_hardware_managers[hardware_identifier] = HardwareManager.get_instance(hardware_identifier)
 
-        # Reset index to beginning
-        self._procedure_stage_current = 0
-        self._procedure_stage_advance = False
+            # Reset index to beginning
+            self._procedure_stage_current = 0
+            self._procedure_stage_advance = False
 
-        if len(self._procedure_stages) > 1:
-            self._procedure_stage_next = 1
-        else:
-            self._procedure_stage_next = None
+            if len(self._procedure_stages) > 1:
+                self._procedure_stage_next = 1
+            else:
+                self._procedure_stage_next = None
 
         # Setup metadata
-        with Measurement.metadata_global_lock.lock('Procedure._procedure_validate'):
+        with Measurement.metadata_global_lock.lock():
             Measurement.push_global_metadata()
 
             # Tell measurement targets a new group has started
@@ -369,7 +374,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
             self.logger().debug(f"{hardware_identifier} ready")
 
         # Add procedure metadata
-        with Measurement.metadata_global_lock.lock('Procedure._procedure_start'):
+        with Measurement.metadata_global_lock.lock():
             Measurement.add_global_tags({
                 'procedure_time': now(),
                 'procedure_stage_index': 0,
@@ -436,45 +441,50 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         # Queue next stage
         self.logger().info('Skip to next stage', event=True)
 
-        self._procedure_stage_advance = True
+        with self._procedure_stages_lock.lock():
+            self._procedure_stage_advance = True
 
     def _stage_previous(self, _: transitions.EventData) -> None:
         # Queue previous stage
         self.logger().info('Jump to previous stage', event=True)
 
-        assert self._procedure_stage_current is not None
-        self._procedure_stage_next = self._procedure_stage_current - 1
+        with self._procedure_stages_lock.lock():
+            assert self._procedure_stage_current is not None
+            self._procedure_stage_next = self._procedure_stage_current - 1
 
-        if self._procedure_stage_next < 0:
-            self._procedure_stage_next = 0
+            if self._procedure_stage_next < 0:
+                self._procedure_stage_next = 0
 
-        self._procedure_stage_advance = True
+            self._procedure_stage_advance = True
 
     def _stage_repeat(self, _: transitions.EventData) -> None:
         # Queue current stage
         self.logger().info('Repeat current stage', event=True)
 
-        assert self._procedure_stage_current is not None
-        self._procedure_stage_next = self._procedure_stage_current
+        with self._procedure_stages_lock.lock():
+            assert self._procedure_stage_current is not None
+            self._procedure_stage_next = self._procedure_stage_current
 
-        self._procedure_stage_advance = True
+            self._procedure_stage_advance = True
 
     def _stage_finish(self, _: transitions.EventData) -> None:
         # Queue completion after current stage
         self.logger().info('Complete current stage then finish', event=True)
 
-        self._procedure_stage_next = None
+        with self._procedure_stages_lock.lock():
+            self._procedure_stage_next = None
 
     def _stage_goto(self, event: transitions.EventData) -> None:
         self._procedure_stage_next = int(event.args[0])
 
-        self.logger().info(f'Queue next stage {self._procedure_stage_next}', event=True)
+        with self._procedure_stages_lock.lock():
+            self._procedure_stage_next = stage_next
 
-        if self._procedure_stage_next >= len(self._procedure_stages):
-            self._procedure_stage_next = len(self._procedure_stages) - 1
+            if self._procedure_stage_next >= len(self._procedure_stages):
+                self._procedure_stage_next = len(self._procedure_stages) - 1
 
-        if self._procedure_stage_next < 0:
-            self._procedure_stage_next = 0
+            if self._procedure_stage_next < 0:
+                self._procedure_stage_next = 0
 
         # self._procedure_stage_advance = True
 

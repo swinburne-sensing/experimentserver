@@ -10,7 +10,8 @@ from transitions import EventData
 from .core import Hardware
 from ..error import CommunicationError
 from ..metadata import TYPE_PARAMETER_DICT
-from ...util.thread import CallbackThread, ThreadLock, QueueThread, ThreadException
+from ...util.lock import MonitoredLock
+from ...util.thread import CallbackThread, QueueThread, ThreadException
 from experimentserver.measurement import Measurement, MeasurementTarget
 
 
@@ -37,7 +38,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
         self._serial_args = serial_args
 
         # Serial port connection information
-        self._serial_lock = ThreadLock(f"{self.get_hardware_identifier(True)}SerialLock", 5)
+        self._serial_lock = MonitoredLock(f"{self.get_hardware_identifier(True)}.serial", 5)
         self._serial_port: typing.Optional[serial.SerialBase] = None
 
     @property
@@ -50,7 +51,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
     def transition_connect(self, event: typing.Optional[EventData] = None) -> None:
         super(SerialHardware, self).transition_connect(event)
 
-        with self._serial_lock.lock('transition_connect'):
+        with self._serial_lock.lock(reason='connect'):
             # Open serial port
             try:
                 self.logger().debug(f"Opening serial port using args: {self._serial_args}")
@@ -59,7 +60,7 @@ class SerialHardware(Hardware, metaclass=abc.ABCMeta):
                 raise CommunicationError(f"Unable to open serial port {self._serial_args['port']}") from exc
 
     def transition_disconnect(self, event: typing.Optional[EventData] = None) -> None:
-        with self._serial_lock.lock('transition_disconnect'):
+        with self._serial_lock.lock(reason='disconnect'):
             if self._serial_port:
                 # Close serial port
                 self._serial_port.close()
@@ -126,7 +127,7 @@ class SerialStreamHardware(SerialHardware, metaclass=abc.ABCMeta):
 
         while self._thread_serial_consumer is not None and not self._thread_serial_consumer.thread_stop_requested():
             try:
-                with self._serial_lock.lock('_thread_serial_consumer_callback', quiet=True):
+                with self._serial_lock.lock(silent=True):
                     # Break upon disconnection
                     if self._serial_port is None:
                         return

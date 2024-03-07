@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import abc
 import enum
-import threading
 import typing
 
 import transitions
 
 import experimentserver
+from .lock import LockTimeout, MonitoredCondition
 from .thread import CallbackThread
 
 
@@ -53,6 +53,14 @@ TYPE_STATE = typing.TypeVar('TYPE_STATE', bound=ManagedState)
 TYPE_TRANSITION = typing.TypeVar('TYPE_TRANSITION', bound=ManagedTransition)
 
 
+class PendingStateTransition(experimentserver.ApplicationException):
+    def __init__(self, current_state: TYPE_STATE, pending_states: typing.Sequence[TYPE_TRANSITION]):
+        super().__init__()
+
+        self.current_state = current_state
+        self.pending_states = pending_states
+
+
 class _SupportsState(typing.Protocol, typing.Generic[TYPE_STATE]):
     state: TYPE_STATE
 
@@ -79,10 +87,7 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
         self._transition_type = transition_type
 
         # State lock
-        self._state_lock = threading.Condition()
-
-        # Flag to inhibit queued transitions
-        self._state_hold = False
+        self._state_condition = MonitoredCondition(name + '.state', 10.0)
 
         # Queue for pending transitions
         self._transition_pending_queue: typing.List[
@@ -104,24 +109,43 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
     def _get_state(self) -> TYPE_STATE:
         return self._state_type(self._model.state)
 
-    def get_state(self, timeout: typing.Optional[float] = None) -> TYPE_STATE:
+    def get_state(self, timeout: typing.Optional[float] = None, raise_pending: bool = False, wait_pending: bool = True) \
+            -> TYPE_STATE:
         """
 
         :return:
         """
-        with self._state_lock:
-            # Wait for pending transitions to be applied
-            while len(self._transition_pending_queue) > 0:
-                self._state_lock.wait(timeout)
+        if not self.is_thread_alive():
+            raise ManagedStateMachineError('State machine thread not running')
+
+        with self._state_condition.lock(timeout, frame_offset=1, reason='get_state') as state_lock_request:
+            if len(self._transition_pending_queue) > 0:
+                if raise_pending:
+                    raise PendingStateTransition(self._get_state(), [x[0] for x in self._transition_pending_queue])
+
+                if wait_pending:
+                    # Wait for pending transitions to be applied
+                    state_lock_request.wait_for(lambda: len(self._transition_pending_queue) == 0, timeout)
 
             return self._get_state()
+    
+    def get_state_str(self, timeout: typing.Optional[float] = None) -> str:
+        try:
+            state = self.get_state(timeout, raise_pending=True)
+            return str(state.value)
+        except PendingStateTransition as exc:
+            pending_states = [f"{state.value!s}" for state in exc.pending_states]
+            return f"{exc.current_state.value!s} -> {' -> '.join(pending_states)}"
+        except ManagedStateMachineError:
+            return 'Software Error'
+        except LockTimeout:
+            return 'unknown'
 
     def get_error(self, timeout: typing.Optional[float] = None, raise_exception: bool = True) \
             -> typing.Optional[Exception]:
-        with self._state_lock:
+        with self._state_condition.lock(timeout):
             # Wait while transitions are pending
-            while len(self._transition_pending_queue) > 0:
-                self._state_lock.wait(timeout)
+            self.get_state()
 
             if len(self._transition_error_queue) > 0:
                 # Empty exception queue then raise exception
@@ -151,7 +175,7 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
 
         :return:
         """
-        with self._state_lock:
+        with self._state_condition.lock() as state_lock_request:
             # Clear pending errors
             self._transition_error_queue.clear()
 
@@ -161,13 +185,8 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
 
                 # Notify waiting threads that pending transitions were discarded
                 self._transition_error_queue.append(TransitionDiscarded(f"Transition {transition} discarded"))
-
-            # Clear hold
-            self._state_hold = False
-
-    def set_queue_transition_hold(self, flag: bool) -> None:
-        with self._state_lock:
-            self._state_hold = flag
+            
+            state_lock_request.notify_all()
 
     def queue_transition(self, transition: TYPE_TRANSITION, *args: typing.Any, block: bool = True,
                          timeout: typing.Optional[float] = None, raise_exception: bool = True, **kwargs: typing.Any) \
@@ -182,8 +201,8 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
         if not self.is_thread_alive():
             raise ManagedStateMachineError('State machine thread not running')
 
-        with self._state_lock:
-            self.logger().info(f"Queueing transition {transition} ({'blocking' if block else 'non-blocking'})")
+        with self._state_condition.lock():
+            self.logger().debug(f"Queueing transition {transition} ({'blocking' if block else 'non-blocking'})")
             self._transition_pending_queue.append((transition, args, kwargs))
 
             if block:
@@ -218,13 +237,9 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
         """
         state_change = False
 
-        with self._state_lock:
+        with self._state_condition.lock(silent=True) as state_lock_request:
             # Fetch current state
             state = self._get_state()
-
-            # If state queue is on hold then do nothing
-            if self._state_hold:
-                return False, state
 
             if len(self._transition_pending_queue) > 0:
                 try:
@@ -264,9 +279,7 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
                     else:
                         self.logger().debug('State unchanged')
 
-                    state = current_state
-
                     # Notify any waiting threads
-                    self._state_lock.notify_all()
+                    state_lock_request.notify_all()
 
             return state_change, state

@@ -18,8 +18,8 @@ from experimentserver.hardware.error import HardwareIdentifierError, Measurement
     ParameterError, NoResetHandler
 from experimentserver.hardware.metadata import TYPE_PARAMETER_DICT, TYPE_PARAMETER_COMMAND, _MeasurementMetadata, \
     _ParameterMetadata
+from experimentserver.util.lock import MonitoredLock
 from experimentserver.util.metadata import BoundMetadataCall
-from experimentserver.util.thread import ThreadLock
 
 
 class Hardware(LoggedAbstract, MeasurementSource):
@@ -56,7 +56,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
         self._identifier = identifier
 
         # Hardware interaction lock
-        self._hardware_lock = ThreadLock(f"{self._identifier}:hardware", self._HARDWARE_LOCK_TIMEOUT)
+        self._hardware_lock = MonitoredLock(f"{self._identifier}.hardware", self._HARDWARE_LOCK_TIMEOUT)
 
         # Parameters to always configure
         self._initial_parameters = self.bind_parameter(parameters)
@@ -150,8 +150,8 @@ class Hardware(LoggedAbstract, MeasurementSource):
         :param quiet:
         :return: lock depth
         """
-        with self._hardware_lock.lock(origin, timeout, quiet) as depth:
-            yield depth
+        with self._hardware_lock.lock(timeout, quiet, frame_offset=1, **kwargs):
+            yield
 
     # Parameter/measurement registration
     register_measurement = functools.partial(metadata.register_metadata, _MeasurementMetadata)
@@ -283,7 +283,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
                 if not measurement_enabled and not measurement_meta[measurement].force:
                     measurement_meta.pop(measurement)
 
-            with self.hardware_lock('produce_measurement'):
+            with self.hardware_lock():
                 for meta in measurement_meta.values():
                     # Bind method
                     measurement_method = meta.bind(self)
@@ -430,7 +430,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         if parameter_command is not None:
             with self._parameter_lock:
-                with self.hardware_lock('_handle_parameter'):
+                with self.hardware_lock():
                     # Sort parameters based on order before calling the appropriate method
                     for parameter_call in sorted(parameter_command):
                         # Call bound method
@@ -450,7 +450,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         if parameter_command is not None:
             with self._parameter_lock:
-                with self.hardware_lock('_buffer_parameters'):
+                with self.hardware_lock():
                     # Sort parameters based on order before calling the appropriate method
                     for parameter_call in sorted(parameter_command):
                         # Buffer parameter after successful execution

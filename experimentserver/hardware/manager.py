@@ -12,8 +12,8 @@ from .base.core import Hardware
 from .control import HardwareState, HardwareTransition
 from .error import HardwareError, HardwareIdentifierError, CommunicationError, CommandError, ExternalError, \
     NoResetHandler
+from experimentserver.util.lock import LockTimeout
 from experimentserver.util.state import ManagedStateMachine
-from experimentserver.util.thread import LockTimeout
 
 
 # noinspection PyAbstractClass
@@ -42,6 +42,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
 
     # Limit the maximum repetition rate of the management thread when no measurements are made
     _MINIMUM_RUN_PERIOD = 1
+    _MINIMUM_ACTIVE_RUN_PERIOD = 0.01
 
     # Timeout for Hardware reset after errors occur
     _TIMEOUT_RESET = 30.0
@@ -104,7 +105,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
     def force_disconnect(self) -> None:
         """ Force hardware to disconnected state regardless of current state. """
         # Get current state
-        with self._state_lock:
+        with self._state_condition.lock(reason='force_disconnect'):
             # Clear pending transitions
             self.clear_transition()
 
@@ -112,18 +113,15 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
             hardware_state = self._get_state()
 
             if hardware_state == HardwareState.DISCONNECTED:
-                self.logger().debug('Already disconnected disconnect')
+                self.logger().debug('Already disconnected')
                 return
             
             self.logger().warning('Forcing disconnect')
 
             try:
-                with self._hardware.hardware_lock('force_disconnect'):
+                with self._hardware.hardware_lock(reason='force_disconnect'):
                     if hardware_state.is_error():
                         self.logger().error('Hardware in error state during forced disconnect')
-
-                        # Clear error state
-                        HardwareTransition.RESET.apply(self._hardware)
                     else:
                         # If currently running then stop
                         if hardware_state == HardwareState.RUNNING:
@@ -153,9 +151,6 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
 
                 # Try and transition to error state (might contain fail-safe code)
                 HardwareTransition.ERROR.apply(self._hardware)
-
-                # Finally reset to clear error state
-                HardwareTransition.RESET.apply(self._hardware)
 
     def quick_start(self, connect: bool = True, configure: bool = True, start: bool = True) -> None:
         if connect:
@@ -188,7 +183,7 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
         # Activity flag to indicate an operation was performed on this loop (prevents high idle CPU usage)
         start_time = time.time()
 
-        with self._state_lock:
+        with self._state_condition.lock():
             # Handle shutdown requests
             if self.thread_stop_requested():
                 try:
@@ -204,98 +199,97 @@ class HardwareManager(ManagedStateMachine[HardwareState, HardwareTransition]):
             # Process pending transitions and ff state has changed then set activity flag
             activity_flag, _ = self._process_transition()
             
-        # Check for error state and handle automatic reset
-        if current_state.is_error():
-            if self._reset_time is None:
-                # Set timeout for reset if not already set
-                self._reset_time = time.time() + self._TIMEOUT_RESET
+            # Check for error state and handle automatic reset
+            if self.get_state(wait_pending=False).is_error():
+                if self._reset_time is None:
+                    # Set timeout for reset if not already set
+                    self._reset_time = time.time() + self._TIMEOUT_RESET
 
-                self.logger().info(f"Reset at {datetime.fromtimestamp(self._reset_time).strftime('%H:%M:%S')}")
-            elif time.time() >= self._reset_time:
-                # Attempt to reset hardware after timeout
-                self.logger().info('Attempting hardware reset', event=True)
+                    self.logger().info(f"Reset at {datetime.fromtimestamp(self._reset_time).strftime('%H:%M:%S')}")
+                elif time.time() >= self._reset_time:
+                    # Attempt to reset hardware after timeout
+                    self.logger().info('Attempting hardware reset', event=True)
 
-                with self._hardware.hardware_lock('_thread_manager'):
-                    try:
-                        HardwareTransition.RESET.apply(self._hardware)
+                    with self._hardware.hardware_lock(reason='reset'):
+                        try:
+                            HardwareTransition.RESET.apply(self._hardware)
 
-                        # Attempt to restore state
-                        if self._reset_state is HardwareState.CONNECTED or \
-                                self._reset_state is HardwareState.CONFIGURED or \
-                                self._reset_state is HardwareState.RUNNING:
-                            self.logger().info("Attempting hardware reconnect")
-                            HardwareTransition.CONNECT.apply(self._hardware)
+                            # Attempt to restore state
+                            if self._reset_state is HardwareState.CONNECTED or \
+                                    self._reset_state is HardwareState.CONFIGURED or \
+                                    self._reset_state is HardwareState.RUNNING:
+                                self.logger().info("Attempting hardware reconnect")
+                                HardwareTransition.CONNECT.apply(self._hardware)
 
-                        if self._reset_state is HardwareState.CONFIGURED or \
-                                self._reset_state is HardwareState.RUNNING:
-                            self.logger().info("Attempting hardware reconfigure")
-                            HardwareTransition.CONFIGURE.apply(self._hardware)
+                            if self._reset_state is HardwareState.CONFIGURED or \
+                                    self._reset_state is HardwareState.RUNNING:
+                                self.logger().info("Attempting hardware reconfigure")
+                                HardwareTransition.CONFIGURE.apply(self._hardware)
 
-                        if self._reset_state is HardwareState.RUNNING:
-                            self.logger().info("Attempting hardware restart")
-                            HardwareTransition.START.apply(self._hardware)
+                            if self._reset_state is HardwareState.RUNNING:
+                                self.logger().info("Attempting hardware restart")
+                                HardwareTransition.START.apply(self._hardware)
 
-                        self.logger().info('Successfully reset hardware', event=True, notify=True)
-                    except CommunicationError:
-                        self.logger().error('Hardware communication error occurred during reset', exc_info=True)
+                            self.logger().info('Successfully reset hardware', event=True, notify=True)
+                        except CommunicationError:
+                            self.logger().error('Hardware communication error occurred during reset', exc_info=True)
 
-                        # Return to error state
-                        HardwareTransition.ERROR.apply(self._hardware)
-                    except ExternalError:
-                        self.logger().error('Hardware reported error during reset', exc_info=True)
+                            # Return to error state
+                            HardwareTransition.ERROR.apply(self._hardware)
+                        except ExternalError:
+                            self.logger().error('Hardware reported error during reset', exc_info=True)
 
-                        # Return to error state
-                        HardwareTransition.ERROR.apply(self._hardware)
-                    finally:
-                        # Clear reset timeout (if still in error then try again on next loop)
-                        self._reset_time = None
+                            # Return to error state
+                            HardwareTransition.ERROR.apply(self._hardware)
+                        finally:
+                            # Clear reset timeout (if still in error then try again on next loop)
+                            self._reset_time = None
 
-                        current_state = self.get_state()
+                # Set operation flag to enable delay before next check
+                activity_flag = True
+            else:
+                # Clear reset timer
+                self._reset_time = None
 
-            # Set operation flag to enable delay before next check
-            activity_flag = True
-        else:
-            # Clear reset timer
-            self._reset_time = None
+                # Store current state for future resets
+                self._reset_state = self.get_state(wait_pending=False)
 
-            # Store current state for future resets
-            self._reset_state = current_state
+            # If running then attempt to take measurement
+            if self.get_state(wait_pending=False).is_running():
+                try:
+                    activity_flag |= self._hardware.produce_measurement()
+                except CommandError:
+                    self.logger().exception('Command error occurred while gathering measurements')
 
-        # If running then attempt to take measurement
-        running_flag = current_state.is_running()
+                    # Transition to error state
+                    HardwareTransition.ERROR.apply(self._hardware)
+                except CommunicationError:
+                    self.logger().exception('Hardware communication error occurred while gathering measurements')
 
-        if running_flag:
-            try:
-                activity_flag |= self._hardware.produce_measurement()
-            except CommandError:
-                self.logger().exception('Command error occurred while gathering measurements')
+                    # Transition to error state
+                    HardwareTransition.ERROR.apply(self._hardware)
+                except ExternalError:
+                    self.logger().exception('Hardware reported error while gathering measurements')
 
-                # Transition to error state
-                HardwareTransition.ERROR.apply(self._hardware)
-            except CommunicationError:
-                self.logger().exception('Hardware communication error occurred while gathering measurements')
+                    # Transition to error state
+                    HardwareTransition.ERROR.apply(self._hardware)
+                except Exception:
+                    # Transition to error state
+                    HardwareTransition.ERROR.apply(self._hardware)
 
-                # Transition to error state
-                HardwareTransition.ERROR.apply(self._hardware)
-            except ExternalError:
-                self.logger().exception('Hardware reported error while gathering measurements')
-
-                # Transition to error state
-                HardwareTransition.ERROR.apply(self._hardware)
-            except Exception:
-                # Transition to error state
-                HardwareTransition.ERROR.apply(self._hardware)
-
-                # Bump to main thread
-                raise
+                    # Bump to main thread
+                    raise
 
         # Kick watchdog
         self._watchdog.set()
 
         # If no operations occurred then limit rate process is run
-        if not activity_flag:
-            delta_time = time.time() - start_time
+        delta_time = time.time() - start_time
 
+        if not activity_flag and delta_time < self._MINIMUM_RUN_PERIOD:
+            self.sleep(self._MINIMUM_RUN_PERIOD - delta_time, 'no measurement rate-limit', silent=True)
+        elif delta_time < self._MINIMUM_ACTIVE_RUN_PERIOD:
+            self.sleep(self._MINIMUM_RUN_PERIOD - delta_time, 'active rate-limit', silent=True)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(hardware={self._hardware!r})"
