@@ -25,6 +25,11 @@ _werkzeug_logger = get_logger('werkzeug')
 _werkzeug_logger.addFilter(_filter_werkzeug)
 
 
+# Enable HTTP/1.1
+from werkzeug.serving import WSGIRequestHandler
+WSGIRequestHandler.protocol_version = 'HTTP/1.1'
+
+
 class APIError(experimentserver.ApplicationException):
     pass
 

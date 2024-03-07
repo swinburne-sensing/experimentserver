@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import IntFlag, auto
 
 from experimentlib.data.gas import registry as gas_registry
-from experimentlib.data.unit import registry, parse
+from experimentlib.data.unit import registry, parse, T_PARSE_QUANTITY
 
 from ..base.serial import SerialStringHardware
 from ..metadata import TYPE_PARAMETER_DICT

@@ -282,4 +282,4 @@ class ManagedStateMachine(typing.Generic[TYPE_STATE, TYPE_TRANSITION], CallbackT
                     # Notify any waiting threads
                     state_lock_request.notify_all()
 
-            return state_change, state
+        return state_change, state

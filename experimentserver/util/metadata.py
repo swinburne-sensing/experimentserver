@@ -6,6 +6,8 @@ import functools
 import inspect
 import typing
 
+import experimentserver
+
 
 class BoundMetadataCall(object):
     """  """
@@ -118,7 +120,10 @@ def get_metadata(target: typing.Any, class_filter: typing.Optional[typing.Type[T
     metadata_dict: typing.Dict[str, TYPE_METADATA] = {}
 
     for attrib_name in dir(target):
-        attrib = getattr(target, attrib_name)
+        try:
+            attrib = getattr(target, attrib_name)
+        except experimentserver.ApplicationException:
+            continue
 
         if not hasattr(attrib, 'metadata'):
             continue

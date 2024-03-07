@@ -273,7 +273,7 @@ class Hardware(LoggedAbstract, MeasurementSource):
 
         with self._enabled_measurement_lock:
             if self._enabled_measurement is None:
-                raise MeasurementError('Measurements have not been configured, hardware may be disconnected')
+                return False
 
             # Get enabled measurements
             measurement_meta: typing.MutableMapping[str, _MeasurementMetadata] = self.get_hardware_measurement_metadata()

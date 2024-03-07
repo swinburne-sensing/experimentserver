@@ -197,7 +197,7 @@ class BaseStage(LoggedAbstract):
 
         if self._has_duration:
             # Apply stage metadata
-            with Measurement.metadata_global_lock.lock(f"{self.__class__.__name__}.stage_enter"):
+            with Measurement.metadata_global_lock.lock():
                 Measurement.push_global_metadata()
 
                 Measurement.add_global_tags({

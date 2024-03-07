@@ -145,7 +145,7 @@ class HardwareTransition(ManagedTransition):
                 # From disconnected
                 'trigger': cls.ERROR.value,
                 'source': HardwareState.DISCONNECTED.value,
-                'dest': HardwareState.DISCONNECTED.value
+                'dest': HardwareState.ERROR.value
             },
             {
                 # From connected
