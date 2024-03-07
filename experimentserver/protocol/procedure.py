@@ -189,7 +189,7 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
         with self._procedure_stages_lock.lock():
             for stage in self._procedure_stages:
                 stage_duration = stage.get_stage_duration()
-                stage_duration_value: typing.Union[str, float] = 0.0
+                stage_duration_value: typing.Union[timedelta, str, float]
 
                 if stage_duration is None:
                     stage_duration_value = 'Unknown'
@@ -197,9 +197,11 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
                     stage_duration_value = 'Instant'
                 elif in_seconds:
                     stage_duration_value = stage_duration.total_seconds()
+                else:
+                    stage_duration_value = stage_duration
 
                 stage_remaining = stage.get_stage_remaining()
-                stage_remaining_value: typing.Union[str, float] = 0.0
+                stage_remaining_value: typing.Union[timedelta, str, float] = 0.0
 
                 if stage_remaining is None:
                     stage_remaining_value = 'Unknown'
@@ -207,6 +209,8 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
                     stage_remaining_value = 'Instant'
                 elif in_seconds:
                     stage_remaining_value = stage_remaining.total_seconds()
+                else:
+                    stage_remaining_value = stage_remaining
 
                 stage_summary.append({
                     'index': stage_index,
@@ -301,8 +305,8 @@ class Procedure(ManagedStateMachine[ProcedureState, ProcedureTransition]):
 
             # Tell measurement targets a new group has started
             MeasurementTarget.trigger_start(
-                procedure_summary=self.get_procedure_summary(),
-                procedure_stages=self.get_stages_summary()
+                experiment_procedure_summary=self.get_procedure_summary(),
+                experiment_procedure_stages=self.get_stages_summary()
             )
 
             Measurement.add_global_tags({
